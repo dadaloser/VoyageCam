@@ -1,6 +1,7 @@
 package com.voyagecam.app.data.settings
 
 import android.content.Context
+import android.os.StatFs
 import com.voyagecam.app.core.model.CollisionSensitivity
 import com.voyagecam.app.core.model.DeviceCapabilityGrade
 import com.voyagecam.app.core.model.DualCameraCapability
@@ -123,4 +124,33 @@ class VoyageCamSettingsStore(context: Context) {
             }.getOrDefault(CollisionSensitivity.Medium)
         }
     }
+}
+
+data class StorageCapacityLimit(val maxGb: Int) {
+    companion object {
+        private const val BYTES_PER_GB = 1024L * 1024L * 1024L
+
+        fun from(context: Context): StorageCapacityLimit {
+            val statFs = StatFs(context.filesDir.absolutePath)
+            val eightyPercentAvailableGb = (statFs.availableBytes * 0.8 / BYTES_PER_GB).toInt()
+            val maxGb = maxOf(
+                VoyageCamSettingsStore.MIN_STORAGE_GB,
+                minOf(VoyageCamSettingsStore.MAX_STORAGE_GB, eightyPercentAvailableGb),
+            )
+
+            return StorageCapacityLimit(maxGb = maxGb)
+        }
+    }
+}
+
+fun VoyageCamSettings.coerceTo(limit: StorageCapacityLimit): VoyageCamSettings {
+    return copy(
+        storageCapacityGb = storageCapacityGb.coerceIn(
+            VoyageCamSettingsStore.MIN_STORAGE_GB,
+            limit.maxGb,
+        ),
+        segmentDurationMinutes = with(VoyageCamSettingsStore) {
+            segmentDurationMinutes.coerceToAllowedSegmentDuration()
+        },
+    )
 }

@@ -8,6 +8,8 @@ sealed class EvidenceExportState {
     data class Running(
         override val eventId: String,
         val title: String,
+        val progressPercent: Int = 0,
+        val currentItem: String = "",
     ) : EvidenceExportState()
 
     data class Ready(
@@ -19,5 +21,10 @@ sealed class EvidenceExportState {
     data class Failed(
         override val eventId: String,
         val message: String,
+    ) : EvidenceExportState()
+
+    data class Cancelled(
+        override val eventId: String,
+        val message: String = "证据包导出已取消",
     ) : EvidenceExportState()
 }

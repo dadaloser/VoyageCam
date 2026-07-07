@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -35,6 +36,7 @@ fun EmergencyEventPanel(
     onOpen: (EmergencyEvent) -> Unit,
     onShare: (EmergencyEvent) -> Unit,
     onExport: (EmergencyEvent) -> Unit,
+    onCancelExport: () -> Unit,
     onShareExport: (File) -> Unit,
     onDismissExport: () -> Unit,
     onOpenMap: (EmergencyEvent) -> Unit,
@@ -60,6 +62,7 @@ fun EmergencyEventPanel(
             EvidenceExportStatusPanel(
                 state = state,
                 onShare = onShareExport,
+                onCancel = onCancelExport,
                 onDismiss = onDismissExport,
             )
             Spacer(modifier = Modifier.height(10.dp))
@@ -96,6 +99,7 @@ fun EmergencyEventPanel(
 private fun EvidenceExportStatusPanel(
     state: EvidenceExportState,
     onShare: (File) -> Unit,
+    onCancel: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     Column(
@@ -114,10 +118,30 @@ private fun EvidenceExportStatusPanel(
                     color = Color(0xFF163036),
                 )
                 Text(
-                    text = state.title,
+                    text = buildString {
+                        append(state.title)
+                        if (state.currentItem.isNotBlank()) {
+                            append(" · ")
+                            append(state.currentItem)
+                        }
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFF4D6267),
                 )
+                LinearProgressIndicator(
+                    progress = state.progressPercent / 100f,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "${state.progressPercent}%",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF64777B),
+                    )
+                    OutlinedButton(onClick = onCancel) {
+                        Text("取消导出")
+                    }
+                }
             }
 
             is EvidenceExportState.Ready -> {
@@ -148,6 +172,23 @@ private fun EvidenceExportStatusPanel(
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = Color(0xFF9B2C2C),
+                )
+                Text(
+                    text = state.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF4D6267),
+                )
+                OutlinedButton(onClick = onDismiss) {
+                    Text("收起")
+                }
+            }
+
+            is EvidenceExportState.Cancelled -> {
+                Text(
+                    text = "证据包导出已取消",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF163036),
                 )
                 Text(
                     text = state.message,

@@ -17,32 +17,103 @@ class EmergencyEvidenceExporter(
     private val context: Context,
     private val storageManager: RecordingStorageManager,
 ) {
-    fun export(event: EmergencyEvent): EvidencePackageFile {
+    fun export(
+        event: EmergencyEvent,
+        onProgress: (ExportProgress) -> Unit = {},
+        isCancelled: () -> Boolean = { false },
+    ): EvidencePackageFile {
         val files = event.existingSegmentFiles(storageManager)
         if (files.isEmpty()) error("关联片段文件不存在")
 
         val exportDir = File(context.filesDir, EVIDENCE_EXPORT_DIR_NAME).apply { mkdirs() }
-        val packageFile = File(exportDir, event.evidencePackageFileName())
-        ZipOutputStream(FileOutputStream(packageFile)).use { zip ->
-            zip.putNextEntry(ZipEntry("metadata.txt"))
-            zip.write(event.evidenceMetadata(files).toByteArray(StandardCharsets.UTF_8))
-            zip.closeEntry()
+        val packageFile = event.availableEvidencePackageFile(exportDir)
+        val temporaryPackageFile = File.createTempFile(packageFile.nameWithoutExtension, TEMP_PACKAGE_SUFFIX, exportDir)
+        val totalSteps = files.size + 1
 
-            files.forEach { file ->
-                zip.putNextEntry(ZipEntry("clips/${file.name}"))
-                file.inputStream().use { input ->
-                    input.copyTo(zip)
-                }
+        try {
+            checkNotCancelled(isCancelled)
+            onProgress(
+                ExportProgress(
+                    completedSteps = 0,
+                    totalSteps = totalSteps,
+                    currentItem = "metadata.txt",
+                ),
+            )
+
+            ZipOutputStream(FileOutputStream(temporaryPackageFile)).use { zip ->
+                checkNotCancelled(isCancelled)
+                zip.putNextEntry(ZipEntry("metadata.txt"))
+                zip.write(event.evidenceMetadata(files).toByteArray(StandardCharsets.UTF_8))
                 zip.closeEntry()
+                onProgress(
+                    ExportProgress(
+                        completedSteps = 1,
+                        totalSteps = totalSteps,
+                        currentItem = "metadata.txt",
+                    ),
+                )
+
+                files.forEachIndexed { index, file ->
+                    checkNotCancelled(isCancelled)
+                    zip.putNextEntry(ZipEntry("clips/${file.name}"))
+                    file.inputStream().use { input ->
+                        input.copyToInterruptibly(zip, isCancelled)
+                    }
+                    zip.closeEntry()
+                    onProgress(
+                        ExportProgress(
+                            completedSteps = index + 2,
+                            totalSteps = totalSteps,
+                            currentItem = file.name,
+                        ),
+                    )
+                }
             }
+            if (!temporaryPackageFile.renameTo(packageFile)) {
+                error("无法保存证据包")
+            }
+        } catch (cancelled: EvidenceExportCancelledException) {
+            temporaryPackageFile.delete()
+            throw cancelled
+        } catch (error: Throwable) {
+            temporaryPackageFile.delete()
+            throw error
         }
 
         return EvidencePackageFile(file = packageFile, clipCount = files.size)
     }
 
+    private fun checkNotCancelled(isCancelled: () -> Boolean) {
+        if (isCancelled()) throw EvidenceExportCancelledException()
+    }
+
+    private fun java.io.InputStream.copyToInterruptibly(
+        output: java.io.OutputStream,
+        isCancelled: () -> Boolean,
+    ) {
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        while (true) {
+            checkNotCancelled(isCancelled)
+            val bytes = read(buffer)
+            if (bytes < 0) break
+            output.write(buffer, 0, bytes)
+        }
+    }
+
     private fun EmergencyEvent.evidencePackageFileName(): String {
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(triggeredAtMillis))
         return "voyagecam_evidence_${timestamp}_${id.take(8)}.zip"
+    }
+
+    private fun EmergencyEvent.availableEvidencePackageFile(exportDir: File): File {
+        val baseName = evidencePackageFileName().removeSuffix(".zip")
+        var candidate = File(exportDir, "$baseName.zip")
+        var index = 2
+        while (candidate.exists()) {
+            candidate = File(exportDir, "${baseName}_$index.zip")
+            index++
+        }
+        return candidate
     }
 
     private fun EmergencyEvent.evidenceMetadata(files: List<File>): String {
@@ -114,6 +185,7 @@ class EmergencyEvidenceExporter(
 
     private companion object {
         const val EVIDENCE_EXPORT_DIR_NAME = "evidence_exports"
+        const val TEMP_PACKAGE_SUFFIX = ".tmp"
         const val METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR = 3.6f
     }
 }
@@ -122,3 +194,14 @@ data class EvidencePackageFile(
     val file: File,
     val clipCount: Int,
 )
+
+data class ExportProgress(
+    val completedSteps: Int,
+    val totalSteps: Int,
+    val currentItem: String,
+) {
+    val percent: Int
+        get() = if (totalSteps <= 0) 0 else (completedSteps * 100 / totalSteps).coerceIn(0, 100)
+}
+
+class EvidenceExportCancelledException : RuntimeException("导出已取消")

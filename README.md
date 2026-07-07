@@ -28,6 +28,9 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 22. Pick a trusted Bluetooth auto-start device from already paired Bluetooth devices.
 23. Play selected recording clips inside the app with a native Android `VideoView` fallback to the system player.
 24. Export emergency-event evidence packages as shareable ZIP files with metadata and linked clips.
+25. Show cancellable evidence export progress and keep partial ZIP output isolated from original recordings.
+26. Show recording storage usage, locked-clip footprint, and estimated remaining recording time in settings.
+27. Ask for confirmation before lowering loop-recording capacity below current normal-clip usage, then clean only normal clips after confirmation.
 
 ## Current Status
 
@@ -48,7 +51,10 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 - Auto-start diagnostics persist the latest trigger source, result, reason, detail, and timestamp for in-car testing.
 - Trusted Bluetooth setup can read paired devices after Bluetooth permission is granted, while still allowing manual entry.
 - Recording and emergency-event playback can happen in-app, while still offering system-player fallback and sharing.
-- Emergency events can be exported into app-private ZIP evidence packages containing readable metadata and all available linked clips.
+- Emergency events can be exported into app-private ZIP evidence packages containing readable metadata and all available linked clips, with visible progress and cancellation for large packages.
+- Evidence export writes to a temporary ZIP first, then saves a completed package name, so cancellation or export failure only removes partial output and leaves original clips untouched.
+- Settings now summarize normal and locked recording space, configured loop-recording capacity, clip counts, and estimated remaining recording time based on current audio and camera mode settings.
+- Reducing storage capacity below current normal recording usage now opens an in-app confirmation panel before applying the change and deleting old normal clips.
 
 ## Build
 
@@ -61,6 +67,6 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 
 1. Keep preview visible during recording by sharing the Camera2 session or moving recording into an activity-bound preview pipeline.
 2. Implement dual-camera recording for devices that pass the capability check, with rear-only fallback.
-3. Add cancellable export progress for very large evidence packages.
-4. Add GPS route metadata and video watermarks for evidence exports.
-5. Keep preview visible during recording and migrate toward an activity-bound preview/recording pipeline.
+3. Add GPS route metadata and video watermarks for evidence exports.
+4. Extract `core`, `data`, `feature`, and `ui` into Gradle modules once the package boundaries stabilize.
+5. Add unlock/delete controls for historical recordings and emergency events.
