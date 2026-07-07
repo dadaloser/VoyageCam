@@ -1,4 +1,4 @@
-package com.voyagecam.app
+package com.voyagecam.app.core.model
 
 enum class CollisionSensitivity(
     val label: String,

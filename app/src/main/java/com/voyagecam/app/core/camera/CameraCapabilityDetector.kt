@@ -1,4 +1,4 @@
-package com.voyagecam.app
+package com.voyagecam.app.core.camera
 
 import android.Manifest
 import android.content.Context
@@ -10,36 +10,9 @@ import android.os.Build
 import android.util.Range
 import android.util.Size
 import androidx.core.content.ContextCompat
-
-data class DualCameraCapability(
-    val state: DualCameraSwitchState,
-    val grade: DeviceCapabilityGrade = DeviceCapabilityGrade.D,
-    val rearCameraId: String? = null,
-    val frontCameraId: String? = null,
-    val reason: String,
-    val rearSummary: String = "未检测",
-    val frontSummary: String = "未检测",
-    val systemSummary: String = "Android ${Build.VERSION.RELEASE} / API ${Build.VERSION.SDK_INT}",
-    val checkedAtMillis: Long = System.currentTimeMillis(),
-) {
-    val isAvailable: Boolean
-        get() = state == DualCameraSwitchState.AvailableOff || state == DualCameraSwitchState.AvailableOn
-}
-
-enum class DualCameraSwitchState {
-    Checking,
-    AvailableOff,
-    AvailableOn,
-    Unavailable,
-    CheckFailed,
-}
-
-enum class DeviceCapabilityGrade {
-    A,
-    B,
-    C,
-    D,
-}
+import com.voyagecam.app.core.model.DeviceCapabilityGrade
+import com.voyagecam.app.core.model.DualCameraCapability
+import com.voyagecam.app.core.model.DualCameraSwitchState
 
 class CameraCapabilityDetector(private val context: Context) {
     fun detect(currentlyEnabled: Boolean): DualCameraCapability {

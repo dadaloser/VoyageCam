@@ -1,6 +1,10 @@
-package com.voyagecam.app
+package com.voyagecam.app.data.settings
 
 import android.content.Context
+import com.voyagecam.app.core.model.CollisionSensitivity
+import com.voyagecam.app.core.model.DeviceCapabilityGrade
+import com.voyagecam.app.core.model.DualCameraCapability
+import com.voyagecam.app.core.model.DualCameraSwitchState
 
 data class VoyageCamSettings(
     val dualCameraEnabled: Boolean = false,

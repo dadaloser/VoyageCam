@@ -1,4 +1,4 @@
-package com.voyagecam.app
+package com.voyagecam.app.data.location
 
 import android.Manifest
 import android.content.Context
@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
 import androidx.core.content.ContextCompat
+import com.voyagecam.app.core.model.EmergencyLocationSnapshot
 
 class EmergencyLocationProvider(private val context: Context) {
     private val locationManager: LocationManager? =
@@ -32,13 +33,6 @@ class EmergencyLocationProvider(private val context: Context) {
         )
     }
 }
-
-data class EmergencyLocationSnapshot(
-    val latitude: Double,
-    val longitude: Double,
-    val speedMetersPerSecond: Float?,
-    val capturedAtMillis: Long,
-)
 
 fun Context.hasAnyLocationPermission(): Boolean {
     return ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==

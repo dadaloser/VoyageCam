@@ -1,4 +1,4 @@
-package com.voyagecam.app
+package com.voyagecam.app.core.model
 
 import java.text.SimpleDateFormat
 import java.util.Date

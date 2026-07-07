@@ -1,4 +1,4 @@
-package com.voyagecam.app
+package com.voyagecam.app.core.camera
 
 import android.Manifest
 import android.annotation.SuppressLint

@@ -1,4 +1,4 @@
-package com.voyagecam.app
+package com.voyagecam.app.feature.recording
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -15,6 +15,17 @@ import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import com.voyagecam.app.MainActivity
+import com.voyagecam.app.R
+import com.voyagecam.app.core.camera.RearCameraRecorder
+import com.voyagecam.app.core.model.CollisionSensitivity
+import com.voyagecam.app.core.model.EmergencyTrigger
+import com.voyagecam.app.data.emergency.EmergencyEventStore
+import com.voyagecam.app.data.location.EmergencyLocationProvider
+import com.voyagecam.app.data.location.hasAnyLocationPermission
+import com.voyagecam.app.data.settings.VoyageCamSettingsStore
+import com.voyagecam.app.data.storage.RecordingStorageManager
+import com.voyagecam.app.feature.collision.CollisionDetector
 import java.io.File
 import java.util.Locale
 

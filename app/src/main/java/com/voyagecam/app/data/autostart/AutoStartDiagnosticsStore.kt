@@ -1,6 +1,9 @@
-package com.voyagecam.app
+package com.voyagecam.app.data.autostart
 
 import android.content.Context
+import com.voyagecam.app.core.model.AutoStartDiagnostic
+import com.voyagecam.app.core.model.AutoStartResult
+import com.voyagecam.app.core.model.AutoStartSource
 
 class AutoStartDiagnosticsStore(context: Context) {
     private val prefs = context.getSharedPreferences("voyage_cam_auto_start_diagnostics", Context.MODE_PRIVATE)
@@ -39,24 +42,6 @@ class AutoStartDiagnosticsStore(context: Context) {
         private const val KEY_DETAIL = "detail"
         private const val KEY_RECORDED_AT = "recorded_at"
     }
-}
-
-data class AutoStartDiagnostic(
-    val source: AutoStartSource,
-    val result: AutoStartResult,
-    val reason: String,
-    val detail: String,
-    val recordedAtMillis: Long,
-)
-
-enum class AutoStartSource(val label: String) {
-    Power("充电器"),
-    Bluetooth("蓝牙"),
-}
-
-enum class AutoStartResult(val label: String) {
-    Started("已启动"),
-    Ignored("已忽略"),
 }
 
 private fun String.toAutoStartSource(): AutoStartSource? {

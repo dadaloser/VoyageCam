@@ -1,4 +1,4 @@
-package com.voyagecam.app
+package com.voyagecam.app.ui.preview
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import com.voyagecam.app.core.camera.RearCameraPreviewController
 
 @Composable
 fun RearCameraPreview(

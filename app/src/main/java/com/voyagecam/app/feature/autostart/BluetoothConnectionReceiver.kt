@@ -1,4 +1,4 @@
-package com.voyagecam.app
+package com.voyagecam.app.feature.autostart
 
 import android.Manifest
 import android.bluetooth.BluetoothDevice
@@ -8,6 +8,10 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
+import com.voyagecam.app.core.model.AutoStartResult
+import com.voyagecam.app.core.model.AutoStartSource
+import com.voyagecam.app.data.autostart.AutoStartDiagnosticsStore
+import com.voyagecam.app.data.settings.VoyageCamSettingsStore
 
 class BluetoothConnectionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {

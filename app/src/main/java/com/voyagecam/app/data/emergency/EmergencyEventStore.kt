@@ -1,6 +1,9 @@
-package com.voyagecam.app
+package com.voyagecam.app.data.emergency
 
 import android.content.Context
+import com.voyagecam.app.core.model.EmergencyEvent
+import com.voyagecam.app.core.model.EmergencyLocationSnapshot
+import com.voyagecam.app.core.model.EmergencyTrigger
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.util.Base64
@@ -135,22 +138,4 @@ class EmergencyEventStore(context: Context) {
         private const val SEGMENT_PATHS_INDEX = 9
         private const val NEW_EVENT_FIELD_COUNT = 10
     }
-}
-
-data class EmergencyEvent(
-    val id: String,
-    val trigger: EmergencyTrigger,
-    val triggeredAtMillis: Long,
-    val accelerationG: Float?,
-    val thresholdG: Float?,
-    val latitude: Double?,
-    val longitude: Double?,
-    val speedMetersPerSecond: Float?,
-    val locationCapturedAtMillis: Long?,
-    val segmentPaths: List<String>,
-)
-
-enum class EmergencyTrigger(val label: String) {
-    Manual("手动锁定"),
-    Collision("碰撞触发"),
 }

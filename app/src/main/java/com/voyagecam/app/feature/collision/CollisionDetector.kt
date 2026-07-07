@@ -1,10 +1,11 @@
-package com.voyagecam.app
+package com.voyagecam.app.feature.collision
 
 import android.content.Context
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import com.voyagecam.app.core.model.CollisionSensitivity
 import kotlin.math.sqrt
 
 class CollisionDetector(

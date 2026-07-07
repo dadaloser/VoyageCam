@@ -66,11 +66,35 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import com.voyagecam.app.core.camera.CameraCapabilityDetector
+import com.voyagecam.app.core.model.AutoStartDiagnostic
+import com.voyagecam.app.core.model.AutoStartResult
+import com.voyagecam.app.core.model.CameraDirection
+import com.voyagecam.app.core.model.CollisionSensitivity
+import com.voyagecam.app.core.model.DeviceCapabilityGrade
+import com.voyagecam.app.core.model.DualCameraCapability
+import com.voyagecam.app.core.model.DualCameraSwitchState
+import com.voyagecam.app.core.model.EmergencyEvent
+import com.voyagecam.app.core.model.EmergencyTrigger
+import com.voyagecam.app.core.model.RecordingSegment
+import com.voyagecam.app.data.autostart.AutoStartDiagnosticsStore
+import com.voyagecam.app.data.emergency.EmergencyEventStore
+import com.voyagecam.app.data.location.hasAnyLocationPermission
+import com.voyagecam.app.data.settings.VoyageCamSettings
+import com.voyagecam.app.data.settings.VoyageCamSettingsStore
+import com.voyagecam.app.data.settings.VoyageCamSettingsStore.Companion.coerceToAllowedSegmentDuration
+import com.voyagecam.app.data.storage.RecordingStorageManager
+import com.voyagecam.app.feature.recording.RecordingForegroundService
+import com.voyagecam.app.ui.preview.RearCameraPreview
 import java.io.File
+import java.io.FileOutputStream
+import java.nio.charset.StandardCharsets
 import java.text.SimpleDateFormat
 import java.util.ArrayList
 import java.util.Date
 import java.util.Locale
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import kotlin.math.max
 import kotlin.math.min
 
@@ -110,6 +134,7 @@ private fun VoyageCamApp() {
     var autoStartDiagnostic by remember { mutableStateOf(autoStartDiagnosticsStore.load()) }
     var pairedBluetoothDevices by remember { mutableStateOf(context.pairedBluetoothDevices()) }
     var playbackItem by remember { mutableStateOf<PlaybackItem?>(null) }
+    var evidenceExportState by remember { mutableStateOf<EvidenceExportState?>(null) }
     var selectedDay by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedCameraFilter by rememberSaveable { mutableStateOf(SegmentCameraFilter.All) }
     var selectedLockFilter by rememberSaveable { mutableStateOf(SegmentLockFilter.All) }
@@ -328,6 +353,61 @@ private fun VoyageCamApp() {
         }
     }
 
+    fun exportEmergencyEvent(event: EmergencyEvent) {
+        if (evidenceExportState is EvidenceExportState.Running) {
+            statusMessage = "证据包正在导出，请稍候。"
+            return
+        }
+
+        evidenceExportState = EvidenceExportState.Running(
+            eventId = event.id,
+            title = "${event.trigger.label} · ${event.triggeredAtMillis.asTime()}",
+        )
+        statusMessage = "正在导出紧急事件证据包..."
+
+        val mainHandler = Handler(Looper.getMainLooper())
+        Thread {
+            val result = runCatching {
+                createEmergencyEvidencePackage(
+                    context = context,
+                    event = event,
+                    storageManager = storageManager,
+                )
+            }
+            mainHandler.post {
+                result
+                    .onSuccess { packageFile ->
+                        evidenceExportState = EvidenceExportState.Ready(
+                            eventId = event.id,
+                            file = packageFile.file,
+                            clipCount = packageFile.clipCount,
+                        )
+                        statusMessage = "证据包已导出：${packageFile.file.name}"
+                    }
+                    .onFailure { error ->
+                        evidenceExportState = EvidenceExportState.Failed(
+                            eventId = event.id,
+                            message = error.message ?: "导出失败",
+                        )
+                        statusMessage = "证据包导出失败：${error.message ?: event.trigger.label}"
+                    }
+            }
+        }.start()
+    }
+
+    fun shareEvidencePackage(file: File) {
+        runCatching {
+            val uri = file.toContentUri(context)
+            val intent = Intent(Intent.ACTION_SEND)
+                .setType(ZIP_MIME_TYPE)
+                .putExtra(Intent.EXTRA_STREAM, uri)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            context.startActivity(Intent.createChooser(intent, "分享证据包"))
+        }.onFailure { error ->
+            statusMessage = "无法分享证据包：${error.message ?: file.name}"
+        }
+    }
+
     fun openEmergencyEventMap(event: EmergencyEvent) {
         runCatching {
             val uri = event.toGeoUri() ?: error("该事件没有可用坐标")
@@ -515,6 +595,7 @@ private fun VoyageCamApp() {
 
                 EmergencyEventPanel(
                     events = emergencyEvents,
+                    exportState = evidenceExportState,
                     onRefresh = {
                         emergencyEvents = emergencyEventStore.listRecentEvents()
                     },
@@ -523,6 +604,15 @@ private fun VoyageCamApp() {
                     },
                     onShare = { event ->
                         shareEmergencyEvent(event)
+                    },
+                    onExport = { event ->
+                        exportEmergencyEvent(event)
+                    },
+                    onShareExport = { file ->
+                        shareEvidencePackage(file)
+                    },
+                    onDismissExport = {
+                        evidenceExportState = null
                     },
                     onOpenMap = { event ->
                         openEmergencyEventMap(event)
@@ -642,12 +732,41 @@ private data class PlaybackItem(
     val file: File,
 )
 
+private sealed class EvidenceExportState {
+    abstract val eventId: String
+
+    data class Running(
+        override val eventId: String,
+        val title: String,
+    ) : EvidenceExportState()
+
+    data class Ready(
+        override val eventId: String,
+        val file: File,
+        val clipCount: Int,
+    ) : EvidenceExportState()
+
+    data class Failed(
+        override val eventId: String,
+        val message: String,
+    ) : EvidenceExportState()
+}
+
+private data class EvidencePackageFile(
+    val file: File,
+    val clipCount: Int,
+)
+
 @Composable
 private fun EmergencyEventPanel(
     events: List<EmergencyEvent>,
+    exportState: EvidenceExportState?,
     onRefresh: () -> Unit,
     onOpen: (EmergencyEvent) -> Unit,
     onShare: (EmergencyEvent) -> Unit,
+    onExport: (EmergencyEvent) -> Unit,
+    onShareExport: (File) -> Unit,
+    onDismissExport: () -> Unit,
     onOpenMap: (EmergencyEvent) -> Unit,
 ) {
     SectionCard {
@@ -667,6 +786,14 @@ private fun EmergencyEventPanel(
             }
         }
         Spacer(modifier = Modifier.height(10.dp))
+        exportState?.let { state ->
+            EvidenceExportStatusPanel(
+                state = state,
+                onShare = onShareExport,
+                onDismiss = onDismissExport,
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+        }
         if (events.isEmpty()) {
             Text(
                 text = "暂无紧急事件。手动锁定或碰撞触发后，这里会记录触发时间和关联片段。",
@@ -679,6 +806,7 @@ private fun EmergencyEventPanel(
                     event = event,
                     onOpen = onOpen,
                     onShare = onShare,
+                    onExport = onExport,
                     onOpenMap = onOpenMap,
                 )
                 if (index != events.lastIndex) {
@@ -695,10 +823,81 @@ private fun EmergencyEventPanel(
 }
 
 @Composable
+private fun EvidenceExportStatusPanel(
+    state: EvidenceExportState,
+    onShare: (File) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFEAF4F0), RoundedCornerShape(8.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        when (state) {
+            is EvidenceExportState.Running -> {
+                Text(
+                    text = "正在导出证据包",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF163036),
+                )
+                Text(
+                    text = state.title,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF4D6267),
+                )
+            }
+
+            is EvidenceExportState.Ready -> {
+                Text(
+                    text = "证据包已就绪",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF163036),
+                )
+                Text(
+                    text = "${state.file.name} · ${state.clipCount} 段视频 · ${state.file.length().asFileSize()}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF4D6267),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { onShare(state.file) }) {
+                        Text("分享证据包")
+                    }
+                    OutlinedButton(onClick = onDismiss) {
+                        Text("收起")
+                    }
+                }
+            }
+
+            is EvidenceExportState.Failed -> {
+                Text(
+                    text = "证据包导出失败",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF9B2C2C),
+                )
+                Text(
+                    text = state.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF4D6267),
+                )
+                OutlinedButton(onClick = onDismiss) {
+                    Text("收起")
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun EmergencyEventRow(
     event: EmergencyEvent,
     onOpen: (EmergencyEvent) -> Unit,
     onShare: (EmergencyEvent) -> Unit,
+    onExport: (EmergencyEvent) -> Unit,
     onOpenMap: (EmergencyEvent) -> Unit,
 ) {
     Column(
@@ -776,6 +975,13 @@ private fun EmergencyEventRow(
             ) {
                 Text("地图")
             }
+        }
+        OutlinedButton(
+            onClick = { onExport(event) },
+            enabled = event.segmentPaths.isNotEmpty(),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("导出证据包")
         }
     }
 }
@@ -1766,6 +1972,61 @@ private fun EmergencyEvent.hasLocation(): Boolean {
     return latitude != null && longitude != null
 }
 
+private fun createEmergencyEvidencePackage(
+    context: Context,
+    event: EmergencyEvent,
+    storageManager: RecordingStorageManager,
+): EvidencePackageFile {
+    val files = event.existingSegmentFiles(storageManager)
+    if (files.isEmpty()) error("关联片段文件不存在")
+
+    val exportDir = File(context.filesDir, EVIDENCE_EXPORT_DIR_NAME).apply { mkdirs() }
+    val packageFile = File(exportDir, event.evidencePackageFileName())
+    ZipOutputStream(FileOutputStream(packageFile)).use { zip ->
+        zip.putNextEntry(ZipEntry("metadata.txt"))
+        zip.write(event.evidenceMetadata(files).toByteArray(StandardCharsets.UTF_8))
+        zip.closeEntry()
+
+        files.forEach { file ->
+            zip.putNextEntry(ZipEntry("clips/${file.name}"))
+            file.inputStream().use { input ->
+                input.copyTo(zip)
+            }
+            zip.closeEntry()
+        }
+    }
+
+    return EvidencePackageFile(file = packageFile, clipCount = files.size)
+}
+
+private fun EmergencyEvent.evidencePackageFileName(): String {
+    val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(triggeredAtMillis))
+    return "voyagecam_evidence_${timestamp}_${id.take(8)}.zip"
+}
+
+private fun EmergencyEvent.evidenceMetadata(files: List<File>): String {
+    return buildString {
+        appendLine("VoyageCam Emergency Evidence Package")
+        appendLine()
+        appendLine("Event")
+        appendLine("ID: $id")
+        appendLine("Trigger: ${trigger.label}")
+        appendLine("Triggered At: ${triggeredAtMillis.asTime()}")
+        collisionSummary()?.let { appendLine("Collision: $it") }
+        locationSummary()?.let { appendLine("Location: $it") }
+        appendLine()
+        appendLine("Linked Clips")
+        files.forEachIndexed { index, file ->
+            appendLine("${index + 1}. ${file.name}")
+            appendLine("   Size: ${file.length().asFileSize()}")
+            appendLine("   Last Modified: ${file.lastModified().asTime()}")
+        }
+        appendLine()
+        appendLine("Original Relative Paths")
+        segmentPaths.forEach { path -> appendLine(path) }
+    }
+}
+
 private fun EmergencyEvent.toGeoUri(): Uri? {
     val lat = latitude ?: return null
     val lon = longitude ?: return null
@@ -1890,6 +2151,8 @@ private enum class SegmentLockFilter(val label: String) {
 }
 
 private const val VIDEO_MIME_TYPE = "video/mp4"
+private const val ZIP_MIME_TYPE = "application/zip"
+private const val EVIDENCE_EXPORT_DIR_NAME = "evidence_exports"
 private const val PREVIEW_RELEASE_DELAY_MILLIS = 350L
 private const val EVENT_REFRESH_DELAY_MILLIS = 600L
 private const val METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR = 3.6f

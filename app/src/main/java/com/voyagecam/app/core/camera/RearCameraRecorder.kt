@@ -1,4 +1,4 @@
-package com.voyagecam.app
+package com.voyagecam.app.core.camera
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -16,6 +16,7 @@ import android.os.Handler
 import android.util.Size
 import android.view.Surface
 import androidx.core.content.ContextCompat
+import com.voyagecam.app.data.storage.RecordingStorageManager
 import java.io.File
 
 class RearCameraRecorder(

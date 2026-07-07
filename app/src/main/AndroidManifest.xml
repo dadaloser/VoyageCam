@@ -35,18 +35,18 @@
             </intent-filter>
         </activity>
         <service
-            android:name=".RecordingForegroundService"
+            android:name=".feature.recording.RecordingForegroundService"
             android:exported="false"
             android:foregroundServiceType="camera|microphone|location" />
         <receiver
-            android:name=".PowerConnectionReceiver"
+            android:name=".feature.autostart.PowerConnectionReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
             </intent-filter>
         </receiver>
         <receiver
-            android:name=".BluetoothConnectionReceiver"
+            android:name=".feature.autostart.BluetoothConnectionReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />

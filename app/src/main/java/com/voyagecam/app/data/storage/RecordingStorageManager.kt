@@ -1,7 +1,11 @@
-package com.voyagecam.app
+package com.voyagecam.app.data.storage
 
 import android.content.Context
 import android.os.Environment
+import com.voyagecam.app.core.model.CameraDirection
+import com.voyagecam.app.core.model.RecordingSegment
+import com.voyagecam.app.core.model.SegmentFileNames
+import com.voyagecam.app.data.settings.VoyageCamSettingsStore
 import java.io.File
 
 class RecordingStorageManager(private val context: Context) {
@@ -184,22 +188,6 @@ class RecordingStorageManager(private val context: Context) {
             return File(parentFile, lockedName)
         }
     }
-}
-
-data class RecordingSegment(
-    val name: String,
-    val relativePath: String,
-    val absolutePath: String,
-    val day: String,
-    val cameraDirection: CameraDirection,
-    val locked: Boolean,
-    val sizeBytes: Long,
-    val lastModifiedMillis: Long,
-)
-
-enum class CameraDirection(val label: String) {
-    Rear("后摄"),
-    Front("前摄"),
 }
 
 private fun String.toSegmentDay(): String {

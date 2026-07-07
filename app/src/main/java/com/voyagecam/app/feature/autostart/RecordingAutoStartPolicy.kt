@@ -1,10 +1,13 @@
-package com.voyagecam.app
+package com.voyagecam.app.feature.autostart
 
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
+import com.voyagecam.app.data.settings.VoyageCamSettings
+import com.voyagecam.app.data.settings.VoyageCamSettingsStore
+import com.voyagecam.app.feature.recording.RecordingForegroundService
 
 class RecordingAutoStartPolicy(private val context: Context) {
     private val settingsStore = VoyageCamSettingsStore(context)
