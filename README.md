@@ -25,6 +25,8 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 19. Automatically start foreground recording when the charger is connected, if enabled and permissions are already granted.
 20. Automatically start foreground recording when a configured trusted Bluetooth device connects.
 21. Show the latest auto-start diagnostic result and ignored-trigger reason in settings.
+22. Pick a trusted Bluetooth auto-start device from already paired Bluetooth devices.
+23. Play selected recording clips inside the app with a native Android `VideoView` fallback to the system player.
 
 ## Current Status
 
@@ -42,6 +44,8 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 - Optional charger auto-start is backed by an `ACTION_POWER_CONNECTED` receiver and reuses the existing foreground recording service.
 - Optional Bluetooth auto-start matches a configured trusted device name or MAC address from `ACTION_ACL_CONNECTED`.
 - Auto-start diagnostics persist the latest trigger source, result, reason, detail, and timestamp for in-car testing.
+- Trusted Bluetooth setup can read paired devices after Bluetooth permission is granted, while still allowing manual entry.
+- Recording and emergency-event playback can happen in-app, while still offering system-player fallback and sharing.
 
 ## Build
 
@@ -54,6 +58,6 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 
 1. Keep preview visible during recording by sharing the Camera2 session or moving recording into an activity-bound preview pipeline.
 2. Implement dual-camera recording for devices that pass the capability check, with rear-only fallback.
-3. Add in-app playback and export progress for longer evidence packages.
+3. Add export progress for longer evidence packages.
 4. Add GPS metadata and watermarks for evidence exports.
-5. Add paired-device selection for Bluetooth auto-start instead of manual name/MAC entry.
+5. Keep preview visible during recording and migrate toward an activity-bound preview/recording pipeline.

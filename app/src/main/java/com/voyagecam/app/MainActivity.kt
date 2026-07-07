@@ -1,6 +1,8 @@
 package com.voyagecam.app
 
 import android.Manifest
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -11,6 +13,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.StatFs
+import android.widget.MediaController
+import android.widget.VideoView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -44,6 +48,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -58,6 +63,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import java.io.File
@@ -102,6 +108,8 @@ private fun VoyageCamApp() {
     var allSegments by remember { mutableStateOf(storageManager.listRecentSegments()) }
     var emergencyEvents by remember { mutableStateOf(emergencyEventStore.listRecentEvents()) }
     var autoStartDiagnostic by remember { mutableStateOf(autoStartDiagnosticsStore.load()) }
+    var pairedBluetoothDevices by remember { mutableStateOf(context.pairedBluetoothDevices()) }
+    var playbackItem by remember { mutableStateOf<PlaybackItem?>(null) }
     var selectedDay by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedCameraFilter by rememberSaveable { mutableStateOf(SegmentCameraFilter.All) }
     var selectedLockFilter by rememberSaveable { mutableStateOf(SegmentLockFilter.All) }
@@ -232,6 +240,7 @@ private fun VoyageCamApp() {
     ) { granted ->
         permissionRefreshKey++
         statusMessage = if (granted) {
+            pairedBluetoothDevices = context.pairedBluetoothDevices()
             "蓝牙权限已授权；可信蓝牙连接后可自动开始录制。"
         } else {
             "蓝牙权限未授权，可信蓝牙自动启动不可用。"
@@ -263,19 +272,11 @@ private fun VoyageCamApp() {
     }
 
     fun openSegment(segment: RecordingSegment) {
-        runCatching {
-            val uri = segment.toContentUri(context)
-            val intent = Intent(Intent.ACTION_VIEW)
-                .setDataAndType(uri, VIDEO_MIME_TYPE)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            context.startActivity(intent)
-        }.onFailure { error ->
-            statusMessage = if (error is ActivityNotFoundException) {
-                "未找到可播放 MP4 的应用。"
-            } else {
-                "无法打开片段：${error.message ?: segment.name}"
-            }
-        }
+        playbackItem = PlaybackItem(
+            title = segment.name,
+            subtitle = "${segment.cameraDirection.label} · ${if (segment.locked) "已锁定" else "普通"}",
+            file = File(segment.absolutePath),
+        )
     }
 
     fun shareSegment(segment: RecordingSegment) {
@@ -295,17 +296,13 @@ private fun VoyageCamApp() {
         runCatching {
             val file = event.existingSegmentFiles(storageManager).firstOrNull()
                 ?: error("关联片段文件不存在")
-            val uri = file.toContentUri(context)
-            val intent = Intent(Intent.ACTION_VIEW)
-                .setDataAndType(uri, VIDEO_MIME_TYPE)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            context.startActivity(intent)
+            playbackItem = PlaybackItem(
+                title = file.name,
+                subtitle = "${event.trigger.label} · ${event.triggeredAtMillis.asTime()}",
+                file = file,
+            )
         }.onFailure { error ->
-            statusMessage = if (error is ActivityNotFoundException) {
-                "未找到可播放 MP4 的应用。"
-            } else {
-                "无法打开紧急事件片段：${error.message ?: event.trigger.label}"
-            }
+            statusMessage = "无法打开紧急事件片段：${error.message ?: event.trigger.label}"
         }
     }
 
@@ -496,7 +493,25 @@ private fun VoyageCamApp() {
                     onRefreshAutoStartDiagnostic = {
                         autoStartDiagnostic = autoStartDiagnosticsStore.load()
                     },
+                    pairedBluetoothDevices = pairedBluetoothDevices,
+                    onRefreshPairedBluetoothDevices = {
+                        pairedBluetoothDevices = context.pairedBluetoothDevices()
+                    },
                 )
+
+                playbackItem?.let { item ->
+                    PlaybackPanel(
+                        item = item,
+                        onClose = { playbackItem = null },
+                        onOpenInSystem = {
+                            openFileInSystem(
+                                context = context,
+                                file = item.file,
+                                onError = { message -> statusMessage = message },
+                            )
+                        },
+                    )
+                }
 
                 EmergencyEventPanel(
                     events = emergencyEvents,
@@ -539,6 +554,93 @@ private fun VoyageCamApp() {
         }
     }
 }
+
+@Composable
+private fun PlaybackPanel(
+    item: PlaybackItem,
+    onClose: () -> Unit,
+    onOpenInSystem: () -> Unit,
+) {
+    SectionCard {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "应用内播放",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF163036),
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF4D6267),
+                )
+                Text(
+                    text = item.subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF64777B),
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            OutlinedButton(onClick = onClose) {
+                Text("关闭")
+            }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        AndroidVideoPlayer(file = item.file)
+        Spacer(modifier = Modifier.height(10.dp))
+        OutlinedButton(
+            onClick = onOpenInSystem,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("系统播放器打开")
+        }
+    }
+}
+
+@Composable
+private fun AndroidVideoPlayer(file: File) {
+    val context = LocalContext.current
+    var activeVideoView by remember { mutableStateOf<VideoView?>(null) }
+    DisposableEffect(file.absolutePath) {
+        onDispose {
+            activeVideoView?.stopPlayback()
+            activeVideoView = null
+        }
+    }
+
+    AndroidView(
+        factory = { viewContext ->
+            VideoView(viewContext).apply {
+                setMediaController(MediaController(viewContext))
+            }
+        },
+        update = { videoView ->
+            activeVideoView = videoView
+            val uri = file.toContentUri(context)
+            videoView.stopPlayback()
+            videoView.setVideoURI(uri)
+            videoView.setOnPreparedListener { player ->
+                player.isLooping = false
+                videoView.start()
+            }
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(220.dp),
+    )
+}
+
+private data class PlaybackItem(
+    val title: String,
+    val subtitle: String,
+    val file: File,
+)
 
 @Composable
 private fun EmergencyEventPanel(
@@ -1048,6 +1150,8 @@ private fun SettingsPanel(
     onAutoStartOnTrustedBluetoothChanged: (Boolean) -> Unit,
     autoStartDiagnostic: AutoStartDiagnostic?,
     onRefreshAutoStartDiagnostic: () -> Unit,
+    pairedBluetoothDevices: List<TrustedBluetoothDevice>,
+    onRefreshPairedBluetoothDevices: () -> Unit,
 ) {
     var storageInput by remember(settings.storageCapacityGb) {
         mutableStateOf(settings.storageCapacityGb.toString())
@@ -1225,6 +1329,17 @@ private fun SettingsPanel(
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
+        Spacer(modifier = Modifier.height(10.dp))
+        PairedBluetoothDevicePanel(
+            devices = pairedBluetoothDevices,
+            bluetoothPermissionGranted = bluetoothPermissionGranted,
+            onRefresh = onRefreshPairedBluetoothDevices,
+            onSelected = { device ->
+                val value = device.preferredMatchValue().take(MAX_TRUSTED_BLUETOOTH_LENGTH)
+                trustedBluetoothInput = value
+                onTrustedBluetoothDeviceChanged(value)
+            },
+        )
         Spacer(modifier = Modifier.height(12.dp))
         SettingSwitchRow(
             title = "可信蓝牙连接自动开始录制",
@@ -1239,6 +1354,54 @@ private fun SettingsPanel(
             diagnostic = autoStartDiagnostic,
             onRefresh = onRefreshAutoStartDiagnostic,
         )
+    }
+}
+
+@Composable
+private fun PairedBluetoothDevicePanel(
+    devices: List<TrustedBluetoothDevice>,
+    bluetoothPermissionGranted: Boolean,
+    onRefresh: () -> Unit,
+    onSelected: (TrustedBluetoothDevice) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = "已配对蓝牙设备",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF163036),
+        )
+        OutlinedButton(onClick = onRefresh) {
+            Text("刷新")
+        }
+    }
+    Spacer(modifier = Modifier.height(8.dp))
+    if (!bluetoothPermissionGranted) {
+        Text(
+            text = "授权蓝牙权限后可选择已配对设备。",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF64777B),
+        )
+    } else if (devices.isEmpty()) {
+        Text(
+            text = "暂无可读取的已配对设备，可手动填写车机蓝牙名称或 MAC 地址。",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF64777B),
+        )
+    } else {
+        devices.take(MAX_PAIRED_BLUETOOTH_DEVICES).forEach { device ->
+            OutlinedButton(
+                onClick = { onSelected(device) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(device.displayLabel())
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+        }
     }
 }
 
@@ -1610,6 +1773,47 @@ private fun EmergencyEvent.toGeoUri(): Uri? {
     return Uri.parse("geo:$lat,$lon?q=$lat,$lon($label)")
 }
 
+private fun Context.pairedBluetoothDevices(): List<TrustedBluetoothDevice> {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+        ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+    ) {
+        return emptyList()
+    }
+
+    return runCatching {
+        bluetoothAdapter()
+            ?.bondedDevices
+            .orEmpty()
+            .map { device ->
+                TrustedBluetoothDevice(
+                    name = runCatching { device.name }.getOrNull().orEmpty(),
+                    address = runCatching { device.address }.getOrNull().orEmpty(),
+                )
+            }
+            .filter { it.name.isNotBlank() || it.address.isNotBlank() }
+            .sortedWith(compareBy<TrustedBluetoothDevice> { it.name.ifBlank { it.address }.lowercase(Locale.getDefault()) })
+    }.getOrDefault(emptyList())
+}
+
+private fun Context.bluetoothAdapter(): BluetoothAdapter? {
+    return getSystemService(BluetoothManager::class.java)?.adapter
+}
+
+private data class TrustedBluetoothDevice(
+    val name: String,
+    val address: String,
+) {
+    fun preferredMatchValue(): String = name.ifBlank { address }
+
+    fun displayLabel(): String {
+        return when {
+            name.isNotBlank() && address.isNotBlank() -> "$name · $address"
+            name.isNotBlank() -> name
+            else -> address
+        }
+    }
+}
+
 private fun RecordingSegment.toContentUri(context: Context) =
     FileProvider.getUriForFile(
         context,
@@ -1623,6 +1827,27 @@ private fun File.toContentUri(context: Context) =
         "${context.packageName}.fileprovider",
         this,
     )
+
+private fun openFileInSystem(
+    context: Context,
+    file: File,
+    onError: (String) -> Unit,
+) {
+    runCatching {
+        val uri = file.toContentUri(context)
+        val intent = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, VIDEO_MIME_TYPE)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        context.startActivity(intent)
+    }.onFailure { error ->
+        val message = if (error is ActivityNotFoundException) {
+            "未找到可播放 MP4 的应用。"
+        } else {
+            "无法打开片段：${error.message ?: file.name}"
+        }
+        onError(message)
+    }
+}
 
 private fun EmergencyEvent.existingSegmentFiles(storageManager: RecordingStorageManager): List<File> {
     return segmentPaths
@@ -1669,3 +1894,4 @@ private const val PREVIEW_RELEASE_DELAY_MILLIS = 350L
 private const val EVENT_REFRESH_DELAY_MILLIS = 600L
 private const val METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR = 3.6f
 private const val MAX_TRUSTED_BLUETOOTH_LENGTH = 80
+private const val MAX_PAIRED_BLUETOOTH_DEVICES = 6
