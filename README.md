@@ -1,82 +1,55 @@
-VoyageCam 是一款 Android 行车记录仪应用的原型。当前的基础开发主要聚焦于需求文档中的第一个产品切片，
-具体包括：
-    检测设备是否支持同时开启前置和后置摄像头。
-    将双摄录像功能置于设置开关后，当设备不支持该功能时，该开关将处于禁用状态。
-    提供自定义视频存储容量配置，以便未来实现循环录影的清理功能。
-    提供环境驾驶音频开关，仅在开启该功能时才请求麦克风权限。
-    通过前台服务启动后置摄像头的 MP4 录像，并显示带有停止操作的常驻通知。
-    将后置摄像头的录像分割为可配置的 1/3/5 分钟片段，并在超出设定容量时清理旧的普通视频片段。
-    手动锁定紧急证据片段，使当前、前一个及后一个片段免受循环清理。
-    检测高加速度事件，并自动触发相同的紧急锁定流程。
-    在开始录像前显示后置摄像头的实时预览。
-    列出本地存储中最近的普通录像和已锁定的录像片段。
-    使用系统视频播放器打开最近的片段，并通过 Android 分享菜单进行分享。
-    支持按日期、摄像头方向以及锁定状态筛选录像片段。
-    为手动触发和碰撞触发的锁定操作持久化保存紧急事件元数据。
-    支持打开或分享与紧急事件关联的锁定片段。
-    在授予位置权限的情况下，为紧急事件捕获可选的 GPS 位置元数据。
-    当前开发状态：
-    采用单模块 Android 项目架构。
-    使用 Kotlin + Jetpack Compose 构建 UI。
-    使用 SharedPreferences 持久化保存本地设置。
-    通过 Camera2 CameraManager 检测摄像头并发能力，并持久化保存最新检测结果，以便下次启动时快速显示。
-    已声明相机、可选麦克风、通知、前台相机服务以及可选位置的权限。
-    实现了相机、Android 13+ 通知、可选麦克风音频以及可选事件位置元数据的运行时权限请求流程。
-    基于 Camera2 + MediaRecorder 实现后置摄像头单摄录像的前台服务。
-    视频片段采用分段命名规则，存储于应用专属的 Movies/Dashcam/normal/yyyy-MM-dd/group_HHmmss/ 目录下。
-    实现了针对普通 MP4 片段的基础循环录影清理功能。
-    手动触发紧急锁定会将受保护的证据移入 Movies/Dashcam/locked/ 目录，同时保留当前、前一个及后一个视频片段。
-    内置基于加速度计的碰撞检测，支持低/中/高灵敏度设置。
-    支持在录像前进行后置摄像头预览。录像激活时，仍在前台服务中运行并接管摄像头。
-    基础片段历史记录视图会扫描生成的 MP4 文件，显示最近的普通/锁定片段及其大小和路径。
-    片段列表行提供通过 FileProvider 实现的播放和系统分享操作，无需申请广泛的存储权限。
-    片段历史记录支持按日期、摄像头方向以及普通/锁定状态进行筛选。
-    紧急事件存储在应用私有的元数据中，包含触发类型、时间戳、碰撞 G 力详情、可选的 GPS 位置以及关联的锁定片段路径。
-    紧急事件列表行支持打开首个关联片段，或通过 Android 分享菜单分享所有可用的关联片段。
-    紧急事件列表行在可用时会显示记录的坐标、速度和位置捕获时间。
+# VoyageCam
 
+VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam requirements document. The current slice focuses on stable rear-camera recording first, then progressively adds evidence management around emergency events.
 
-构建命令：
-    ./gradlew :app:compileDebugKotlin   
+## Implemented
 
-下一步开发计划：
-在录像期间保持预览可见，可通过共享 Camera2 会话或将录像移入绑定 Activity 的预览管线来实现。
-为通过能力检测的设备实现双摄录像，未通过检测的设备则回退为仅后置摄像头录像。
-添加应用内播放功能及较长证据包的导出进度显示。
-为导出的证据添加 GPS 元数据和水印。
-添加应用内地图或深度链接（deeplink）操作，以便直接查看紧急事件的坐标。
-需要我帮你把这份文档整理成一份结构清晰的中文产品需求文档（PRD）吗？方便后续开发对照。
+1. Detect whether the device reports support for opening front and rear cameras at the same time.
+2. Keep dual-camera recording behind a settings switch that is disabled when unsupported.
+3. Persist camera capability results for quick display on the next launch.
+4. Provide custom video storage capacity configuration for loop recording cleanup.
+5. Provide an ambient driving audio switch that only requests microphone permission when enabled.
+6. Start rear-camera MP4 recording through a foreground service with persistent notification actions.
+7. Roll rear-camera recording into configurable 1/3/5 minute segments.
+8. Clean old normal clips when configured capacity is exceeded while preserving locked clips.
+9. Manually lock emergency evidence clips so current, previous, and next segments are protected.
+10. Detect high-acceleration events and trigger the same emergency locking flow.
+11. Show a live rear-camera preview before recording starts.
+12. List recent normal and locked recording segments from local storage.
+13. Open recent segments in the system video player and share them through Android's share sheet.
+14. Filter recording segments by day, camera direction, and locked state.
+15. Persist emergency event metadata for manual and collision-triggered locks.
+16. Open or share the locked clips linked to an emergency event.
+17. Capture optional GPS location metadata for emergency events when location permission is granted.
+18. Open emergency-event coordinates in a map app through a `geo:` deep link.
+19. Automatically start foreground recording when the charger is connected, if enabled and permissions are already granted.
 
-VoyageCam 产品需求文档 (PRD)
-1. 项目概述
-   VoyageCam 是一款基于 Android 平台的行车记录仪应用原型。当前版本主要聚焦于需求文档中的首个产品切片，旨在实现基础的双摄检测、单摄录像、循环清理、紧急事件锁定及片段管理等核心功能。项目采用单模块架构，使用 Kotlin 与 Jetpack Compose 构建 UI，并通过 SharedPreferences 进行本地设置持久化。
-2. 功能需求列表
-   双摄能力检测：检测设备是否支持同时开启前置和后置摄像头。
-   双摄录像开关：将双摄录像功能置于设置开关后，当设备不支持该功能时，该开关自动禁用。
-   存储容量配置：提供自定义视频存储容量配置，为未来的循环录影清理功能做准备。
-   环境音频控制：提供环境驾驶音频开关，仅在开启该功能时请求麦克风权限。
-   前台服务录像：通过前台服务启动后置摄像头的 MP4 录像，并显示带有停止操作的常驻通知。
-   分段与循环清理：将后置摄像头录像分割为可配置的 1/3/5 分钟片段，并在超出设定容量时清理旧的普通视频片段。
-   手动紧急锁定：手动锁定紧急证据片段，使当前、前一个及后一个片段免受循环清理。
-   自动碰撞锁定：检测高加速度事件，并自动触发与手动锁定相同的紧急锁定流程。
-   录像前预览：在开始录像前显示后置摄像头的实时预览。
-   片段列表展示：列出本地存储中最近的普通录像和已锁定的录像片段。
-   播放与分享：使用系统视频播放器打开最近的片段，并通过 Android 分享菜单进行分享。
-   多维度筛选：支持按日期、摄像头方向以及锁定状态筛选录像片段。
-   紧急事件持久化：为手动触发和碰撞触发的锁定操作持久化保存紧急事件元数据。
-   关联片段操作：支持打开或分享与紧急事件关联的锁定片段。
-   GPS 元数据捕获：在授予位置权限的情况下，为紧急事件捕获可选的 GPS 位置元数据。
-3. 当前开发状态总结
-   基础架构：采用单模块 Android 项目，UI 基于 Kotlin + Jetpack Compose，本地设置使用 SharedPreferences 持久化。
-   权限管理：已声明相机、可选麦克风、通知、前台相机服务及可选位置权限；实现了针对相机、Android 13+ 通知、麦克风音频及位置元数据的运行时权限请求流程。
-   摄像头与录像：通过 Camera2 CameraManager 检测并发能力并持久化结果；基于 Camera2 + MediaRecorder 实现后置摄像头单摄录像的前台服务；支持录像前预览，录像激活时由前台服务接管摄像头。
-   文件与存储管理：视频片段存储于应用专属目录 Movies/Dashcam/normal/yyyy-MM-dd/group_HHmmss/；实现了普通 MP4 片段的基础循环清理；手动紧急锁定会将证据移入 Movies/Dashcam/locked/ 目录，并保留当前、前一个及后一个视频片段。
-   碰撞检测：内置基于加速度计的碰撞检测，支持低/中/高灵敏度设置。
-   历史记录与分享：基础片段历史视图扫描生成的 MP4 文件，显示最近片段的大小和路径；通过 FileProvider 提供播放和系统分享操作，无需广泛存储权限；支持按日期、方向和状态筛选。
-   紧急事件管理：紧急事件存储在应用私有元数据中，包含触发类型、时间戳、碰撞 G 力详情、可选 GPS 位置及关联锁定片段路径；支持打开首个关联片段或分享所有可用关联片段；在可用时显示记录的坐标、速度和位置捕获时间。
-4. 下一步开发计划
-   持续预览：在录像期间保持预览可见，可通过共享 Camera2 会话或将录像移入绑定 Activity 的预览管线来实现。
-   双摄录像：为通过能力检测的设备实现双摄录像，未通过检测的设备则回退为仅后置摄像头录像。
-   应用内播放与导出：添加应用内播放功能及较长证据包的导出进度显示。
-   证据增强：为导出的证据添加 GPS 元数据和水印。
-   地图与定位联动：添加应用内地图或深度链接（deeplink）操作，以便直接查看紧急事件的坐标。
+## Current Status
+
+- Single-module Android project.
+- Kotlin + Jetpack Compose UI.
+- Local settings persisted with `SharedPreferences`.
+- Camera concurrency capability detection via Camera2 `CameraManager`.
+- Runtime permission flow for camera, Android 13+ notifications, optional microphone audio, and optional event location metadata.
+- Foreground service backed by Camera2 + `MediaRecorder` for rear-camera single recording.
+- Segment-style file naming under the app-specific `Movies/Dashcam/normal/yyyy-MM-dd/group_HHmmss/` directory.
+- Manual and sensor-triggered emergency locking moves protected evidence into `Movies/Dashcam/locked/`.
+- Emergency events are stored in app-private metadata with trigger type, timestamp, collision g-force details, optional GPS location, and linked locked segment paths.
+- Segment and event rows use `FileProvider` for playback/share without broad storage permissions.
+- Emergency event rows can open the first linked clip, share all available linked clips, or open recorded coordinates in a map app.
+- Optional charger auto-start is backed by an `ACTION_POWER_CONNECTED` receiver and reuses the existing foreground recording service.
+
+## Build
+
+```bash
+./gradlew :app:compileDebugKotlin
+./gradlew :app:assembleDebug
+```
+
+## Next Development Steps
+
+1. Keep preview visible during recording by sharing the Camera2 session or moving recording into an activity-bound preview pipeline.
+2. Implement dual-camera recording for devices that pass the capability check, with rear-only fallback.
+3. Add in-app playback and export progress for longer evidence packages.
+4. Add GPS metadata and watermarks for evidence exports.
+5. Add trusted Bluetooth-device auto-start triggers.

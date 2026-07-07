@@ -75,6 +75,10 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
             requestEmergencyLock()
             return START_STICKY
         }
+        if (startedAtMillis > 0L && recorder != null) {
+            notificationManager.notify(NOTIFICATION_ID, buildNotification())
+            return START_STICKY
+        }
 
         dualCamera = intent?.getBooleanExtra(EXTRA_DUAL_CAMERA, false) == true
         ambientAudio = intent?.getBooleanExtra(EXTRA_AMBIENT_AUDIO, false) == true

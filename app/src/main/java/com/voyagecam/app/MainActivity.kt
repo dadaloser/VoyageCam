@@ -313,6 +313,20 @@ private fun VoyageCamApp() {
         }
     }
 
+    fun openEmergencyEventMap(event: EmergencyEvent) {
+        runCatching {
+            val uri = event.toGeoUri() ?: error("该事件没有可用坐标")
+            val intent = Intent(Intent.ACTION_VIEW, uri)
+            context.startActivity(intent)
+        }.onFailure { error ->
+            statusMessage = if (error is ActivityNotFoundException) {
+                "未找到可打开坐标的地图应用。"
+            } else {
+                "无法打开事件位置：${error.message ?: event.trigger.label}"
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         if (settings != settingsStore.load()) {
             settingsStore.save(settings)
@@ -430,6 +444,14 @@ private fun VoyageCamApp() {
                             audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         }
                     },
+                    onAutoStartOnPowerChanged = { enabled ->
+                        persist(settings.copy(autoStartOnPowerConnected = enabled))
+                        statusMessage = if (enabled) {
+                            "已开启连接充电器自动开始录制；需提前授权相机和通知权限。"
+                        } else {
+                            "已关闭连接充电器自动开始录制。"
+                        }
+                    },
                 )
 
                 EmergencyEventPanel(
@@ -442,6 +464,9 @@ private fun VoyageCamApp() {
                     },
                     onShare = { event ->
                         shareEmergencyEvent(event)
+                    },
+                    onOpenMap = { event ->
+                        openEmergencyEventMap(event)
                     },
                 )
 
@@ -477,6 +502,7 @@ private fun EmergencyEventPanel(
     onRefresh: () -> Unit,
     onOpen: (EmergencyEvent) -> Unit,
     onShare: (EmergencyEvent) -> Unit,
+    onOpenMap: (EmergencyEvent) -> Unit,
 ) {
     SectionCard {
         Row(
@@ -507,6 +533,7 @@ private fun EmergencyEventPanel(
                     event = event,
                     onOpen = onOpen,
                     onShare = onShare,
+                    onOpenMap = onOpenMap,
                 )
                 if (index != events.lastIndex) {
                     Spacer(
@@ -526,6 +553,7 @@ private fun EmergencyEventRow(
     event: EmergencyEvent,
     onOpen: (EmergencyEvent) -> Unit,
     onShare: (EmergencyEvent) -> Unit,
+    onOpenMap: (EmergencyEvent) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -594,6 +622,13 @@ private fun EmergencyEventRow(
                 modifier = Modifier.weight(1f),
             ) {
                 Text("分享全部")
+            }
+            OutlinedButton(
+                onClick = { onOpenMap(event) },
+                enabled = event.hasLocation(),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("地图")
             }
         }
     }
@@ -962,6 +997,7 @@ private fun SettingsPanel(
     onSegmentDurationChanged: (Int) -> Unit,
     onCollisionSensitivityChanged: (CollisionSensitivity) -> Unit,
     onAmbientAudioChanged: (Boolean) -> Unit,
+    onAutoStartOnPowerChanged: (Boolean) -> Unit,
 ) {
     var storageInput by remember(settings.storageCapacityGb) {
         mutableStateOf(settings.storageCapacityGb.toString())
@@ -1105,6 +1141,15 @@ private fun SettingsPanel(
             checked = settings.ambientAudioEnabled,
             enabled = !isRecording,
             onCheckedChange = onAmbientAudioChanged,
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+        SettingSwitchRow(
+            title = "连接充电器自动开始录制",
+            subtitle = "插入电源时自动启动前台录制；需要已授权相机和通知权限",
+            checked = settings.autoStartOnPowerConnected,
+            enabled = !isRecording,
+            onCheckedChange = onAutoStartOnPowerChanged,
         )
     }
 }
@@ -1413,6 +1458,17 @@ private fun EmergencyEvent.locationSummary(): String? {
     }.orEmpty()
     val timeText = locationCapturedAtMillis?.let { " · ${it.asTime()}" }.orEmpty()
     return "$coordinate$speedText$timeText"
+}
+
+private fun EmergencyEvent.hasLocation(): Boolean {
+    return latitude != null && longitude != null
+}
+
+private fun EmergencyEvent.toGeoUri(): Uri? {
+    val lat = latitude ?: return null
+    val lon = longitude ?: return null
+    val label = Uri.encode("VoyageCam ${trigger.label} ${triggeredAtMillis.asTime()}")
+    return Uri.parse("geo:$lat,$lon?q=$lat,$lon($label)")
 }
 
 private fun RecordingSegment.toContentUri(context: Context) =

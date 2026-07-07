@@ -8,6 +8,7 @@ data class VoyageCamSettings(
     val segmentDurationMinutes: Int = 3,
     val collisionSensitivity: CollisionSensitivity = CollisionSensitivity.Medium,
     val ambientAudioEnabled: Boolean = false,
+    val autoStartOnPowerConnected: Boolean = false,
 )
 
 class VoyageCamSettingsStore(context: Context) {
@@ -24,6 +25,7 @@ class VoyageCamSettingsStore(context: Context) {
                 CollisionSensitivity.Medium.name,
             ).toCollisionSensitivity(),
             ambientAudioEnabled = prefs.getBoolean(KEY_AMBIENT_AUDIO_ENABLED, false),
+            autoStartOnPowerConnected = prefs.getBoolean(KEY_AUTO_START_ON_POWER_CONNECTED, false),
         )
     }
 
@@ -34,6 +36,7 @@ class VoyageCamSettingsStore(context: Context) {
             .putInt(KEY_SEGMENT_DURATION_MINUTES, settings.segmentDurationMinutes.coerceToAllowedSegmentDuration())
             .putString(KEY_COLLISION_SENSITIVITY, settings.collisionSensitivity.name)
             .putBoolean(KEY_AMBIENT_AUDIO_ENABLED, settings.ambientAudioEnabled)
+            .putBoolean(KEY_AUTO_START_ON_POWER_CONNECTED, settings.autoStartOnPowerConnected)
             .apply()
     }
 
@@ -83,6 +86,7 @@ class VoyageCamSettingsStore(context: Context) {
         private const val KEY_SEGMENT_DURATION_MINUTES = "segment_duration_minutes"
         private const val KEY_COLLISION_SENSITIVITY = "collision_sensitivity"
         private const val KEY_AMBIENT_AUDIO_ENABLED = "ambient_audio_enabled"
+        private const val KEY_AUTO_START_ON_POWER_CONNECTED = "auto_start_on_power_connected"
         private const val KEY_CAPABILITY_STATE = "capability_state"
         private const val KEY_CAPABILITY_GRADE = "capability_grade"
         private const val KEY_CAPABILITY_REAR_ID = "capability_rear_id"
