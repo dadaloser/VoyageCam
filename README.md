@@ -23,6 +23,7 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 17. Capture optional GPS location metadata for emergency events when location permission is granted.
 18. Open emergency-event coordinates in a map app through a `geo:` deep link.
 19. Automatically start foreground recording when the charger is connected, if enabled and permissions are already granted.
+20. Automatically start foreground recording when a configured trusted Bluetooth device connects.
 
 ## Current Status
 
@@ -38,6 +39,7 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 - Segment and event rows use `FileProvider` for playback/share without broad storage permissions.
 - Emergency event rows can open the first linked clip, share all available linked clips, or open recorded coordinates in a map app.
 - Optional charger auto-start is backed by an `ACTION_POWER_CONNECTED` receiver and reuses the existing foreground recording service.
+- Optional Bluetooth auto-start matches a configured trusted device name or MAC address from `ACTION_ACL_CONNECTED`.
 
 ## Build
 
@@ -52,4 +54,4 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 2. Implement dual-camera recording for devices that pass the capability check, with rear-only fallback.
 3. Add in-app playback and export progress for longer evidence packages.
 4. Add GPS metadata and watermarks for evidence exports.
-5. Add trusted Bluetooth-device auto-start triggers.
+5. Improve auto-start diagnostics and show the last ignored trigger reason in settings.

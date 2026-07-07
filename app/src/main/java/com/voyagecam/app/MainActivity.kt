@@ -136,6 +136,11 @@ private fun VoyageCamApp() {
         return context.hasAnyLocationPermission()
     }
 
+    fun hasBluetoothConnectPermission(): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+            hasPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    }
+
     fun beginRecordingService() {
         isRecording = true
         statusMessage = "正在从预览切换到录制..."
@@ -217,6 +222,17 @@ private fun VoyageCamApp() {
             "定位权限已授权；紧急事件会记录最近可用坐标。"
         } else {
             "定位权限未授权；紧急事件仍会记录时间、触发类型和片段。"
+        }
+    }
+
+    val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        permissionRefreshKey++
+        statusMessage = if (granted) {
+            "蓝牙权限已授权；可信蓝牙连接后可自动开始录制。"
+        } else {
+            "蓝牙权限未授权，可信蓝牙自动启动不可用。"
         }
     }
 
@@ -382,6 +398,7 @@ private fun VoyageCamApp() {
                     notificationPermissionGranted = hasNotificationPermission(),
                     audioPermissionGranted = hasPermission(Manifest.permission.RECORD_AUDIO),
                     locationPermissionGranted = hasLocationPermission(),
+                    bluetoothPermissionGranted = hasBluetoothConnectPermission(),
                     onRequestCameraPermission = {
                         cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                     },
@@ -397,6 +414,11 @@ private fun VoyageCamApp() {
                                 Manifest.permission.ACCESS_COARSE_LOCATION,
                             ),
                         )
+                    },
+                    onRequestBluetoothPermission = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            bluetoothPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+                        }
                     },
                     onRedetect = { redetect() },
                     onDualCameraChanged = { enabled ->
@@ -450,6 +472,22 @@ private fun VoyageCamApp() {
                             "已开启连接充电器自动开始录制；需提前授权相机和通知权限。"
                         } else {
                             "已关闭连接充电器自动开始录制。"
+                        }
+                    },
+                    onTrustedBluetoothDeviceChanged = { device ->
+                        persist(settings.copy(trustedBluetoothDevice = device))
+                    },
+                    onAutoStartOnTrustedBluetoothChanged = { enabled ->
+                        if (enabled && settings.trustedBluetoothDevice.isBlank()) {
+                            statusMessage = "请先填写可信蓝牙设备名称或 MAC 地址。"
+                            return@SettingsPanel
+                        }
+
+                        persist(settings.copy(autoStartOnTrustedBluetooth = enabled))
+                        statusMessage = if (enabled) {
+                            "已开启可信蓝牙连接自动开始录制；需提前授权相机、通知和蓝牙权限。"
+                        } else {
+                            "已关闭可信蓝牙连接自动开始录制。"
                         }
                     },
                 )
@@ -988,9 +1026,11 @@ private fun SettingsPanel(
     notificationPermissionGranted: Boolean,
     audioPermissionGranted: Boolean,
     locationPermissionGranted: Boolean,
+    bluetoothPermissionGranted: Boolean,
     onRequestCameraPermission: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
     onRequestLocationPermission: () -> Unit,
+    onRequestBluetoothPermission: () -> Unit,
     onRedetect: () -> Unit,
     onDualCameraChanged: (Boolean) -> Unit,
     onStorageChanged: (Int) -> Unit,
@@ -998,9 +1038,14 @@ private fun SettingsPanel(
     onCollisionSensitivityChanged: (CollisionSensitivity) -> Unit,
     onAmbientAudioChanged: (Boolean) -> Unit,
     onAutoStartOnPowerChanged: (Boolean) -> Unit,
+    onTrustedBluetoothDeviceChanged: (String) -> Unit,
+    onAutoStartOnTrustedBluetoothChanged: (Boolean) -> Unit,
 ) {
     var storageInput by remember(settings.storageCapacityGb) {
         mutableStateOf(settings.storageCapacityGb.toString())
+    }
+    var trustedBluetoothInput by remember(settings.trustedBluetoothDevice) {
+        mutableStateOf(settings.trustedBluetoothDevice)
     }
 
     SectionCard {
@@ -1040,6 +1085,13 @@ private fun SettingsPanel(
             granted = locationPermissionGranted,
             actionLabel = "授权定位",
             onRequestPermission = onRequestLocationPermission,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        PermissionRow(
+            label = "蓝牙权限",
+            granted = bluetoothPermissionGranted,
+            actionLabel = "授权蓝牙",
+            onRequestPermission = onRequestBluetoothPermission,
         )
     }
 
@@ -1150,6 +1202,28 @@ private fun SettingsPanel(
             checked = settings.autoStartOnPowerConnected,
             enabled = !isRecording,
             onCheckedChange = onAutoStartOnPowerChanged,
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedTextField(
+            value = trustedBluetoothInput,
+            onValueChange = { value ->
+                trustedBluetoothInput = value.take(MAX_TRUSTED_BLUETOOTH_LENGTH)
+                onTrustedBluetoothDeviceChanged(trustedBluetoothInput)
+            },
+            label = { Text("可信蓝牙设备") },
+            supportingText = { Text("填写车机蓝牙名称或 MAC 地址，完全匹配后自动启动") },
+            enabled = !isRecording,
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        SettingSwitchRow(
+            title = "可信蓝牙连接自动开始录制",
+            subtitle = "连接指定蓝牙设备时自动启动；需要相机、通知和蓝牙权限",
+            checked = settings.autoStartOnTrustedBluetooth,
+            enabled = !isRecording && trustedBluetoothInput.isNotBlank(),
+            onCheckedChange = onAutoStartOnTrustedBluetoothChanged,
         )
     }
 }
@@ -1529,3 +1603,4 @@ private const val VIDEO_MIME_TYPE = "video/mp4"
 private const val PREVIEW_RELEASE_DELAY_MILLIS = 350L
 private const val EVENT_REFRESH_DELAY_MILLIS = 600L
 private const val METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR = 3.6f
+private const val MAX_TRUSTED_BLUETOOTH_LENGTH = 80
