@@ -86,6 +86,7 @@ private fun VoyageCamApp() {
     val storageLimit = remember { StorageCapacityLimit.from(context) }
     val storageManager = remember { RecordingStorageManager(context) }
     val emergencyEventStore = remember { EmergencyEventStore(context) }
+    val autoStartDiagnosticsStore = remember { AutoStartDiagnosticsStore(context) }
 
     var settings by remember { mutableStateOf(settingsStore.load().coerceTo(storageLimit)) }
     var capability by remember {
@@ -100,6 +101,7 @@ private fun VoyageCamApp() {
     var statusMessage by rememberSaveable { mutableStateOf("已支持后摄单录到本地 MP4；双摄录制仍在下一阶段接入。") }
     var allSegments by remember { mutableStateOf(storageManager.listRecentSegments()) }
     var emergencyEvents by remember { mutableStateOf(emergencyEventStore.listRecentEvents()) }
+    var autoStartDiagnostic by remember { mutableStateOf(autoStartDiagnosticsStore.load()) }
     var selectedDay by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedCameraFilter by rememberSaveable { mutableStateOf(SegmentCameraFilter.All) }
     var selectedLockFilter by rememberSaveable { mutableStateOf(SegmentLockFilter.All) }
@@ -489,6 +491,10 @@ private fun VoyageCamApp() {
                         } else {
                             "已关闭可信蓝牙连接自动开始录制。"
                         }
+                    },
+                    autoStartDiagnostic = autoStartDiagnostic,
+                    onRefreshAutoStartDiagnostic = {
+                        autoStartDiagnostic = autoStartDiagnosticsStore.load()
                     },
                 )
 
@@ -1040,6 +1046,8 @@ private fun SettingsPanel(
     onAutoStartOnPowerChanged: (Boolean) -> Unit,
     onTrustedBluetoothDeviceChanged: (String) -> Unit,
     onAutoStartOnTrustedBluetoothChanged: (Boolean) -> Unit,
+    autoStartDiagnostic: AutoStartDiagnostic?,
+    onRefreshAutoStartDiagnostic: () -> Unit,
 ) {
     var storageInput by remember(settings.storageCapacityGb) {
         mutableStateOf(settings.storageCapacityGb.toString())
@@ -1225,6 +1233,63 @@ private fun SettingsPanel(
             enabled = !isRecording && trustedBluetoothInput.isNotBlank(),
             onCheckedChange = onAutoStartOnTrustedBluetoothChanged,
         )
+
+        Spacer(modifier = Modifier.height(16.dp))
+        AutoStartDiagnosticPanel(
+            diagnostic = autoStartDiagnostic,
+            onRefresh = onRefreshAutoStartDiagnostic,
+        )
+    }
+}
+
+@Composable
+private fun AutoStartDiagnosticPanel(
+    diagnostic: AutoStartDiagnostic?,
+    onRefresh: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = "自动启动诊断",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF163036),
+        )
+        OutlinedButton(onClick = onRefresh) {
+            Text("刷新")
+        }
+    }
+    Spacer(modifier = Modifier.height(8.dp))
+    if (diagnostic == null) {
+        Text(
+            text = "暂无自动启动触发记录。",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF64777B),
+        )
+    } else {
+        Text(
+            text = "${diagnostic.source.label} · ${diagnostic.result.label} · ${diagnostic.recordedAtMillis.asTime()}",
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = if (diagnostic.result == AutoStartResult.Started) Color(0xFF1F6F78) else Color(0xFF9B2C2C),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = diagnostic.reason,
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF4D6267),
+        )
+        if (diagnostic.detail.isNotBlank()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = diagnostic.detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF64777B),
+            )
+        }
     }
 }
 

@@ -13,15 +13,63 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         if (intent?.action != BluetoothDevice.ACTION_ACL_CONNECTED) return
 
+        val diagnostics = AutoStartDiagnosticsStore(context)
         val settings = VoyageCamSettingsStore(context).load()
-        if (!settings.autoStartOnTrustedBluetooth) return
-        if (settings.trustedBluetoothDevice.isBlank()) return
-        if (!context.hasBluetoothConnectPermission()) return
+        if (!settings.autoStartOnTrustedBluetooth) {
+            diagnostics.record(
+                source = AutoStartSource.Bluetooth,
+                result = AutoStartResult.Ignored,
+                reason = "可信蓝牙自动启动开关未开启",
+            )
+            return
+        }
+        if (settings.trustedBluetoothDevice.isBlank()) {
+            diagnostics.record(
+                source = AutoStartSource.Bluetooth,
+                result = AutoStartResult.Ignored,
+                reason = "未填写可信蓝牙设备",
+            )
+            return
+        }
+        if (!context.hasBluetoothConnectPermission()) {
+            diagnostics.record(
+                source = AutoStartSource.Bluetooth,
+                result = AutoStartResult.Ignored,
+                reason = "蓝牙权限未授权",
+                detail = settings.trustedBluetoothDevice,
+            )
+            return
+        }
 
-        val device = intent.getParcelableExtraCompat<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE) ?: return
-        if (!device.matchesTrustedDevice(settings.trustedBluetoothDevice)) return
+        val device = intent.getParcelableExtraCompat<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
+        if (device == null) {
+            diagnostics.record(
+                source = AutoStartSource.Bluetooth,
+                result = AutoStartResult.Ignored,
+                reason = "连接广播未包含蓝牙设备信息",
+                detail = settings.trustedBluetoothDevice,
+            )
+            return
+        }
 
-        RecordingAutoStartPolicy(context).startIfAllowed(settings)
+        val deviceSummary = device.safeSummary()
+        if (!device.matchesTrustedDevice(settings.trustedBluetoothDevice)) {
+            diagnostics.record(
+                source = AutoStartSource.Bluetooth,
+                result = AutoStartResult.Ignored,
+                reason = "连接设备与可信设备不匹配",
+                detail = deviceSummary,
+            )
+            return
+        }
+
+        val blockedReason = RecordingAutoStartPolicy(context).startIfAllowed(settings)
+        diagnostics.record(
+            source = AutoStartSource.Bluetooth,
+            result = if (blockedReason == null) AutoStartResult.Started else AutoStartResult.Ignored,
+            reason = blockedReason ?: "可信蓝牙已连接并启动录制",
+            detail = deviceSummary,
+        )
     }
 
     private fun Context.hasBluetoothConnectPermission(): Boolean {
@@ -41,6 +89,14 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
         }.getOrDefault(false)
 
         return addressMatches || nameMatches
+    }
+
+    private fun BluetoothDevice.safeSummary(): String {
+        val safeName = runCatching { name }.getOrNull().orEmpty()
+        val safeAddress = runCatching { address }.getOrNull().orEmpty()
+        return listOf(safeName, safeAddress)
+            .filter { it.isNotBlank() }
+            .joinToString(separator = " / ")
     }
 
     @Suppress("DEPRECATION")
