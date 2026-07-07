@@ -13,8 +13,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.StatFs
-import android.widget.MediaController
-import android.widget.VideoView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -22,7 +20,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -42,13 +39,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -63,10 +58,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import com.voyagecam.app.core.camera.CameraCapabilityDetector
+import com.voyagecam.app.core.common.toContentUri
 import com.voyagecam.app.core.model.AutoStartDiagnostic
 import com.voyagecam.app.core.model.AutoStartResult
 import com.voyagecam.app.core.model.CameraDirection
@@ -84,17 +78,24 @@ import com.voyagecam.app.data.settings.VoyageCamSettings
 import com.voyagecam.app.data.settings.VoyageCamSettingsStore
 import com.voyagecam.app.data.settings.VoyageCamSettingsStore.Companion.coerceToAllowedSegmentDuration
 import com.voyagecam.app.data.storage.RecordingStorageManager
+import com.voyagecam.app.feature.evidence.EvidencePackageFile
+import com.voyagecam.app.feature.evidence.EmergencyEvidenceExporter
 import com.voyagecam.app.feature.recording.RecordingForegroundService
+import com.voyagecam.app.ui.playback.PlaybackItem
+import com.voyagecam.app.ui.playback.PlaybackPanel
+import com.voyagecam.app.ui.events.EvidenceExportState
+import com.voyagecam.app.ui.events.EmergencyEventPanel
+import com.voyagecam.app.ui.history.SegmentCameraFilter
+import com.voyagecam.app.ui.history.SegmentLockFilter
+import com.voyagecam.app.ui.history.filterSegments
 import com.voyagecam.app.ui.preview.RearCameraPreview
+import com.voyagecam.app.ui.theme.SectionCard
+import com.voyagecam.app.ui.theme.VoyageCamTheme
 import java.io.File
-import java.io.FileOutputStream
-import java.nio.charset.StandardCharsets
 import java.text.SimpleDateFormat
 import java.util.ArrayList
 import java.util.Date
 import java.util.Locale
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 import kotlin.math.max
 import kotlin.math.min
 
@@ -117,6 +118,7 @@ private fun VoyageCamApp() {
     val storageManager = remember { RecordingStorageManager(context) }
     val emergencyEventStore = remember { EmergencyEventStore(context) }
     val autoStartDiagnosticsStore = remember { AutoStartDiagnosticsStore(context) }
+    val evidenceExporter = remember { EmergencyEvidenceExporter(context, storageManager) }
 
     var settings by remember { mutableStateOf(settingsStore.load().coerceTo(storageLimit)) }
     var capability by remember {
@@ -368,11 +370,7 @@ private fun VoyageCamApp() {
         val mainHandler = Handler(Looper.getMainLooper())
         Thread {
             val result = runCatching {
-                createEmergencyEvidencePackage(
-                    context = context,
-                    event = event,
-                    storageManager = storageManager,
-                )
+                evidenceExporter.export(event)
             }
             mainHandler.post {
                 result
@@ -641,347 +639,6 @@ private fun VoyageCamApp() {
                     },
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun PlaybackPanel(
-    item: PlaybackItem,
-    onClose: () -> Unit,
-    onOpenInSystem: () -> Unit,
-) {
-    SectionCard {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "应用内播放",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF163036),
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFF4D6267),
-                )
-                Text(
-                    text = item.subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF64777B),
-                )
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            OutlinedButton(onClick = onClose) {
-                Text("关闭")
-            }
-        }
-        Spacer(modifier = Modifier.height(12.dp))
-        AndroidVideoPlayer(file = item.file)
-        Spacer(modifier = Modifier.height(10.dp))
-        OutlinedButton(
-            onClick = onOpenInSystem,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("系统播放器打开")
-        }
-    }
-}
-
-@Composable
-private fun AndroidVideoPlayer(file: File) {
-    val context = LocalContext.current
-    var activeVideoView by remember { mutableStateOf<VideoView?>(null) }
-    DisposableEffect(file.absolutePath) {
-        onDispose {
-            activeVideoView?.stopPlayback()
-            activeVideoView = null
-        }
-    }
-
-    AndroidView(
-        factory = { viewContext ->
-            VideoView(viewContext).apply {
-                setMediaController(MediaController(viewContext))
-            }
-        },
-        update = { videoView ->
-            activeVideoView = videoView
-            val uri = file.toContentUri(context)
-            videoView.stopPlayback()
-            videoView.setVideoURI(uri)
-            videoView.setOnPreparedListener { player ->
-                player.isLooping = false
-                videoView.start()
-            }
-        },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(220.dp),
-    )
-}
-
-private data class PlaybackItem(
-    val title: String,
-    val subtitle: String,
-    val file: File,
-)
-
-private sealed class EvidenceExportState {
-    abstract val eventId: String
-
-    data class Running(
-        override val eventId: String,
-        val title: String,
-    ) : EvidenceExportState()
-
-    data class Ready(
-        override val eventId: String,
-        val file: File,
-        val clipCount: Int,
-    ) : EvidenceExportState()
-
-    data class Failed(
-        override val eventId: String,
-        val message: String,
-    ) : EvidenceExportState()
-}
-
-private data class EvidencePackageFile(
-    val file: File,
-    val clipCount: Int,
-)
-
-@Composable
-private fun EmergencyEventPanel(
-    events: List<EmergencyEvent>,
-    exportState: EvidenceExportState?,
-    onRefresh: () -> Unit,
-    onOpen: (EmergencyEvent) -> Unit,
-    onShare: (EmergencyEvent) -> Unit,
-    onExport: (EmergencyEvent) -> Unit,
-    onShareExport: (File) -> Unit,
-    onDismissExport: () -> Unit,
-    onOpenMap: (EmergencyEvent) -> Unit,
-) {
-    SectionCard {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text = "紧急事件",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF163036),
-            )
-            OutlinedButton(onClick = onRefresh) {
-                Text("刷新")
-            }
-        }
-        Spacer(modifier = Modifier.height(10.dp))
-        exportState?.let { state ->
-            EvidenceExportStatusPanel(
-                state = state,
-                onShare = onShareExport,
-                onDismiss = onDismissExport,
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-        }
-        if (events.isEmpty()) {
-            Text(
-                text = "暂无紧急事件。手动锁定或碰撞触发后，这里会记录触发时间和关联片段。",
-                style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF64777B),
-            )
-        } else {
-            events.forEachIndexed { index, event ->
-                EmergencyEventRow(
-                    event = event,
-                    onOpen = onOpen,
-                    onShare = onShare,
-                    onExport = onExport,
-                    onOpenMap = onOpenMap,
-                )
-                if (index != events.lastIndex) {
-                    Spacer(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(1.dp)
-                            .background(Color(0xFFE1E8EA)),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun EvidenceExportStatusPanel(
-    state: EvidenceExportState,
-    onShare: (File) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFFEAF4F0), RoundedCornerShape(8.dp))
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        when (state) {
-            is EvidenceExportState.Running -> {
-                Text(
-                    text = "正在导出证据包",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF163036),
-                )
-                Text(
-                    text = state.title,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF4D6267),
-                )
-            }
-
-            is EvidenceExportState.Ready -> {
-                Text(
-                    text = "证据包已就绪",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF163036),
-                )
-                Text(
-                    text = "${state.file.name} · ${state.clipCount} 段视频 · ${state.file.length().asFileSize()}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF4D6267),
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { onShare(state.file) }) {
-                        Text("分享证据包")
-                    }
-                    OutlinedButton(onClick = onDismiss) {
-                        Text("收起")
-                    }
-                }
-            }
-
-            is EvidenceExportState.Failed -> {
-                Text(
-                    text = "证据包导出失败",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF9B2C2C),
-                )
-                Text(
-                    text = state.message,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF4D6267),
-                )
-                OutlinedButton(onClick = onDismiss) {
-                    Text("收起")
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun EmergencyEventRow(
-    event: EmergencyEvent,
-    onOpen: (EmergencyEvent) -> Unit,
-    onShare: (EmergencyEvent) -> Unit,
-    onExport: (EmergencyEvent) -> Unit,
-    onOpenMap: (EmergencyEvent) -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text = event.trigger.label,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = if (event.trigger == EmergencyTrigger.Collision) Color(0xFF9B2C2C) else Color(0xFF163036),
-            )
-            Text(
-                text = "${event.segmentPaths.size} 段",
-                style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF64777B),
-            )
-        }
-        Text(
-            text = event.triggeredAtMillis.asTime(),
-            style = MaterialTheme.typography.bodySmall,
-            color = Color(0xFF64777B),
-        )
-        event.collisionSummary()?.let { summary ->
-            Text(
-                text = summary,
-                style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF9B2C2C),
-            )
-        }
-        event.locationSummary()?.let { summary ->
-            Text(
-                text = summary,
-                style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF4D6267),
-            )
-        }
-        val segmentText = event.segmentPaths.take(3).joinToString(separator = "\n")
-        if (segmentText.isNotBlank()) {
-            Text(
-                text = segmentText,
-                style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF4D6267),
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            OutlinedButton(
-                onClick = { onOpen(event) },
-                enabled = event.segmentPaths.isNotEmpty(),
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("播放首段")
-            }
-            OutlinedButton(
-                onClick = { onShare(event) },
-                enabled = event.segmentPaths.isNotEmpty(),
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("分享全部")
-            }
-            OutlinedButton(
-                onClick = { onOpenMap(event) },
-                enabled = event.hasLocation(),
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("地图")
-            }
-        }
-        OutlinedButton(
-            onClick = { onExport(event) },
-            enabled = event.segmentPaths.isNotEmpty(),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("导出证据包")
         }
     }
 }
@@ -1824,21 +1481,6 @@ private fun PresetStorageRow(
 }
 
 @Composable
-private fun SectionCard(content: @Composable ColumnScope.() -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        shape = RoundedCornerShape(8.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-    ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            content = content,
-        )
-    }
-}
-
-@Composable
 private fun SettingSwitchRow(
     title: String,
     subtitle: String,
@@ -1872,23 +1514,6 @@ private fun SettingSwitchRow(
             onCheckedChange = onCheckedChange,
         )
     }
-}
-
-@Composable
-private fun VoyageCamTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = androidx.compose.material3.lightColorScheme(
-            primary = Color(0xFF1F6F78),
-            secondary = Color(0xFFF2C14E),
-            background = Color(0xFFF7FAF9),
-            surface = Color.White,
-            onPrimary = Color.White,
-            onSurface = Color(0xFF163036),
-        ),
-        content = {
-            Surface(content = content)
-        },
-    )
 }
 
 private data class StorageCapacityLimit(val maxGb: Int) {
@@ -1946,87 +1571,6 @@ private fun Long.asFileSize(): String {
     }
 }
 
-private fun EmergencyEvent.collisionSummary(): String? {
-    if (trigger != EmergencyTrigger.Collision) return null
-    val acceleration = accelerationG ?: return null
-    val threshold = thresholdG
-    return if (threshold == null) {
-        String.format(Locale.getDefault(), "峰值 %.1fg", acceleration)
-    } else {
-        String.format(Locale.getDefault(), "峰值 %.1fg · 阈值 %.1fg", acceleration, threshold)
-    }
-}
-
-private fun EmergencyEvent.locationSummary(): String? {
-    val lat = latitude ?: return null
-    val lon = longitude ?: return null
-    val coordinate = String.format(Locale.getDefault(), "位置 %.5f, %.5f", lat, lon)
-    val speedText = speedMetersPerSecond?.let {
-        String.format(Locale.getDefault(), " · %.0fkm/h", it * METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR)
-    }.orEmpty()
-    val timeText = locationCapturedAtMillis?.let { " · ${it.asTime()}" }.orEmpty()
-    return "$coordinate$speedText$timeText"
-}
-
-private fun EmergencyEvent.hasLocation(): Boolean {
-    return latitude != null && longitude != null
-}
-
-private fun createEmergencyEvidencePackage(
-    context: Context,
-    event: EmergencyEvent,
-    storageManager: RecordingStorageManager,
-): EvidencePackageFile {
-    val files = event.existingSegmentFiles(storageManager)
-    if (files.isEmpty()) error("关联片段文件不存在")
-
-    val exportDir = File(context.filesDir, EVIDENCE_EXPORT_DIR_NAME).apply { mkdirs() }
-    val packageFile = File(exportDir, event.evidencePackageFileName())
-    ZipOutputStream(FileOutputStream(packageFile)).use { zip ->
-        zip.putNextEntry(ZipEntry("metadata.txt"))
-        zip.write(event.evidenceMetadata(files).toByteArray(StandardCharsets.UTF_8))
-        zip.closeEntry()
-
-        files.forEach { file ->
-            zip.putNextEntry(ZipEntry("clips/${file.name}"))
-            file.inputStream().use { input ->
-                input.copyTo(zip)
-            }
-            zip.closeEntry()
-        }
-    }
-
-    return EvidencePackageFile(file = packageFile, clipCount = files.size)
-}
-
-private fun EmergencyEvent.evidencePackageFileName(): String {
-    val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(triggeredAtMillis))
-    return "voyagecam_evidence_${timestamp}_${id.take(8)}.zip"
-}
-
-private fun EmergencyEvent.evidenceMetadata(files: List<File>): String {
-    return buildString {
-        appendLine("VoyageCam Emergency Evidence Package")
-        appendLine()
-        appendLine("Event")
-        appendLine("ID: $id")
-        appendLine("Trigger: ${trigger.label}")
-        appendLine("Triggered At: ${triggeredAtMillis.asTime()}")
-        collisionSummary()?.let { appendLine("Collision: $it") }
-        locationSummary()?.let { appendLine("Location: $it") }
-        appendLine()
-        appendLine("Linked Clips")
-        files.forEachIndexed { index, file ->
-            appendLine("${index + 1}. ${file.name}")
-            appendLine("   Size: ${file.length().asFileSize()}")
-            appendLine("   Last Modified: ${file.lastModified().asTime()}")
-        }
-        appendLine()
-        appendLine("Original Relative Paths")
-        segmentPaths.forEach { path -> appendLine(path) }
-    }
-}
-
 private fun EmergencyEvent.toGeoUri(): Uri? {
     val lat = latitude ?: return null
     val lon = longitude ?: return null
@@ -2075,20 +1619,6 @@ private data class TrustedBluetoothDevice(
     }
 }
 
-private fun RecordingSegment.toContentUri(context: Context) =
-    FileProvider.getUriForFile(
-        context,
-        "${context.packageName}.fileprovider",
-        File(absolutePath),
-    )
-
-private fun File.toContentUri(context: Context) =
-    FileProvider.getUriForFile(
-        context,
-        "${context.packageName}.fileprovider",
-        this,
-    )
-
 private fun openFileInSystem(
     context: Context,
     file: File,
@@ -2116,45 +1646,9 @@ private fun EmergencyEvent.existingSegmentFiles(storageManager: RecordingStorage
         .filter { it.exists() && it.isFile }
 }
 
-private fun List<RecordingSegment>.filterSegments(
-    selectedDay: String?,
-    cameraFilter: SegmentCameraFilter,
-    lockFilter: SegmentLockFilter,
-): List<RecordingSegment> {
-    return filter { segment ->
-        val dayMatches = selectedDay == null || segment.day == selectedDay
-        val cameraMatches = when (cameraFilter) {
-            SegmentCameraFilter.All -> true
-            SegmentCameraFilter.Rear -> segment.cameraDirection == CameraDirection.Rear
-            SegmentCameraFilter.Front -> segment.cameraDirection == CameraDirection.Front
-        }
-        val lockMatches = when (lockFilter) {
-            SegmentLockFilter.All -> true
-            SegmentLockFilter.Normal -> !segment.locked
-            SegmentLockFilter.Locked -> segment.locked
-        }
-
-        dayMatches && cameraMatches && lockMatches
-    }
-}
-
-private enum class SegmentCameraFilter(val label: String) {
-    All("全部"),
-    Rear("后摄"),
-    Front("前摄"),
-}
-
-private enum class SegmentLockFilter(val label: String) {
-    All("全部"),
-    Normal("普通"),
-    Locked("锁定"),
-}
-
 private const val VIDEO_MIME_TYPE = "video/mp4"
 private const val ZIP_MIME_TYPE = "application/zip"
-private const val EVIDENCE_EXPORT_DIR_NAME = "evidence_exports"
 private const val PREVIEW_RELEASE_DELAY_MILLIS = 350L
 private const val EVENT_REFRESH_DELAY_MILLIS = 600L
-private const val METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR = 3.6f
 private const val MAX_TRUSTED_BLUETOOTH_LENGTH = 80
 private const val MAX_PAIRED_BLUETOOTH_DEVICES = 6
