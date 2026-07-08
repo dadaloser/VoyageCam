@@ -10,8 +10,6 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -37,7 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -51,49 +49,30 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.voyagecam.app.core.camera.CameraCapabilityDetector
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.voyagecam.app.core.common.toContentUri
-import com.voyagecam.app.core.model.CameraDirection
 import com.voyagecam.app.core.model.DeviceCapabilityGrade
 import com.voyagecam.app.core.model.DualCameraCapability
-import com.voyagecam.app.core.model.DualCameraSwitchState
 import com.voyagecam.app.core.model.EmergencyEvent
-import com.voyagecam.app.core.model.EmergencyTrigger
 import com.voyagecam.app.core.model.PendingStorageCapacityChange
 import com.voyagecam.app.core.model.RecordingSegment
 import com.voyagecam.app.core.model.TrustedBluetoothDevice
-import com.voyagecam.app.core.model.toStorageBytes
-import com.voyagecam.app.data.autostart.AutoStartDiagnosticsStore
-import com.voyagecam.app.data.emergency.EmergencyEventStore
 import com.voyagecam.app.data.location.hasAnyLocationPermission
 import com.voyagecam.app.data.settings.VoyageCamSettings
-import com.voyagecam.app.data.settings.VoyageCamSettingsStore
-import com.voyagecam.app.data.settings.VoyageCamSettingsStore.Companion.coerceToAllowedSegmentDuration
-import com.voyagecam.app.data.settings.StorageCapacityLimit
-import com.voyagecam.app.data.settings.coerceTo
-import com.voyagecam.app.data.storage.RecordingStorageManager
-import com.voyagecam.app.feature.evidence.EvidenceExportCancelledException
-import com.voyagecam.app.feature.evidence.EvidencePackageFile
-import com.voyagecam.app.feature.evidence.EmergencyEvidenceExporter
 import com.voyagecam.app.feature.recording.RecordingForegroundService
-import com.voyagecam.app.ui.playback.PlaybackItem
 import com.voyagecam.app.ui.playback.PlaybackPanel
-import com.voyagecam.app.ui.events.EvidenceExportState
 import com.voyagecam.app.ui.events.EmergencyEventPanel
-import com.voyagecam.app.ui.history.SegmentCameraFilter
 import com.voyagecam.app.ui.history.SegmentHistoryPanel
-import com.voyagecam.app.ui.history.SegmentLockFilter
-import com.voyagecam.app.ui.history.filterSegments
 import com.voyagecam.app.ui.preview.RearCameraPreview
 import com.voyagecam.app.ui.settings.SettingsPanel
 import com.voyagecam.app.ui.theme.SectionCard
 import com.voyagecam.app.ui.theme.VoyageCamTheme
+import com.voyagecam.app.ui.VoyageCamViewModel
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.ArrayList
 import java.util.Date
 import java.util.Locale
-import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -108,131 +87,19 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun VoyageCamApp() {
     val context = LocalContext.current
-    val settingsStore = remember { VoyageCamSettingsStore(context) }
-    val detector = remember { CameraCapabilityDetector(context) }
-    val storageLimit = remember { StorageCapacityLimit.from(context) }
-    val storageManager = remember { RecordingStorageManager(context) }
-    val emergencyEventStore = remember { EmergencyEventStore(context) }
-    val autoStartDiagnosticsStore = remember { AutoStartDiagnosticsStore(context) }
-    val evidenceExporter = remember { EmergencyEvidenceExporter(context, storageManager) }
-
-    var settings by remember { mutableStateOf(settingsStore.load().coerceTo(storageLimit)) }
-    var capability by remember {
-        mutableStateOf(
-            settingsStore.loadCapability() ?: DualCameraCapability(
-                state = DualCameraSwitchState.Checking,
-                reason = "正在检测前后摄像头并发能力",
-            ),
-        )
-    }
-    var isRecording by rememberSaveable { mutableStateOf(false) }
-    var statusMessage by rememberSaveable { mutableStateOf("已支持后摄单录到本地 MP4；双摄录制仍在下一阶段接入。") }
-    var allSegments by remember { mutableStateOf(storageManager.listRecentSegments()) }
-    var storageOverview by remember {
-        mutableStateOf(
-            storageManager.storageOverview(
-                settings = settings,
-                dualCameraActive = settings.dualCameraEnabled && capability.isAvailable,
-            ),
-        )
-    }
-    var emergencyEvents by remember { mutableStateOf(emergencyEventStore.listRecentEvents()) }
-    var autoStartDiagnostic by remember { mutableStateOf(autoStartDiagnosticsStore.load()) }
+    val viewModel: VoyageCamViewModel = viewModel()
+    val uiState by viewModel.uiState.collectAsState()
+    val settings = uiState.settings
+    val capability = uiState.capability
+    val isRecording = uiState.isRecording
+    val statusMessage = uiState.statusMessage
+    val allSegments = uiState.allSegments
+    val emergencyEvents = uiState.emergencyEvents
     var pairedBluetoothDevices by remember { mutableStateOf(context.pairedBluetoothDevices()) }
-    var playbackItem by remember { mutableStateOf<PlaybackItem?>(null) }
-    var evidenceExportState by remember { mutableStateOf<EvidenceExportState?>(null) }
-    var evidenceExportCancelFlag by remember { mutableStateOf<AtomicBoolean?>(null) }
-    var selectedDay by rememberSaveable { mutableStateOf<String?>(null) }
-    var selectedCameraFilter by rememberSaveable { mutableStateOf(SegmentCameraFilter.All) }
-    var selectedLockFilter by rememberSaveable { mutableStateOf(SegmentLockFilter.All) }
-    var pendingStorageCapacityChange by remember { mutableStateOf<PendingStorageCapacityChange?>(null) }
-    var pendingSegmentDelete by remember { mutableStateOf<RecordingSegment?>(null) }
-    var pendingEmergencyEventDelete by remember { mutableStateOf<EmergencyEvent?>(null) }
-    var pendingSettingsReset by remember { mutableStateOf(false) }
     var pendingStart by rememberSaveable { mutableStateOf(false) }
-    var pendingGpsMetadataEnable by rememberSaveable { mutableStateOf(false) }
     var permissionRefreshKey by remember { mutableIntStateOf(0) }
-    val availableDays = allSegments.map { it.day }.distinct()
-    val filteredSegments = allSegments.filterSegments(
-        selectedDay = selectedDay,
-        cameraFilter = selectedCameraFilter,
-        lockFilter = selectedLockFilter,
-    )
-
-    fun persist(next: VoyageCamSettings) {
-        settings = next.coerceTo(storageLimit)
-        settingsStore.save(settings)
-        storageOverview = storageManager.storageOverview(
-            settings = settings,
-            dualCameraActive = settings.dualCameraEnabled && capability.isAvailable,
-        )
-    }
-
-    fun persistCapability(next: DualCameraCapability) {
-        capability = next
-        settingsStore.saveCapability(next)
-        storageOverview = storageManager.storageOverview(
-            settings = settings,
-            dualCameraActive = settings.dualCameraEnabled && capability.isAvailable,
-        )
-    }
-
-    fun refreshRecordingData() {
-        allSegments = storageManager.listRecentSegments()
-        storageOverview = storageManager.storageOverview(
-            settings = settings,
-            dualCameraActive = settings.dualCameraEnabled && capability.isAvailable,
-        )
-    }
-
-    fun applyStorageCapacityChange(capacityGb: Int, cleanupNow: Boolean) {
-        persist(settings.copy(storageCapacityGb = capacityGb))
-        if (cleanupNow) {
-            val cleanup = storageManager.cleanupNormalSegments(capacityGb)
-            refreshRecordingData()
-            statusMessage = if (cleanup.deletedFiles > 0) {
-                "已将录像容量调整为 ${capacityGb}GB，并清理 ${cleanup.deletedFiles} 个普通片段、释放 ${cleanup.deletedBytes.asFileSize()}。"
-            } else {
-                "已将录像容量调整为 ${capacityGb}GB；当前普通片段无需清理。"
-            }
-        } else {
-            statusMessage = "已将录像容量调整为 ${capacityGb}GB。"
-        }
-    }
-
-    fun requestStorageCapacityChange(capacityGb: Int) {
-        if (capacityGb == settings.storageCapacityGb) return
-        val nextBytes = capacityGb.toStorageBytes()
-        if (storageOverview.requiresCleanupConfirmation(capacityGb)) {
-            pendingStorageCapacityChange = PendingStorageCapacityChange(
-                nextCapacityGb = capacityGb,
-                currentNormalBytes = storageOverview.normalBytes,
-                overflowBytes = storageOverview.normalBytes - nextBytes,
-            )
-            statusMessage = "录像容量低于当前普通片段占用，请确认后再应用。"
-        } else {
-            pendingStorageCapacityChange = null
-            applyStorageCapacityChange(capacityGb = capacityGb, cleanupNow = false)
-        }
-    }
-
-    fun cleanupStorageNow() {
-        val cleanup = storageManager.cleanupNormalSegments(settings.storageCapacityGb)
-        refreshRecordingData()
-        statusMessage = if (cleanup.deletedFiles > 0) {
-            "已清理 ${cleanup.deletedFiles} 个普通片段，释放 ${cleanup.deletedBytes.asFileSize()}；锁定片段未受影响。"
-        } else {
-            "当前普通片段未超过 ${settings.storageCapacityGb}GB 容量，无需清理。"
-        }
-    }
-
-    fun resetSettingsToDefaults() {
-        pendingSettingsReset = false
-        pendingStorageCapacityChange = null
-        pendingGpsMetadataEnable = false
-        persist(VoyageCamSettings())
-        statusMessage = "已恢复默认设置；录像、紧急事件和已导出的证据包均未删除。"
-    }
+    val availableDays = uiState.availableDays
+    val filteredSegments = uiState.filteredSegments
 
     fun hasPermission(permission: String): Boolean {
         return permissionRefreshKey >= 0 &&
@@ -254,41 +121,24 @@ private fun VoyageCamApp() {
     }
 
     fun beginRecordingService() {
-        isRecording = true
-        statusMessage = "正在启动后摄录制..."
+        viewModel.setStatus("正在启动后摄录制...")
         RecordingForegroundService.start(
             context = context,
             dualCamera = settings.dualCameraEnabled && capability.isAvailable,
             ambientAudio = settings.ambientAudioEnabled,
         )
-        statusMessage = "后摄录制服务已启动；预览与录制共用 CameraX 管线，每 ${settings.segmentDurationMinutes} 分钟分段。"
+        viewModel.setRecordingStarted()
     }
 
     fun applyGpsMetadataSetting(enabled: Boolean) {
-        pendingGpsMetadataEnable = false
-        persist(settings.copy(gpsMetadataEnabled = enabled))
+        viewModel.applyGpsMetadataSetting(enabled)
         if (isRecording) {
             RecordingForegroundService.setGpsMetadataEnabled(context, enabled)
-        }
-        statusMessage = if (enabled) {
-            "已开启GPS位置与轨迹记录；后续紧急事件会保存最近位置和轨迹。"
-        } else {
-            "已关闭GPS位置与轨迹记录；后续紧急事件不记录位置和轨迹。"
         }
     }
 
     fun redetect() {
-        persistCapability(
-            DualCameraCapability(
-                state = DualCameraSwitchState.Checking,
-                reason = "正在检测前后摄像头并发能力",
-            ),
-        )
-        val result = detector.detect(settings.dualCameraEnabled)
-        persistCapability(result)
-        if (!result.isAvailable && settings.dualCameraEnabled) {
-            persist(settings.copy(dualCameraEnabled = false))
-        }
+        viewModel.redetect()
     }
 
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
@@ -303,7 +153,7 @@ private fun VoyageCamApp() {
             }
         } else {
             pendingStart = false
-            statusMessage = "相机权限未授权，无法开始行车记录。"
+            viewModel.setStatus("相机权限未授权，无法开始行车记录。")
         }
     }
 
@@ -316,7 +166,7 @@ private fun VoyageCamApp() {
             beginRecordingService()
         } else if (!granted) {
             pendingStart = false
-            statusMessage = "通知权限未授权，后台录制状态无法可靠展示。"
+            viewModel.setStatus("通知权限未授权，后台录制状态无法可靠展示。")
         }
     }
 
@@ -324,12 +174,14 @@ private fun VoyageCamApp() {
         contract = ActivityResultContracts.RequestPermission(),
     ) { granted ->
         permissionRefreshKey++
-        persist(settings.copy(ambientAudioEnabled = granted))
-        statusMessage = if (granted) {
-            "行车环境声已开启；下一次录制会带音频。"
-        } else {
-            "麦克风权限未授权，已保持静音录制。"
-        }
+        viewModel.persistSettings(settings.copy(ambientAudioEnabled = granted))
+        viewModel.setStatus(
+            if (granted) {
+                "行车环境声已开启；下一次录制会带音频。"
+            } else {
+                "麦克风权限未授权，已保持静音录制。"
+            },
+        )
     }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -338,21 +190,21 @@ private fun VoyageCamApp() {
         permissionRefreshKey++
         val granted = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        if (granted && pendingGpsMetadataEnable) {
+        if (granted && uiState.pendingGpsMetadataEnable) {
             applyGpsMetadataSetting(true)
-        } else if (!granted && pendingGpsMetadataEnable) {
-            pendingGpsMetadataEnable = false
-            persist(settings.copy(gpsMetadataEnabled = false))
-            statusMessage = "定位权限未授权；已保持关闭GPS位置与轨迹记录。"
+        } else if (!granted && uiState.pendingGpsMetadataEnable) {
+            viewModel.setPendingGpsMetadataEnable(false)
+            viewModel.persistSettings(settings.copy(gpsMetadataEnabled = false))
+            viewModel.setStatus("定位权限未授权；已保持关闭GPS位置与轨迹记录。")
         } else {
-            statusMessage = if (granted) {
+            viewModel.setStatus(if (granted) {
                 if (settings.gpsMetadataEnabled && isRecording) {
                     RecordingForegroundService.setGpsMetadataEnabled(context, true)
                 }
                 "定位权限已授权；紧急事件可记录最近可用坐标。"
             } else {
                 "定位权限未授权；紧急事件仍会记录时间、触发类型和片段。"
-            }
+            })
         }
     }
 
@@ -360,12 +212,12 @@ private fun VoyageCamApp() {
         contract = ActivityResultContracts.RequestPermission(),
     ) { granted ->
         permissionRefreshKey++
-        statusMessage = if (granted) {
+        viewModel.setStatus(if (granted) {
             pairedBluetoothDevices = context.pairedBluetoothDevices()
             "蓝牙权限已授权；可信蓝牙连接后可自动开始录制。"
         } else {
             "蓝牙权限未授权，可信蓝牙自动启动不可用。"
-        }
+        })
     }
 
     fun requestStartRecording() {
@@ -386,18 +238,7 @@ private fun VoyageCamApp() {
 
     fun stopRecording() {
         RecordingForegroundService.stop(context)
-        isRecording = false
-        statusMessage = "录制服务已停止。"
-        refreshRecordingData()
-        emergencyEvents = emergencyEventStore.listRecentEvents()
-    }
-
-    fun openSegment(segment: RecordingSegment) {
-        playbackItem = PlaybackItem(
-            title = segment.name,
-            subtitle = "${segment.cameraDirection.label} · ${if (segment.locked) "已锁定" else "普通"}",
-            file = File(segment.absolutePath),
-        )
+        viewModel.setRecordingStopped()
     }
 
     fun shareSegment(segment: RecordingSegment) {
@@ -409,175 +250,34 @@ private fun VoyageCamApp() {
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             context.startActivity(Intent.createChooser(intent, "分享录像片段"))
         }.onFailure { error ->
-            statusMessage = "无法分享片段：${error.message ?: segment.name}"
-        }
-    }
-
-    fun unlockSegment(segment: RecordingSegment) {
-        if (!segment.locked) {
-            statusMessage = "该片段已经是普通片段。"
-            return
-        }
-
-        runCatching {
-            val lockedDashcamPath = storageManager.dashcamRelativePath(File(segment.absolutePath))
-            val unlockedFile = storageManager.unlockSegment(segment) ?: error("锁定片段不存在")
-            emergencyEventStore.removeSegment(lockedDashcamPath)
-            refreshRecordingData()
-            emergencyEvents = emergencyEventStore.listRecentEvents()
-            statusMessage = "已解除锁定：${unlockedFile.name}。该片段之后会按循环空间策略管理。"
-        }.onFailure { error ->
-            statusMessage = "解除锁定失败：${error.message ?: segment.name}"
-        }
-    }
-
-    fun deleteSegment(segment: RecordingSegment) {
-        runCatching {
-            val dashcamPath = storageManager.dashcamRelativePath(File(segment.absolutePath))
-            val result = storageManager.deleteSegment(segment)
-            if (!result.deleted) error("片段不存在或不在可管理目录内")
-
-            emergencyEventStore.removeSegment(dashcamPath)
-            if (playbackItem?.file?.absolutePath == segment.absolutePath) {
-                playbackItem = null
-            }
-            refreshRecordingData()
-            emergencyEvents = emergencyEventStore.listRecentEvents()
-            statusMessage = "已删除片段：${segment.name}，释放 ${result.deletedBytes.asFileSize()}。"
-        }.onFailure { error ->
-            statusMessage = "删除片段失败：${error.message ?: segment.name}"
-        }
-    }
-
-    fun deleteEmergencyEvent(event: EmergencyEvent) {
-        emergencyEventStore.deleteEvent(event.id)
-        if (evidenceExportState?.eventId == event.id) {
-            evidenceExportState = null
-        }
-        emergencyEvents = emergencyEventStore.listRecentEvents()
-        statusMessage = "已删除紧急事件记录；关联录像仍保留在历史列表中。"
-    }
-
-    fun repairEmergencyEvents() {
-        val result = emergencyEventStore.repairMissingSegments { path ->
-            storageManager.dashcamFile(path)?.let { it.exists() && it.isFile } == true
-        }
-        emergencyEvents = emergencyEventStore.listRecentEvents()
-        statusMessage = if (result.removedSegmentPaths == 0) {
-            "紧急事件关联片段正常，无需修复。"
-        } else {
-            "已修复 ${result.updatedEvents} 个紧急事件，移除 ${result.removedSegmentPaths} 条失效片段引用；${result.emptyEvents} 个事件当前没有可用片段。"
-        }
-    }
-
-    fun openEmergencyEvent(event: EmergencyEvent) {
-        runCatching {
-            val file = event.existingSegmentFiles(storageManager).firstOrNull()
-                ?: error("关联片段文件不存在")
-            playbackItem = PlaybackItem(
-                title = file.name,
-                subtitle = "${event.trigger.label} · ${event.triggeredAtMillis.asTime()}",
-                file = file,
-            )
-        }.onFailure { error ->
-            statusMessage = "无法打开紧急事件片段：${error.message ?: event.trigger.label}"
+            viewModel.setStatus("无法分享片段：${error.message ?: segment.name}")
         }
     }
 
     fun shareEmergencyEvent(event: EmergencyEvent) {
-        runCatching {
-            val files = event.existingSegmentFiles(storageManager)
-            if (files.isEmpty()) error("关联片段文件不存在")
-
-            val uris = ArrayList<Uri>(files.map { it.toContentUri(context) })
-            val intent = if (uris.size == 1) {
-                Intent(Intent.ACTION_SEND)
-                    .setType(VIDEO_MIME_TYPE)
-                    .putExtra(Intent.EXTRA_STREAM, uris.first())
-            } else {
-                Intent(Intent.ACTION_SEND_MULTIPLE)
-                    .setType(VIDEO_MIME_TYPE)
-                    .putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
-            }.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-
-            context.startActivity(Intent.createChooser(intent, "分享紧急事件片段"))
-        }.onFailure { error ->
-            statusMessage = "无法分享紧急事件：${error.message ?: event.trigger.label}"
-        }
-    }
-
-    fun exportEmergencyEvent(event: EmergencyEvent) {
-        if (evidenceExportState is EvidenceExportState.Running) {
-            statusMessage = "证据包正在导出，请稍候。"
-            return
-        }
-
-        evidenceExportState = EvidenceExportState.Running(
-            eventId = event.id,
-            title = "${event.trigger.label} · ${event.triggeredAtMillis.asTime()}",
-            currentItem = "准备导出",
-        )
-        statusMessage = "正在导出紧急事件证据包..."
-
-        val mainHandler = Handler(Looper.getMainLooper())
-        val cancelFlag = AtomicBoolean(false)
-        evidenceExportCancelFlag = cancelFlag
-        Thread {
-            val result = runCatching {
-                evidenceExporter.export(
-                    event = event,
-                    includeWatermarkSubtitles = settings.exportWatermarkSubtitlesEnabled,
-                    segmentDurationMinutes = settings.segmentDurationMinutes,
-                    onProgress = { progress ->
-                        mainHandler.post {
-                            if (evidenceExportCancelFlag === cancelFlag) {
-                                evidenceExportState = EvidenceExportState.Running(
-                                    eventId = event.id,
-                                    title = "${event.trigger.label} · ${event.triggeredAtMillis.asTime()}",
-                                    progressPercent = progress.percent,
-                                    currentItem = progress.currentItem,
-                                )
-                            }
-                        }
-                    },
-                    isCancelled = { cancelFlag.get() },
-                )
-            }
-            mainHandler.post {
-                if (evidenceExportCancelFlag === cancelFlag) {
-                    evidenceExportCancelFlag = null
-                }
-                result
-                    .onSuccess { packageFile ->
-                        evidenceExportState = EvidenceExportState.Ready(
-                            eventId = event.id,
-                            file = packageFile.file,
-                            clipCount = packageFile.clipCount,
-                        )
-                        statusMessage = "证据包已导出：${packageFile.file.name}"
-                    }
-                    .onFailure { error ->
-                        if (error is EvidenceExportCancelledException) {
-                            evidenceExportState = EvidenceExportState.Cancelled(eventId = event.id)
-                            statusMessage = "证据包导出已取消，原始录像未受影响。"
+        viewModel.loadEmergencyEventFiles(event) { result ->
+            result
+                .onSuccess { files ->
+                    runCatching {
+                        val uris = ArrayList<Uri>(files.map { it.toContentUri(context) })
+                        val intent = if (uris.size == 1) {
+                            Intent(Intent.ACTION_SEND)
+                                .setType(VIDEO_MIME_TYPE)
+                                .putExtra(Intent.EXTRA_STREAM, uris.first())
                         } else {
-                            evidenceExportState = EvidenceExportState.Failed(
-                                eventId = event.id,
-                                message = error.message ?: "导出失败",
-                            )
-                            statusMessage = "证据包导出失败：${error.message ?: event.trigger.label}"
-                        }
-                    }
-            }
-        }.start()
-    }
+                            Intent(Intent.ACTION_SEND_MULTIPLE)
+                                .setType(VIDEO_MIME_TYPE)
+                                .putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                        }.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
-    fun cancelEvidenceExport() {
-        val running = evidenceExportState as? EvidenceExportState.Running
-        evidenceExportCancelFlag?.set(true)
-        if (running != null) {
-            evidenceExportState = running.copy(currentItem = "正在取消...")
-            statusMessage = "正在取消证据包导出..."
+                        context.startActivity(Intent.createChooser(intent, "分享紧急事件片段"))
+                    }.onFailure { error ->
+                        viewModel.setStatus("无法分享紧急事件：${error.message ?: event.trigger.label}")
+                    }
+                }
+                .onFailure { error ->
+                    viewModel.setStatus("无法分享紧急事件：${error.message ?: event.trigger.label}")
+                }
         }
     }
 
@@ -590,7 +290,7 @@ private fun VoyageCamApp() {
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             context.startActivity(Intent.createChooser(intent, "分享证据包"))
         }.onFailure { error ->
-            statusMessage = "无法分享证据包：${error.message ?: file.name}"
+            viewModel.setStatus("无法分享证据包：${error.message ?: file.name}")
         }
     }
 
@@ -600,19 +300,12 @@ private fun VoyageCamApp() {
             val intent = Intent(Intent.ACTION_VIEW, uri)
             context.startActivity(intent)
         }.onFailure { error ->
-            statusMessage = if (error is ActivityNotFoundException) {
+            viewModel.setStatus(if (error is ActivityNotFoundException) {
                 "未找到可打开坐标的地图应用。"
             } else {
                 "无法打开事件位置：${error.message ?: event.trigger.label}"
-            }
+            })
         }
-    }
-
-    LaunchedEffect(Unit) {
-        if (settings != settingsStore.load()) {
-            settingsStore.save(settings)
-        }
-        redetect()
     }
 
     VoyageCamTheme {
@@ -646,14 +339,8 @@ private fun VoyageCamApp() {
                     },
                     onEmergencyLock = {
                         RecordingForegroundService.lockCurrent(context)
-                        statusMessage = "紧急锁定已发送：当前片段、上一片段和下一片段会被保护。"
-                        Handler(Looper.getMainLooper()).postDelayed(
-                            {
-                                refreshRecordingData()
-                                emergencyEvents = emergencyEventStore.listRecentEvents()
-                            },
-                            EVENT_REFRESH_DELAY_MILLIS,
-                        )
+                        viewModel.setStatus("紧急锁定已发送：当前片段、上一片段和下一片段会被保护。")
+                        viewModel.refreshRecordingData()
                     },
                 )
 
@@ -661,14 +348,14 @@ private fun VoyageCamApp() {
                     settings = settings,
                     capability = capability,
                     isRecording = isRecording,
-                    storageLimit = storageLimit,
+                    storageLimit = uiState.storageLimit,
                     cameraPermissionGranted = hasPermission(Manifest.permission.CAMERA),
                     notificationPermissionGranted = hasNotificationPermission(),
                     audioPermissionGranted = hasPermission(Manifest.permission.RECORD_AUDIO),
                     locationPermissionGranted = hasLocationPermission(),
                     bluetoothPermissionGranted = hasBluetoothConnectPermission(),
-                    storageOverview = storageOverview,
-                    pendingStorageCapacityGb = pendingStorageCapacityChange?.nextCapacityGb,
+                    storageOverview = uiState.storageOverview,
+                    pendingStorageCapacityGb = uiState.pendingStorageCapacityChange?.nextCapacityGb,
                     onRequestCameraPermission = {
                         cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                     },
@@ -693,48 +380,48 @@ private fun VoyageCamApp() {
                     onRedetect = { redetect() },
                     onDualCameraChanged = { enabled ->
                         if (!isRecording) {
-                            persist(settings.copy(dualCameraEnabled = enabled))
-                            persistCapability(detector.detect(enabled))
+                            viewModel.persistSettings(settings.copy(dualCameraEnabled = enabled))
+                            viewModel.redetect()
                         } else {
-                            statusMessage = "录制中不可切换双摄；停止后修改会在下一次录制生效。"
+                            viewModel.setStatus("录制中不可切换双摄；停止后修改会在下一次录制生效。")
                         }
                     },
                     onStorageChanged = { capacityGb ->
-                        requestStorageCapacityChange(capacityGb)
+                        viewModel.requestStorageCapacityChange(capacityGb)
                     },
                     onCleanupStorage = {
-                        cleanupStorageNow()
+                        viewModel.cleanupStorageNow()
                     },
                     onSegmentDurationChanged = { minutes ->
                         if (isRecording) {
-                            statusMessage = "录制中不可修改分段时长；停止后修改会在下一次录制生效。"
+                            viewModel.setStatus("录制中不可修改分段时长；停止后修改会在下一次录制生效。")
                         } else {
-                            persist(settings.copy(segmentDurationMinutes = minutes))
+                            viewModel.persistSettings(settings.copy(segmentDurationMinutes = minutes))
                         }
                     },
                     onCollisionSensitivityChanged = { sensitivity ->
                         if (isRecording) {
-                            statusMessage = "录制中不可修改碰撞检测灵敏度；停止后修改会在下一次录制生效。"
+                            viewModel.setStatus("录制中不可修改碰撞检测灵敏度；停止后修改会在下一次录制生效。")
                         } else {
-                            persist(settings.copy(collisionSensitivity = sensitivity))
+                            viewModel.persistSettings(settings.copy(collisionSensitivity = sensitivity))
                         }
                     },
                     onAmbientAudioChanged = { enabled ->
                         if (isRecording) {
-                            statusMessage = "录制中不可切换环境声；停止后修改会在下一次录制生效。"
+                            viewModel.setStatus("录制中不可切换环境声；停止后修改会在下一次录制生效。")
                             return@SettingsPanel
                         }
 
                         if (!enabled) {
-                            persist(settings.copy(ambientAudioEnabled = false))
-                            statusMessage = "已切换为静音录制；后续录制不写入音频轨道。"
+                            viewModel.persistSettings(settings.copy(ambientAudioEnabled = false))
+                            viewModel.setStatus("已切换为静音录制；后续录制不写入音频轨道。")
                             return@SettingsPanel
                         }
 
                         val granted = hasPermission(Manifest.permission.RECORD_AUDIO)
                         if (granted) {
-                            persist(settings.copy(ambientAudioEnabled = true))
-                            statusMessage = "行车环境声已开启；音频仅写入本地行车视频。"
+                            viewModel.persistSettings(settings.copy(ambientAudioEnabled = true))
+                            viewModel.setStatus("行车环境声已开启；音频仅写入本地行车视频。")
                         } else {
                             audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         }
@@ -748,7 +435,7 @@ private fun VoyageCamApp() {
                         if (hasLocationPermission()) {
                             applyGpsMetadataSetting(true)
                         } else {
-                            pendingGpsMetadataEnable = true
+                            viewModel.setPendingGpsMetadataEnable(true)
                             locationPermissionLauncher.launch(
                                 arrayOf(
                                     Manifest.permission.ACCESS_FINE_LOCATION,
@@ -758,47 +445,47 @@ private fun VoyageCamApp() {
                         }
                     },
                     onExportWatermarkSubtitlesChanged = { enabled ->
-                        persist(settings.copy(exportWatermarkSubtitlesEnabled = enabled))
-                        statusMessage = if (enabled) {
+                        viewModel.persistSettings(settings.copy(exportWatermarkSubtitlesEnabled = enabled))
+                        viewModel.setStatus(if (enabled) {
                             "证据包导出会附带时间/速度水印字幕；原始视频保持不变。"
                         } else {
                             "已关闭导出水印字幕；证据包只包含元数据、轨迹和原始片段。"
-                        }
+                        })
                     },
                     onAutoStartOnPowerChanged = { enabled ->
-                        persist(settings.copy(autoStartOnPowerConnected = enabled))
-                        statusMessage = if (enabled) {
+                        viewModel.persistSettings(settings.copy(autoStartOnPowerConnected = enabled))
+                        viewModel.setStatus(if (enabled) {
                             "已开启连接充电器自动开始录制；需提前授权相机和通知权限。"
                         } else {
                             "已关闭连接充电器自动开始录制。"
-                        }
+                        })
                     },
                     onTrustedBluetoothDeviceChanged = { device ->
-                        persist(settings.copy(trustedBluetoothDevice = device))
+                        viewModel.persistSettings(settings.copy(trustedBluetoothDevice = device))
                     },
                     onAutoStartOnTrustedBluetoothChanged = { enabled ->
                         if (enabled && settings.trustedBluetoothDevice.isBlank()) {
-                            statusMessage = "请先填写可信蓝牙设备名称或 MAC 地址。"
+                            viewModel.setStatus("请先填写可信蓝牙设备名称或 MAC 地址。")
                             return@SettingsPanel
                         }
 
-                        persist(settings.copy(autoStartOnTrustedBluetooth = enabled))
-                        statusMessage = if (enabled) {
+                        viewModel.persistSettings(settings.copy(autoStartOnTrustedBluetooth = enabled))
+                        viewModel.setStatus(if (enabled) {
                             "已开启可信蓝牙连接自动开始录制；需提前授权相机、通知和蓝牙权限。"
                         } else {
                             "已关闭可信蓝牙连接自动开始录制。"
-                        }
+                        })
                     },
                     onRequestResetSettings = {
                         if (isRecording) {
-                            statusMessage = "录制中不可恢复默认设置；停止后再操作。"
+                            viewModel.setStatus("录制中不可恢复默认设置；停止后再操作。")
                         } else {
-                            pendingSettingsReset = true
+                            viewModel.setPendingSettingsReset(true)
                         }
                     },
-                    autoStartDiagnostic = autoStartDiagnostic,
+                    autoStartDiagnostic = uiState.autoStartDiagnostic,
                     onRefreshAutoStartDiagnostic = {
-                        autoStartDiagnostic = autoStartDiagnosticsStore.load()
+                        viewModel.refreshAutoStartDiagnostic()
                     },
                     pairedBluetoothDevices = pairedBluetoothDevices,
                     onRefreshPairedBluetoothDevices = {
@@ -806,108 +493,104 @@ private fun VoyageCamApp() {
                     },
                 )
 
-                if (pendingSettingsReset) {
+                if (uiState.pendingSettingsReset) {
                     SettingsResetConfirmationPanel(
                         onConfirm = {
-                            resetSettingsToDefaults()
+                            viewModel.resetSettingsToDefaults()
                         },
                         onCancel = {
-                            pendingSettingsReset = false
-                            statusMessage = "已取消恢复默认设置。"
+                            viewModel.setPendingSettingsReset(false)
+                            viewModel.setStatus("已取消恢复默认设置。")
                         },
                     )
                 }
 
-                pendingStorageCapacityChange?.let { pending ->
+                uiState.pendingStorageCapacityChange?.let { pending ->
                     StorageCapacityConfirmationPanel(
                         pending = pending,
                         onConfirm = {
-                            pendingStorageCapacityChange = null
-                            applyStorageCapacityChange(
+                            viewModel.applyStorageCapacityChange(
                                 capacityGb = pending.nextCapacityGb,
                                 cleanupNow = true,
                             )
                         },
                         onCancel = {
-                            pendingStorageCapacityChange = null
-                            statusMessage = "已取消调整录像容量。"
+                            viewModel.clearPendingStorageCapacityChange("已取消调整录像容量。")
                         },
                     )
                 }
 
-                playbackItem?.let { item ->
+                uiState.playbackItem?.let { item ->
                     PlaybackPanel(
                         item = item,
-                        onClose = { playbackItem = null },
+                        onClose = { viewModel.closePlayback() },
                         onOpenInSystem = {
                             openFileInSystem(
                                 context = context,
                                 file = item.file,
-                                onError = { message -> statusMessage = message },
+                                onError = { message -> viewModel.setStatus(message) },
                             )
                         },
                     )
                 }
 
-                pendingEmergencyEventDelete?.let { event ->
+                uiState.pendingEmergencyEventDelete?.let { event ->
                     EmergencyEventDeleteConfirmationPanel(
                         event = event,
                         onConfirm = {
-                            pendingEmergencyEventDelete = null
-                            deleteEmergencyEvent(event)
+                            viewModel.deleteEmergencyEvent(event)
                         },
                         onCancel = {
-                            pendingEmergencyEventDelete = null
-                            statusMessage = "已取消删除紧急事件。"
+                            viewModel.setPendingEmergencyEventDelete(null)
+                            viewModel.setStatus("已取消删除紧急事件。")
                         },
                     )
                 }
 
                 EmergencyEventPanel(
                     events = emergencyEvents,
-                    exportState = evidenceExportState,
+                    exportState = uiState.evidenceExportState,
                     onRefresh = {
-                        emergencyEvents = emergencyEventStore.listRecentEvents()
+                        viewModel.refreshRecordingData()
                     },
                     onRepairMissingSegments = {
-                        repairEmergencyEvents()
+                        viewModel.repairEmergencyEvents()
                     },
                     onOpen = { event ->
-                        openEmergencyEvent(event)
+                        viewModel.openEmergencyEvent(event)
                     },
                     onShare = { event ->
                         shareEmergencyEvent(event)
                     },
                     onExport = { event ->
-                        exportEmergencyEvent(event)
+                        viewModel.exportEmergencyEvent(event)
                     },
                     onCancelExport = {
-                        cancelEvidenceExport()
+                        viewModel.cancelEvidenceExport()
                     },
                     onShareExport = { file ->
                         shareEvidencePackage(file)
                     },
                     onDismissExport = {
-                        evidenceExportState = null
+                        viewModel.dismissEvidenceExport()
                     },
                     onOpenMap = { event ->
                         openEmergencyEventMap(event)
                     },
                     onDelete = { event ->
-                        pendingEmergencyEventDelete = event
+                        viewModel.setPendingEmergencyEventDelete(event)
                     },
                 )
 
-                pendingSegmentDelete?.let { segment ->
+                uiState.pendingSegmentDelete?.let { segment ->
                     SegmentDeleteConfirmationPanel(
                         segment = segment,
                         onConfirm = {
-                            pendingSegmentDelete = null
-                            deleteSegment(segment)
+                            viewModel.deleteSegment(segment)
                         },
                         onCancel = {
-                            pendingSegmentDelete = null
-                            statusMessage = "已取消删除录像片段。"
+                            viewModel.setPendingSegmentDelete(null)
+                            viewModel.setStatus("已取消删除录像片段。")
                         },
                     )
                 }
@@ -916,27 +599,26 @@ private fun VoyageCamApp() {
                     segments = filteredSegments,
                     totalSegmentCount = allSegments.size,
                     availableDays = availableDays,
-                    selectedDay = selectedDay,
-                    selectedCameraFilter = selectedCameraFilter,
-                    selectedLockFilter = selectedLockFilter,
-                    onSelectedDayChanged = { selectedDay = it },
-                    onCameraFilterChanged = { selectedCameraFilter = it },
-                    onLockFilterChanged = { selectedLockFilter = it },
+                    selectedDay = uiState.selectedDay,
+                    selectedCameraFilter = uiState.selectedCameraFilter,
+                    selectedLockFilter = uiState.selectedLockFilter,
+                    onSelectedDayChanged = { viewModel.selectDay(it) },
+                    onCameraFilterChanged = { viewModel.selectCameraFilter(it) },
+                    onLockFilterChanged = { viewModel.selectLockFilter(it) },
                     onRefresh = {
-                        refreshRecordingData()
-                        emergencyEvents = emergencyEventStore.listRecentEvents()
+                        viewModel.refreshRecordingData()
                     },
                     onOpen = { segment ->
-                        openSegment(segment)
+                        viewModel.openSegment(segment)
                     },
                     onShare = { segment ->
                         shareSegment(segment)
                     },
                     onUnlock = { segment ->
-                        unlockSegment(segment)
+                        viewModel.unlockSegment(segment)
                     },
                     onDelete = { segment ->
-                        pendingSegmentDelete = segment
+                        viewModel.setPendingSegmentDelete(segment)
                     },
                 )
             }
@@ -1249,13 +931,5 @@ private fun openFileInSystem(
     }
 }
 
-private fun EmergencyEvent.existingSegmentFiles(storageManager: RecordingStorageManager): List<File> {
-    return segmentPaths
-        .mapNotNull { storageManager.dashcamFile(it) }
-        .filter { it.exists() && it.isFile }
-}
-
 private const val VIDEO_MIME_TYPE = "video/mp4"
 private const val ZIP_MIME_TYPE = "application/zip"
-private const val PREVIEW_RELEASE_DELAY_MILLIS = 350L
-private const val EVENT_REFRESH_DELAY_MILLIS = 600L
