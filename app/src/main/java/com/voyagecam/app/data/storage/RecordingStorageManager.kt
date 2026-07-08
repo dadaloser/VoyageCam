@@ -116,6 +116,29 @@ class RecordingStorageManager(private val context: Context) {
         return lockedFile
     }
 
+    fun unlockSegment(segment: RecordingSegment): File? {
+        if (!segment.locked) return File(segment.absolutePath).takeIf { it.exists() && it.isFile }
+        val lockedFile = File(segment.absolutePath)
+        if (!lockedFile.exists() || !lockedFile.isFile) return null
+
+        val lockedPath = lockedRoot.canonicalFile.toPath()
+        val filePath = runCatching { lockedFile.canonicalFile.toPath() }.getOrNull() ?: return null
+        if (!filePath.startsWith(lockedPath)) return null
+
+        val relativePath = lockedPath.relativize(filePath).toString()
+        val normalFile = File(normalRoot, relativePath).withoutLockedName()
+        normalFile.parentFile?.mkdirs()
+
+        val moved = lockedFile.renameTo(normalFile)
+        if (!moved) {
+            lockedFile.copyTo(normalFile, overwrite = true)
+            lockedFile.delete()
+        }
+        pruneEmptyParents(lockedFile.parentFile)
+
+        return normalFile
+    }
+
     fun dashcamRelativePath(file: File?): String? {
         if (file == null) return null
         val root = dashcamRoot.canonicalFile.toPath()
@@ -175,14 +198,18 @@ class RecordingStorageManager(private val context: Context) {
 
     private fun pruneEmptyParents(startDirectory: File?) {
         var directory = startDirectory
-        while (directory != null && directory.absolutePath.startsWith(normalRoot.absolutePath)) {
+        while (directory != null && directory.isUnderManagedRoot()) {
             val children = directory.listFiles()
             if (!children.isNullOrEmpty()) return
             val parent = directory.parentFile
             directory.delete()
-            if (directory.absolutePath == normalRoot.absolutePath) return
+            if (directory.absolutePath == normalRoot.absolutePath || directory.absolutePath == lockedRoot.absolutePath) return
             directory = parent
         }
+    }
+
+    private fun File.isUnderManagedRoot(): Boolean {
+        return absolutePath.startsWith(normalRoot.absolutePath) || absolutePath.startsWith(lockedRoot.absolutePath)
     }
 
     private val recordingRoot: File
@@ -216,6 +243,12 @@ class RecordingStorageManager(private val context: Context) {
             if (nameWithoutExtension.endsWith("_locked")) return this
             val lockedName = "${nameWithoutExtension}_locked.$extension"
             return File(parentFile, lockedName)
+        }
+
+        private fun File.withoutLockedName(): File {
+            if (!nameWithoutExtension.endsWith("_locked")) return this
+            val normalName = "${nameWithoutExtension.removeSuffix("_locked")}.$extension"
+            return File(parentFile, normalName)
         }
     }
 }

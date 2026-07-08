@@ -51,6 +51,16 @@ class EmergencyEventStore(context: Context) {
     }
 
     @Synchronized
+    fun removeSegment(segmentPath: String?) {
+        if (segmentPath.isNullOrBlank()) return
+
+        val updated = listRecentEvents(MAX_EVENT_COUNT).map { event ->
+            event.copy(segmentPaths = event.segmentPaths.filterNot { it == segmentPath })
+        }
+        writeEvents(updated)
+    }
+
+    @Synchronized
     fun listRecentEvents(limit: Int = DEFAULT_EVENT_LIST_LIMIT): List<EmergencyEvent> {
         if (!eventFile.exists()) return emptyList()
         return eventFile.readLines()

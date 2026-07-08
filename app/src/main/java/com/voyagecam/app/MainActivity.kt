@@ -372,6 +372,24 @@ private fun VoyageCamApp() {
         }
     }
 
+    fun unlockSegment(segment: RecordingSegment) {
+        if (!segment.locked) {
+            statusMessage = "该片段已经是普通片段。"
+            return
+        }
+
+        runCatching {
+            val lockedDashcamPath = storageManager.dashcamRelativePath(File(segment.absolutePath))
+            val unlockedFile = storageManager.unlockSegment(segment) ?: error("锁定片段不存在")
+            emergencyEventStore.removeSegment(lockedDashcamPath)
+            refreshRecordingData()
+            emergencyEvents = emergencyEventStore.listRecentEvents()
+            statusMessage = "已解除锁定：${unlockedFile.name}。该片段之后会按循环空间策略管理。"
+        }.onFailure { error ->
+            statusMessage = "解除锁定失败：${error.message ?: segment.name}"
+        }
+    }
+
     fun openEmergencyEvent(event: EmergencyEvent) {
         runCatching {
             val file = event.existingSegmentFiles(storageManager).firstOrNull()
@@ -749,6 +767,9 @@ private fun VoyageCamApp() {
                     },
                     onShare = { segment ->
                         shareSegment(segment)
+                    },
+                    onUnlock = { segment ->
+                        unlockSegment(segment)
                     },
                 )
             }

@@ -31,6 +31,7 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 25. Show cancellable evidence export progress and keep partial ZIP output isolated from original recordings.
 26. Show recording storage usage, locked-clip footprint, and estimated remaining recording time in settings.
 27. Ask for confirmation before lowering loop-recording capacity below current normal-clip usage, then clean only normal clips after confirmation.
+28. Unlock historical locked clips from the recording list and remove their emergency-event references.
 
 ## Current Status
 
@@ -55,6 +56,7 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 - Evidence export writes to a temporary ZIP first, then saves a completed package name, so cancellation or export failure only removes partial output and leaves original clips untouched.
 - Settings now summarize normal and locked recording space, configured loop-recording capacity, clip counts, and estimated remaining recording time based on current audio and camera mode settings.
 - Reducing storage capacity below current normal recording usage now opens an in-app confirmation panel before applying the change and deleting old normal clips.
+- Locked clips can be returned to normal loop-recording management from the history list, and related emergency-event metadata is updated.
 
 ## Build
 
@@ -69,4 +71,4 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 2. Implement dual-camera recording for devices that pass the capability check, with rear-only fallback.
 3. Add GPS route metadata and video watermarks for evidence exports.
 4. Extract `core`, `data`, `feature`, and `ui` into Gradle modules once the package boundaries stabilize.
-5. Add unlock/delete controls for historical recordings and emergency events.
+5. Add delete controls for historical recordings and emergency events.
