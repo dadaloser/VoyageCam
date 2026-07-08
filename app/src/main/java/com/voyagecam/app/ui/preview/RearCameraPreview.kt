@@ -2,7 +2,7 @@ package com.voyagecam.app.ui.preview
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.view.TextureView
+import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
@@ -56,14 +56,16 @@ fun RearCameraPreview(
         contentAlignment = Alignment.Center,
     ) {
         when {
-            !enabled -> PreviewMessage("录制中，后摄画面由前台服务占用")
+            !enabled -> PreviewMessage("后摄预览已暂停")
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) !=
                 PackageManager.PERMISSION_GRANTED -> PreviewMessage("授权相机后显示后摄预览")
             else -> {
                 AndroidView(
                     factory = { viewContext ->
-                        TextureView(viewContext).also { textureView ->
-                            controller.start(textureView) { message ->
+                        PreviewView(viewContext).also { previewView ->
+                            previewView.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                            previewView.scaleType = PreviewView.ScaleType.FILL_CENTER
+                            controller.start(previewView) { message ->
                                 errorMessage = message
                             }
                         }

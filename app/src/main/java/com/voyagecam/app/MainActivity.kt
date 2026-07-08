@@ -255,18 +255,13 @@ private fun VoyageCamApp() {
 
     fun beginRecordingService() {
         isRecording = true
-        statusMessage = "正在从预览切换到录制..."
-        Handler(Looper.getMainLooper()).postDelayed(
-            {
-                RecordingForegroundService.start(
-                    context = context,
-                    dualCamera = settings.dualCameraEnabled && capability.isAvailable,
-                    ambientAudio = settings.ambientAudioEnabled,
-                )
-                statusMessage = "后摄录制服务已启动；每 ${settings.segmentDurationMinutes} 分钟分段，按 ${settings.storageCapacityGb}GB 循环空间清理普通片段。"
-            },
-            PREVIEW_RELEASE_DELAY_MILLIS,
+        statusMessage = "正在启动后摄录制..."
+        RecordingForegroundService.start(
+            context = context,
+            dualCamera = settings.dualCameraEnabled && capability.isAvailable,
+            ambientAudio = settings.ambientAudioEnabled,
         )
+        statusMessage = "后摄录制服务已启动；预览与录制共用 CameraX 管线，每 ${settings.segmentDurationMinutes} 分钟分段。"
     }
 
     fun applyGpsMetadataSetting(enabled: Boolean) {
@@ -959,7 +954,7 @@ private fun RecordingPanel(
     onEmergencyLock: () -> Unit,
 ) {
     SectionCard {
-        RearCameraPreview(enabled = !isRecording)
+        RearCameraPreview(enabled = true)
         Spacer(modifier = Modifier.height(14.dp))
         Text(
             text = if (isRecording) "正在录制" else "准备录制",

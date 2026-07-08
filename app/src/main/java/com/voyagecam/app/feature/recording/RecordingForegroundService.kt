@@ -450,10 +450,38 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         private const val EXTRA_GPS_METADATA_ENABLED = "extra_gps_metadata_enabled"
 
         fun start(context: Context, dualCamera: Boolean, ambientAudio: Boolean) {
-            val intent = Intent(context, RecordingForegroundService::class.java)
+            ContextCompat.startForegroundService(
+                context,
+                startIntent(
+                    context = context,
+                    dualCamera = dualCamera,
+                    ambientAudio = ambientAudio,
+                ),
+            )
+        }
+
+        fun startPendingIntent(
+            context: Context,
+            requestCode: Int,
+            dualCamera: Boolean,
+            ambientAudio: Boolean,
+        ): PendingIntent {
+            return PendingIntent.getForegroundService(
+                context,
+                requestCode,
+                startIntent(
+                    context = context,
+                    dualCamera = dualCamera,
+                    ambientAudio = ambientAudio,
+                ),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+        }
+
+        private fun startIntent(context: Context, dualCamera: Boolean, ambientAudio: Boolean): Intent {
+            return Intent(context, RecordingForegroundService::class.java)
                 .putExtra(EXTRA_DUAL_CAMERA, dualCamera)
                 .putExtra(EXTRA_AMBIENT_AUDIO, ambientAudio)
-            ContextCompat.startForegroundService(context, intent)
         }
 
         fun stop(context: Context) {

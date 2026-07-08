@@ -23,7 +23,10 @@ class PowerConnectionReceiver : BroadcastReceiver() {
             return
         }
 
-        val blockedReason = RecordingAutoStartPolicy(context).startIfAllowed(settings)
+        val blockedReason = RecordingAutoStartPolicy(context).startIfAllowed(
+            source = AutoStartSource.Power,
+            settings = settings,
+        )
         diagnostics.record(
             source = AutoStartSource.Power,
             result = if (blockedReason == null) AutoStartResult.Started else AutoStartResult.Ignored,

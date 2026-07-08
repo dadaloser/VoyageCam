@@ -67,7 +67,11 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
             return
         }
 
-        val blockedReason = RecordingAutoStartPolicy(context).startIfAllowed(settings)
+        val blockedReason = RecordingAutoStartPolicy(context).startIfAllowed(
+            source = AutoStartSource.Bluetooth,
+            settings = settings,
+            detail = deviceSummary,
+        )
         diagnostics.record(
             source = AutoStartSource.Bluetooth,
             result = if (blockedReason == null) AutoStartResult.Started else AutoStartResult.Ignored,

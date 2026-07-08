@@ -1,20 +1,11 @@
 package com.voyagecam.app.core.camera
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
-import android.hardware.camera2.CameraAccessException
-import android.hardware.camera2.CameraCaptureSession
-import android.hardware.camera2.CameraCharacteristics
-import android.hardware.camera2.CameraDevice
-import android.hardware.camera2.CameraManager
-import android.hardware.camera2.CaptureRequest
-import android.media.MediaRecorder
-import android.os.Build
 import android.os.Handler
-import android.util.Size
-import android.view.Surface
+import androidx.camera.video.Recording
+import androidx.camera.video.VideoRecordEvent
 import androidx.core.content.ContextCompat
 import com.voyagecam.app.data.storage.RecordingStorageManager
 import java.io.File
@@ -25,15 +16,14 @@ class RearCameraRecorder(
     private val storageManager: RecordingStorageManager,
     private val callbacks: Callbacks,
 ) {
-    private var cameraDevice: CameraDevice? = null
-    private var captureSession: CameraCaptureSession? = null
-    private var mediaRecorder: MediaRecorder? = null
+    private var currentRecording: Recording? = null
     private var outputFile: File? = null
     private var recordingStarted = false
     private var shouldContinueRecording = false
     private var audioEnabled = false
     private var segmentDurationMillis = DEFAULT_SEGMENT_DURATION_MINUTES * 60_000L
     private var segmentIndex = 0
+    private var pendingStopReason: StopReason? = null
 
     private val rotateSegmentTask = Runnable {
         rotateSegment()
@@ -54,14 +44,10 @@ class RearCameraRecorder(
             .coerceIn(MIN_SEGMENT_DURATION_MINUTES, MAX_SEGMENT_DURATION_MINUTES) * 60_000L
         shouldContinueRecording = true
         segmentIndex = 0
+        pendingStopReason = null
 
         cameraHandler.post {
-            try {
-                openRearCamera(audioEnabled)
-            } catch (error: Throwable) {
-                callbacks.onRecordingError(error.message ?: "后摄录制启动失败")
-                release(notifyStopped = true)
-            }
+            startNextSegment()
         }
     }
 
@@ -69,198 +55,124 @@ class RearCameraRecorder(
         cameraHandler.post {
             shouldContinueRecording = false
             cameraHandler.removeCallbacks(rotateSegmentTask)
-            release(notifyStopped = true)
+            val recording = currentRecording
+            if (recording == null) {
+                callbacks.onRecordingStopped(outputFile)
+                return@post
+            }
+            pendingStopReason = StopReason.Stop
+            runCatching { recording.stop() }
+                .onFailure { error ->
+                    callbacks.onRecordingError(error.message ?: "停止录制失败")
+                    callbacks.onRecordingStopped(outputFile)
+                }
         }
     }
 
     fun lockCurrentSegment() {
         cameraHandler.post {
-            if (!recordingStarted) {
+            val recording = currentRecording
+            if (!recordingStarted || recording == null) {
                 callbacks.onRecordingError("当前没有可锁定的录制片段")
                 return@post
             }
 
-            val lockedFile = outputFile
-            release(notifyStopped = false)
-            callbacks.onSegmentLockRequested(lockedFile)
-            if (!shouldContinueRecording) return@post
+            cameraHandler.removeCallbacks(rotateSegmentTask)
+            pendingStopReason = StopReason.Lock
+            runCatching { recording.stop() }
+                .onFailure { error ->
+                    callbacks.onRecordingError(error.message ?: "锁定当前片段失败")
+                }
+        }
+    }
 
-            try {
-                openRearCamera(audioEnabled)
-            } catch (error: Throwable) {
-                callbacks.onRecordingError(error.message ?: "锁定后切换到下一录制片段失败")
-                shouldContinueRecording = false
-                release(notifyStopped = true)
+    private fun startNextSegment() {
+        if (!shouldContinueRecording) return
+
+        val file = storageManager.createNormalSegmentFile(System.currentTimeMillis(), CAMERA_DIRECTION_REAR)
+        outputFile = file
+        recordingStarted = false
+        pendingStopReason = null
+
+        RearCameraCameraXPipeline.startRecording(
+            context = context,
+            file = file,
+            audioEnabled = audioEnabled,
+            onReady = { recording ->
+                cameraHandler.post {
+                    currentRecording = recording
+                }
+            },
+            onEvent = { event ->
+                cameraHandler.post {
+                    handleVideoRecordEvent(event)
+                }
+            },
+            onError = { message ->
+                cameraHandler.post {
+                    file.delete()
+                    outputFile = null
+                    callbacks.onRecordingError(message)
+                }
+            },
+        )
+    }
+
+    private fun handleVideoRecordEvent(event: VideoRecordEvent) {
+        when (event) {
+            is VideoRecordEvent.Start -> {
+                recordingStarted = true
+                segmentIndex++
+                callbacks.onRecordingStarted(outputFile, segmentIndex)
+                cameraHandler.removeCallbacks(rotateSegmentTask)
+                cameraHandler.postDelayed(rotateSegmentTask, segmentDurationMillis)
+            }
+            is VideoRecordEvent.Finalize -> {
+                handleRecordingFinalized(event)
             }
         }
     }
 
-    @SuppressLint("MissingPermission")
-    private fun openRearCamera(audioEnabled: Boolean) {
-        val cameraManager = context.getSystemService(CameraManager::class.java)
-        val rearCameraId = cameraManager.cameraIdList.firstOrNull { id ->
-            cameraManager.getCameraCharacteristics(id)
-                .get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
-        } ?: throw CameraAccessException(CameraAccessException.CAMERA_ERROR, "未检测到后置摄像头")
+    private fun handleRecordingFinalized(event: VideoRecordEvent.Finalize) {
+        cameraHandler.removeCallbacks(rotateSegmentTask)
+        val finalizedFile = outputFile
+        val stopReason = pendingStopReason ?: StopReason.Stop
+        currentRecording = null
+        recordingStarted = false
+        pendingStopReason = null
 
-        val characteristics = cameraManager.getCameraCharacteristics(rearCameraId)
-        val videoSize = characteristics.selectVideoSize()
-        val recorder = buildMediaRecorder(characteristics, videoSize, audioEnabled)
-        mediaRecorder = recorder
+        if (event.error != VideoRecordEvent.Finalize.ERROR_NONE) {
+            callbacks.onRecordingError(event.cause?.message ?: "录制片段完成异常：${event.error}")
+        }
 
-        cameraManager.openCamera(
-            rearCameraId,
-            object : CameraDevice.StateCallback() {
-                override fun onOpened(camera: CameraDevice) {
-                    cameraDevice = camera
-                    createRecordingSession(camera, recorder.surface)
+        when (stopReason) {
+            StopReason.Rotate -> {
+                callbacks.onSegmentFinalized(finalizedFile)
+                if (shouldContinueRecording) {
+                    startNextSegment()
                 }
-
-                override fun onDisconnected(camera: CameraDevice) {
-                    callbacks.onRecordingError("后置摄像头连接已断开")
-                    release(notifyStopped = true)
-                }
-
-                override fun onError(camera: CameraDevice, error: Int) {
-                    callbacks.onRecordingError("后置摄像头打开失败：$error")
-                    release(notifyStopped = true)
-                }
-            },
-            cameraHandler,
-        )
-    }
-
-    private fun createRecordingSession(camera: CameraDevice, recorderSurface: Surface) {
-        camera.createCaptureSession(
-            listOf(recorderSurface),
-            object : CameraCaptureSession.StateCallback() {
-                override fun onConfigured(session: CameraCaptureSession) {
-                    captureSession = session
-                    val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
-                        addTarget(recorderSurface)
-                        set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
-                    }
-
-                    session.setRepeatingRequest(request.build(), null, cameraHandler)
-                    mediaRecorder?.start()
-                    recordingStarted = true
-                    segmentIndex++
-                    callbacks.onRecordingStarted(outputFile, segmentIndex)
-                    cameraHandler.removeCallbacks(rotateSegmentTask)
-                    cameraHandler.postDelayed(rotateSegmentTask, segmentDurationMillis)
-                }
-
-                override fun onConfigureFailed(session: CameraCaptureSession) {
-                    callbacks.onRecordingError("后摄录制会话创建失败")
-                    release(notifyStopped = true)
-                }
-            },
-            cameraHandler,
-        )
-    }
-
-    private fun buildMediaRecorder(
-        characteristics: CameraCharacteristics,
-        videoSize: Size,
-        audioEnabled: Boolean,
-    ): MediaRecorder {
-        val file = storageManager.createNormalSegmentFile(System.currentTimeMillis(), CAMERA_DIRECTION_REAR)
-        outputFile = file
-
-        return createMediaRecorder().apply {
-            if (audioEnabled) {
-                setAudioSource(MediaRecorder.AudioSource.MIC)
             }
-            setVideoSource(MediaRecorder.VideoSource.SURFACE)
-            setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-            setOutputFile(file.absolutePath)
-            setVideoEncodingBitRate(DEFAULT_VIDEO_BITRATE)
-            setVideoFrameRate(DEFAULT_FRAME_RATE)
-            setVideoSize(videoSize.width, videoSize.height)
-            setVideoEncoder(MediaRecorder.VideoEncoder.H264)
-            if (audioEnabled) {
-                setAudioEncodingBitRate(DEFAULT_AUDIO_BITRATE)
-                setAudioSamplingRate(DEFAULT_AUDIO_SAMPLE_RATE)
-                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            StopReason.Lock -> {
+                callbacks.onSegmentLockRequested(finalizedFile)
+                if (shouldContinueRecording) {
+                    startNextSegment()
+                }
             }
-            setOrientationHint(characteristics.rearCameraOrientationHint())
-            prepare()
+            StopReason.Stop -> {
+                callbacks.onRecordingStopped(finalizedFile)
+            }
         }
     }
 
     private fun rotateSegment() {
         if (!shouldContinueRecording) return
-
-        val previousFile = outputFile
-        release(notifyStopped = false)
-        callbacks.onSegmentFinalized(previousFile)
-        if (!shouldContinueRecording) return
-
-        try {
-            openRearCamera(audioEnabled)
-        } catch (error: Throwable) {
-            callbacks.onRecordingError(error.message ?: "切换到下一录制片段失败")
-            shouldContinueRecording = false
-            release(notifyStopped = true)
-        }
-    }
-
-    private fun release(notifyStopped: Boolean) {
-        cameraHandler.removeCallbacks(rotateSegmentTask)
-        runCatching {
-            captureSession?.stopRepeating()
-            captureSession?.abortCaptures()
-        }
-        captureSession?.close()
-        captureSession = null
-
-        val recorder = mediaRecorder
-        if (recorder != null) {
-            runCatching {
-                if (recordingStarted) {
-                    recorder.stop()
-                }
-            }.onFailure {
-                outputFile?.delete()
-                callbacks.onRecordingError("录制片段未正常完成，已删除临时文件")
+        val recording = currentRecording ?: return
+        pendingStopReason = StopReason.Rotate
+        runCatching { recording.stop() }
+            .onFailure { error ->
+                callbacks.onRecordingError(error.message ?: "切换到下一录制片段失败")
+                pendingStopReason = null
             }
-            runCatching { recorder.reset() }
-            runCatching { recorder.release() }
-        }
-        mediaRecorder = null
-
-        cameraDevice?.close()
-        cameraDevice = null
-
-        if (recordingStarted && notifyStopped) {
-            callbacks.onRecordingStopped(outputFile)
-        }
-        recordingStarted = false
-    }
-
-    private fun CameraCharacteristics.selectVideoSize(): Size {
-        val sizes = get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-            ?.getOutputSizes(MediaRecorder::class.java)
-            .orEmpty()
-        val preferred = sizes
-            .filter { it.width <= 1920 && it.height <= 1080 && it.width >= 1280 && it.height >= 720 }
-            .maxByOrNull { it.width * it.height }
-        val fallback = sizes.maxByOrNull { it.width * it.height }
-
-        return preferred ?: fallback ?: Size(1280, 720)
-    }
-
-    private fun CameraCharacteristics.rearCameraOrientationHint(): Int {
-        return get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
-    }
-
-    private fun createMediaRecorder(): MediaRecorder {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            MediaRecorder(context)
-        } else {
-            @Suppress("DEPRECATION")
-            MediaRecorder()
-        }
     }
 
     interface Callbacks {
@@ -271,11 +183,13 @@ class RearCameraRecorder(
         fun onRecordingError(message: String)
     }
 
+    private enum class StopReason {
+        Rotate,
+        Lock,
+        Stop,
+    }
+
     companion object {
-        private const val DEFAULT_VIDEO_BITRATE = 8_000_000
-        private const val DEFAULT_FRAME_RATE = 30
-        private const val DEFAULT_AUDIO_BITRATE = 128_000
-        private const val DEFAULT_AUDIO_SAMPLE_RATE = 44_100
         private const val DEFAULT_SEGMENT_DURATION_MINUTES = 3
         private const val MIN_SEGMENT_DURATION_MINUTES = 1
         private const val MAX_SEGMENT_DURATION_MINUTES = 5
