@@ -149,6 +149,7 @@ private fun VoyageCamApp() {
     var pendingSegmentDelete by remember { mutableStateOf<RecordingSegment?>(null) }
     var pendingEmergencyEventDelete by remember { mutableStateOf<EmergencyEvent?>(null) }
     var pendingStart by rememberSaveable { mutableStateOf(false) }
+    var pendingGpsMetadataEnable by rememberSaveable { mutableStateOf(false) }
     var permissionRefreshKey by remember { mutableIntStateOf(0) }
     val availableDays = allSegments.map { it.day }.distinct()
     val filteredSegments = allSegments.filterSegments(
@@ -259,6 +260,19 @@ private fun VoyageCamApp() {
         )
     }
 
+    fun applyGpsMetadataSetting(enabled: Boolean) {
+        pendingGpsMetadataEnable = false
+        persist(settings.copy(gpsMetadataEnabled = enabled))
+        if (isRecording) {
+            RecordingForegroundService.setGpsMetadataEnabled(context, enabled)
+        }
+        statusMessage = if (enabled) {
+            "已开启GPS位置与轨迹记录；后续紧急事件会保存最近位置和轨迹。"
+        } else {
+            "已关闭GPS位置与轨迹记录；后续紧急事件不记录位置和轨迹。"
+        }
+    }
+
     fun redetect() {
         persistCapability(
             DualCameraCapability(
@@ -320,10 +334,21 @@ private fun VoyageCamApp() {
         permissionRefreshKey++
         val granted = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        statusMessage = if (granted) {
-            "定位权限已授权；紧急事件会记录最近可用坐标。"
+        if (granted && pendingGpsMetadataEnable) {
+            applyGpsMetadataSetting(true)
+        } else if (!granted && pendingGpsMetadataEnable) {
+            pendingGpsMetadataEnable = false
+            persist(settings.copy(gpsMetadataEnabled = false))
+            statusMessage = "定位权限未授权；已保持关闭GPS位置与轨迹记录。"
         } else {
-            "定位权限未授权；紧急事件仍会记录时间、触发类型和片段。"
+            statusMessage = if (granted) {
+                if (settings.gpsMetadataEnabled && isRecording) {
+                    RecordingForegroundService.setGpsMetadataEnabled(context, true)
+                }
+                "定位权限已授权；紧急事件可记录最近可用坐标。"
+            } else {
+                "定位权限未授权；紧急事件仍会记录时间、触发类型和片段。"
+            }
         }
     }
 
@@ -706,6 +731,24 @@ private fun VoyageCamApp() {
                             statusMessage = "行车环境声已开启；音频仅写入本地行车视频。"
                         } else {
                             audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    },
+                    onGpsMetadataChanged = { enabled ->
+                        if (!enabled) {
+                            applyGpsMetadataSetting(false)
+                            return@SettingsPanel
+                        }
+
+                        if (hasLocationPermission()) {
+                            applyGpsMetadataSetting(true)
+                        } else {
+                            pendingGpsMetadataEnable = true
+                            locationPermissionLauncher.launch(
+                                arrayOf(
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                                ),
+                            )
                         }
                     },
                     onAutoStartOnPowerChanged = { enabled ->

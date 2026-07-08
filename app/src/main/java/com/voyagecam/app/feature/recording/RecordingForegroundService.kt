@@ -44,6 +44,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
     private var startedAtMillis = 0L
     private var dualCamera = false
     private var ambientAudio = false
+    private var gpsMetadataEnabled = true
     private var storageCapacityGb = VoyageCamSettingsStore.MIN_STORAGE_GB
     private var segmentDurationMinutes = 3
     private var collisionSensitivity = CollisionSensitivity.Medium
@@ -98,6 +99,10 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
             requestEmergencyLock()
             return START_STICKY
         }
+        if (intent?.action == ACTION_SET_GPS_METADATA) {
+            setGpsMetadataEnabled(intent.getBooleanExtra(EXTRA_GPS_METADATA_ENABLED, true))
+            return if (startedAtMillis > 0L) START_STICKY else START_NOT_STICKY
+        }
         if (startedAtMillis > 0L && recorder != null) {
             notificationManager.notify(NOTIFICATION_ID, buildNotification())
             return START_STICKY
@@ -109,6 +114,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         storageCapacityGb = settings.storageCapacityGb
         segmentDurationMinutes = settings.segmentDurationMinutes
         collisionSensitivity = settings.collisionSensitivity
+        gpsMetadataEnabled = settings.gpsMetadataEnabled
         startedAtMillis = System.currentTimeMillis()
         currentSegmentIndex = 0
         recordingStatus = "正在准备后置摄像头，每 ${segmentDurationMinutes} 分钟自动分段"
@@ -312,8 +318,12 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
             triggeredAtMillis = collisionEvent?.triggeredAtMillis ?: System.currentTimeMillis(),
             accelerationG = collisionEvent?.accelerationG,
             thresholdG = collisionEvent?.thresholdG,
-            location = emergencyLocationProvider.currentSnapshot(),
-            gpsTrackPoints = recentGpsTrackPoints(collisionEvent?.triggeredAtMillis ?: System.currentTimeMillis()),
+            location = if (gpsMetadataEnabled) emergencyLocationProvider.currentSnapshot() else null,
+            gpsTrackPoints = if (gpsMetadataEnabled) {
+                recentGpsTrackPoints(collisionEvent?.triggeredAtMillis ?: System.currentTimeMillis())
+            } else {
+                emptyList()
+            },
         )
         pendingLockNextEventId = event.id
         recordingStatus = collisionEvent?.let {
@@ -345,11 +355,12 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
 
     private fun startGpsTrackSampling() {
         mainHandler.removeCallbacks(gpsTrackSampleTask)
-        if (!hasAnyLocationPermission()) return
+        if (!gpsMetadataEnabled || !hasAnyLocationPermission()) return
         mainHandler.post(gpsTrackSampleTask)
     }
 
     private fun sampleGpsTrackPoint() {
+        if (!gpsMetadataEnabled) return
         val point = emergencyLocationProvider.currentSnapshot()?.toGpsTrackPoint() ?: return
         if (gpsTrackBuffer.lastOrNull()?.capturedAtMillis == point.capturedAtMillis) return
         gpsTrackBuffer += point
@@ -357,6 +368,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
     }
 
     private fun recentGpsTrackPoints(triggeredAtMillis: Long): List<GpsTrackPoint> {
+        if (!gpsMetadataEnabled) return emptyList()
         sampleGpsTrackPoint()
         pruneGpsTrackBuffer(triggeredAtMillis)
         val startMillis = triggeredAtMillis - GPS_TRACK_RETENTION_MS
@@ -384,6 +396,21 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         )
     }
 
+    private fun setGpsMetadataEnabled(enabled: Boolean) {
+        gpsMetadataEnabled = enabled
+        if (enabled) {
+            startGpsTrackSampling()
+            recordingStatus = "GPS位置与轨迹记录已开启"
+        } else {
+            mainHandler.removeCallbacks(gpsTrackSampleTask)
+            gpsTrackBuffer.clear()
+            recordingStatus = "GPS位置与轨迹记录已关闭"
+        }
+        if (startedAtMillis > 0L) {
+            notificationManager.notify(NOTIFICATION_ID, buildNotification())
+        }
+    }
+
     private fun lockSegment(file: File?, eventId: String?): File? {
         val lockedFile = storageManager.lockNormalSegment(file)
         if (lockedFile != null && lockedFile != file) {
@@ -401,7 +428,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         if (ambientAudio && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         }
-        if (hasAnyLocationPermission() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (gpsMetadataEnabled && hasAnyLocationPermission() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
         }
         return type
@@ -416,8 +443,10 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         private const val MAX_GPS_TRACK_POINTS = 60
         private const val ACTION_STOP = "com.voyagecam.app.action.STOP_RECORDING"
         private const val ACTION_LOCK_CURRENT = "com.voyagecam.app.action.LOCK_CURRENT"
+        private const val ACTION_SET_GPS_METADATA = "com.voyagecam.app.action.SET_GPS_METADATA"
         private const val EXTRA_DUAL_CAMERA = "extra_dual_camera"
         private const val EXTRA_AMBIENT_AUDIO = "extra_ambient_audio"
+        private const val EXTRA_GPS_METADATA_ENABLED = "extra_gps_metadata_enabled"
 
         fun start(context: Context, dualCamera: Boolean, ambientAudio: Boolean) {
             val intent = Intent(context, RecordingForegroundService::class.java)
@@ -433,6 +462,13 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
 
         fun lockCurrent(context: Context) {
             val intent = Intent(context, RecordingForegroundService::class.java).setAction(ACTION_LOCK_CURRENT)
+            context.startService(intent)
+        }
+
+        fun setGpsMetadataEnabled(context: Context, enabled: Boolean) {
+            val intent = Intent(context, RecordingForegroundService::class.java)
+                .setAction(ACTION_SET_GPS_METADATA)
+                .putExtra(EXTRA_GPS_METADATA_ENABLED, enabled)
             context.startService(intent)
         }
     }

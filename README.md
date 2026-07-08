@@ -35,6 +35,8 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 29. Delete historical recording files and emergency-event records through in-app confirmation flows.
 30. Manually run loop-capacity cleanup for normal clips and repair stale emergency-event clip references.
 31. Capture recent GPS track points during recording and include `gps_track.csv` in emergency evidence packages.
+32. Show an in-app route preview for emergency events with GPS tracks, including distance, duration, speed, and start/end coordinates.
+33. Let users disable GPS location and route metadata capture independently from core video recording.
 
 ## Current Status
 
@@ -43,7 +45,7 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 - Kotlin + Jetpack Compose UI.
 - Local settings persisted with `SharedPreferences`.
 - Camera concurrency capability detection via Camera2 `CameraManager`.
-- Runtime permission flow for camera, Android 13+ notifications, optional microphone audio, and optional event location metadata.
+- Runtime permission flow for camera, Android 13+ notifications, optional microphone audio, and optional event location/route metadata.
 - Foreground service backed by Camera2 + `MediaRecorder` for rear-camera single recording.
 - Segment-style file naming under the app-specific `Movies/Dashcam/normal/yyyy-MM-dd/group_HHmmss/` directory.
 - Manual and sensor-triggered emergency locking moves protected evidence into `Movies/Dashcam/locked/`.
@@ -63,6 +65,8 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 - Recording rows can delete managed local clip files after confirmation, while emergency events can delete only the event metadata and keep linked clips available in history.
 - Settings can manually trigger normal-clip cleanup using the current capacity limit, and emergency events can repair missing linked-clip references.
 - Emergency events can store recent GPS track points when location permission is available, and exported evidence ZIP files include a route-ready `gps_track.csv`.
+- Emergency rows summarize GPS routes directly in-app, with calculated distance, duration, average speed, max speed, and start/end coordinates.
+- Settings include a GPS metadata privacy switch; disabling it stops route sampling, clears the in-memory GPS buffer, and keeps future emergency events free of location and track metadata.
 
 ## Build
 
@@ -77,4 +81,4 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 2. Implement dual-camera recording for devices that pass the capability check, with rear-only fallback.
 3. Add video watermarks and optional speed/time overlays for exported clips.
 4. Extract `core`, `data`, `feature`, and `ui` into Gradle modules once the package boundaries stabilize.
-5. Add a route preview view for emergency events with GPS tracks.
+5. Add a richer map-backed route viewer when map dependencies are introduced.

@@ -65,6 +65,7 @@ fun SettingsPanel(
     onSegmentDurationChanged: (Int) -> Unit,
     onCollisionSensitivityChanged: (CollisionSensitivity) -> Unit,
     onAmbientAudioChanged: (Boolean) -> Unit,
+    onGpsMetadataChanged: (Boolean) -> Unit,
     onAutoStartOnPowerChanged: (Boolean) -> Unit,
     onTrustedBluetoothDeviceChanged: (String) -> Unit,
     onAutoStartOnTrustedBluetoothChanged: (Boolean) -> Unit,
@@ -202,6 +203,19 @@ fun SettingsPanel(
             checked = settings.ambientAudioEnabled,
             enabled = !isRecording,
             onCheckedChange = onAmbientAudioChanged,
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+        SettingSwitchRow(
+            title = "GPS位置与轨迹记录",
+            subtitle = when {
+                locationPermissionGranted -> "开启后紧急事件会保存位置和最近轨迹；关闭后不记录位置元数据"
+                settings.gpsMetadataEnabled -> "已允许记录；授权定位后才会保存位置和最近轨迹"
+                else -> "开启前需要授权定位；关闭后核心录制仍可使用"
+            },
+            checked = settings.gpsMetadataEnabled,
+            enabled = true,
+            onCheckedChange = onGpsMetadataChanged,
         )
 
         Spacer(modifier = Modifier.height(12.dp))

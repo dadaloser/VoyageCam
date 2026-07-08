@@ -22,6 +22,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.voyagecam.app.core.model.EmergencyEvent
 import com.voyagecam.app.core.model.EmergencyTrigger
+import com.voyagecam.app.core.model.GpsTrackPoint
+import com.voyagecam.app.core.model.GpsTrackSummary
+import com.voyagecam.app.core.model.toGpsTrackSummary
 import com.voyagecam.app.ui.theme.SectionCard
 import java.io.File
 import java.text.SimpleDateFormat
@@ -263,11 +266,7 @@ private fun EmergencyEventRow(
             )
         }
         if (event.gpsTrackPoints.isNotEmpty()) {
-            Text(
-                text = "GPS轨迹 ${event.gpsTrackPoints.size} 点",
-                style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF4D6267),
-            )
+            GpsRoutePreview(event.gpsTrackPoints)
         }
         val segmentText = event.segmentPaths.take(3).joinToString(separator = "\n")
         if (segmentText.isNotBlank()) {
@@ -324,6 +323,47 @@ private fun EmergencyEventRow(
     }
 }
 
+@Composable
+private fun GpsRoutePreview(points: List<GpsTrackPoint>) {
+    val summary = points.toGpsTrackSummary() ?: return
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFF3F7F6), RoundedCornerShape(8.dp))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = "路线预览 · ${summary.pointCount} 点",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF163036),
+        )
+        Text(
+            text = "${summary.distanceText()} · ${summary.durationText()} · 均速 ${summary.averageSpeedText()}",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF4D6267),
+        )
+        summary.maxSpeedMetersPerSecond?.let { speed ->
+            Text(
+                text = "最高速度 ${speed.toKilometersPerHourText()}",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF64777B),
+            )
+        }
+        Text(
+            text = "起点 ${summary.startPoint.coordinateText()}",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF64777B),
+        )
+        Text(
+            text = "终点 ${summary.endPoint.coordinateText()}",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF64777B),
+        )
+    }
+}
+
 private fun Long.asTime(): String {
     return SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(this))
 }
@@ -339,3 +379,36 @@ private fun Long.asFileSize(): String {
         else -> "${this}B"
     }
 }
+
+private fun GpsTrackSummary.distanceText(): String {
+    return if (distanceMeters >= 1000.0) {
+        String.format(Locale.getDefault(), "%.2fkm", distanceMeters / 1000.0)
+    } else {
+        String.format(Locale.getDefault(), "%.0fm", distanceMeters)
+    }
+}
+
+private fun GpsTrackSummary.durationText(): String {
+    val totalSeconds = durationMillis / 1000L
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return when {
+        minutes > 0L -> "${minutes}分${seconds}秒"
+        seconds > 0L -> "${seconds}秒"
+        else -> "瞬时"
+    }
+}
+
+private fun GpsTrackSummary.averageSpeedText(): String {
+    return averageSpeedMetersPerSecond.toFloat().toKilometersPerHourText()
+}
+
+private fun Float.toKilometersPerHourText(): String {
+    return String.format(Locale.getDefault(), "%.0fkm/h", this * METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR)
+}
+
+private fun GpsTrackPoint.coordinateText(): String {
+    return String.format(Locale.getDefault(), "%.5f, %.5f · %s", latitude, longitude, capturedAtMillis.asTime())
+}
+
+private const val METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR = 3.6f
