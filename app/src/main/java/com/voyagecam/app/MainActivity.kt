@@ -148,6 +148,7 @@ private fun VoyageCamApp() {
     var pendingStorageCapacityChange by remember { mutableStateOf<PendingStorageCapacityChange?>(null) }
     var pendingSegmentDelete by remember { mutableStateOf<RecordingSegment?>(null) }
     var pendingEmergencyEventDelete by remember { mutableStateOf<EmergencyEvent?>(null) }
+    var pendingSettingsReset by remember { mutableStateOf(false) }
     var pendingStart by rememberSaveable { mutableStateOf(false) }
     var pendingGpsMetadataEnable by rememberSaveable { mutableStateOf(false) }
     var permissionRefreshKey by remember { mutableIntStateOf(0) }
@@ -223,6 +224,14 @@ private fun VoyageCamApp() {
         } else {
             "当前普通片段未超过 ${settings.storageCapacityGb}GB 容量，无需清理。"
         }
+    }
+
+    fun resetSettingsToDefaults() {
+        pendingSettingsReset = false
+        pendingStorageCapacityChange = null
+        pendingGpsMetadataEnable = false
+        persist(VoyageCamSettings())
+        statusMessage = "已恢复默认设置；录像、紧急事件和已导出的证据包均未删除。"
     }
 
     fun hasPermission(permission: String): Boolean {
@@ -785,6 +794,13 @@ private fun VoyageCamApp() {
                             "已关闭可信蓝牙连接自动开始录制。"
                         }
                     },
+                    onRequestResetSettings = {
+                        if (isRecording) {
+                            statusMessage = "录制中不可恢复默认设置；停止后再操作。"
+                        } else {
+                            pendingSettingsReset = true
+                        }
+                    },
                     autoStartDiagnostic = autoStartDiagnostic,
                     onRefreshAutoStartDiagnostic = {
                         autoStartDiagnostic = autoStartDiagnosticsStore.load()
@@ -794,6 +810,18 @@ private fun VoyageCamApp() {
                         pairedBluetoothDevices = context.pairedBluetoothDevices()
                     },
                 )
+
+                if (pendingSettingsReset) {
+                    SettingsResetConfirmationPanel(
+                        onConfirm = {
+                            resetSettingsToDefaults()
+                        },
+                        onCancel = {
+                            pendingSettingsReset = false
+                            statusMessage = "已取消恢复默认设置。"
+                        },
+                    )
+                }
 
                 pendingStorageCapacityChange?.let { pending ->
                     StorageCapacityConfirmationPanel(
@@ -975,6 +1003,45 @@ private fun RecordingPanel(
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),
         )
+    }
+}
+
+@Composable
+private fun SettingsResetConfirmationPanel(
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    SectionCard {
+        Text(
+            text = "确认恢复默认设置",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF163036),
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "将恢复默认录制、存储、音频、GPS、水印字幕和自动启动设置。录像片段、锁定事件和已导出的证据包不会被删除。",
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color(0xFF4D6267),
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedButton(
+                onClick = onCancel,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("取消")
+            }
+            Button(
+                onClick = onConfirm,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("恢复默认")
+            }
+        }
     }
 }
 

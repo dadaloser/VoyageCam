@@ -70,6 +70,7 @@ fun SettingsPanel(
     onAutoStartOnPowerChanged: (Boolean) -> Unit,
     onTrustedBluetoothDeviceChanged: (String) -> Unit,
     onAutoStartOnTrustedBluetoothChanged: (Boolean) -> Unit,
+    onRequestResetSettings: () -> Unit,
     autoStartDiagnostic: AutoStartDiagnostic?,
     onRefreshAutoStartDiagnostic: () -> Unit,
     pairedBluetoothDevices: List<TrustedBluetoothDevice>,
@@ -272,6 +273,15 @@ fun SettingsPanel(
 
         Spacer(modifier = Modifier.height(16.dp))
         AutoStartDiagnosticPanel(autoStartDiagnostic, onRefreshAutoStartDiagnostic)
+
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = onRequestResetSettings,
+            enabled = !isRecording,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("恢复默认设置")
+        }
     }
 }
 
