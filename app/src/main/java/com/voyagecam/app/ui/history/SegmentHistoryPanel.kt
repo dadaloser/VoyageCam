@@ -39,6 +39,7 @@ fun SegmentHistoryPanel(
     onOpen: (RecordingSegment) -> Unit,
     onShare: (RecordingSegment) -> Unit,
     onUnlock: (RecordingSegment) -> Unit,
+    onDelete: (RecordingSegment) -> Unit,
 ) {
     SectionCard {
         Row(
@@ -92,6 +93,7 @@ fun SegmentHistoryPanel(
                     onOpen = onOpen,
                     onShare = onShare,
                     onUnlock = onUnlock,
+                    onDelete = onDelete,
                 )
                 if (index != segments.lastIndex) {
                     Spacer(
@@ -260,6 +262,7 @@ private fun RecordingSegmentRow(
     onOpen: (RecordingSegment) -> Unit,
     onShare: (RecordingSegment) -> Unit,
     onUnlock: (RecordingSegment) -> Unit,
+    onDelete: (RecordingSegment) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -310,6 +313,11 @@ private fun RecordingSegmentRow(
             ) {
                 Text("分享")
             }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             if (segment.locked) {
                 OutlinedButton(
                     onClick = { onUnlock(segment) },
@@ -317,6 +325,12 @@ private fun RecordingSegmentRow(
                 ) {
                     Text("解除锁定")
                 }
+            }
+            OutlinedButton(
+                onClick = { onDelete(segment) },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("删除")
             }
         }
     }

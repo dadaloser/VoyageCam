@@ -139,6 +139,23 @@ class RecordingStorageManager(private val context: Context) {
         return normalFile
     }
 
+    fun deleteSegment(segment: RecordingSegment): DeleteResult {
+        val file = File(segment.absolutePath)
+        if (!file.exists() || !file.isFile) return DeleteResult(deleted = false, deletedBytes = 0L)
+
+        val canonicalFile = runCatching { file.canonicalFile }.getOrNull() ?: return DeleteResult(deleted = false, deletedBytes = 0L)
+        if (!canonicalFile.isUnderManagedRoot()) return DeleteResult(deleted = false, deletedBytes = 0L)
+
+        val size = canonicalFile.length()
+        val deleted = canonicalFile.delete()
+        if (deleted) {
+            pruneEmptyParents(canonicalFile.parentFile)
+        }
+
+        return DeleteResult(deleted = deleted, deletedBytes = if (deleted) size else 0L)
+    }
+
+
     fun dashcamRelativePath(file: File?): String? {
         if (file == null) return null
         val root = dashcamRoot.canonicalFile.toPath()
@@ -219,6 +236,11 @@ class RecordingStorageManager(private val context: Context) {
         val totalBytes: Long,
         val deletedBytes: Long,
         val deletedFiles: Int,
+    )
+
+    data class DeleteResult(
+        val deleted: Boolean,
+        val deletedBytes: Long,
     )
 
     companion object {

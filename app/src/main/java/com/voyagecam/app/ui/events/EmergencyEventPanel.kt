@@ -40,6 +40,7 @@ fun EmergencyEventPanel(
     onShareExport: (File) -> Unit,
     onDismissExport: () -> Unit,
     onOpenMap: (EmergencyEvent) -> Unit,
+    onDelete: (EmergencyEvent) -> Unit,
 ) {
     SectionCard {
         Row(
@@ -81,6 +82,7 @@ fun EmergencyEventPanel(
                     onShare = onShare,
                     onExport = onExport,
                     onOpenMap = onOpenMap,
+                    onDelete = onDelete,
                 )
                 if (index != events.lastIndex) {
                     Spacer(
@@ -210,6 +212,7 @@ private fun EmergencyEventRow(
     onShare: (EmergencyEvent) -> Unit,
     onExport: (EmergencyEvent) -> Unit,
     onOpenMap: (EmergencyEvent) -> Unit,
+    onDelete: (EmergencyEvent) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -287,12 +290,23 @@ private fun EmergencyEventRow(
                 Text("地图")
             }
         }
-        OutlinedButton(
-            onClick = { onExport(event) },
-            enabled = event.segmentPaths.isNotEmpty(),
+        Row(
             modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("导出证据包")
+            OutlinedButton(
+                onClick = { onExport(event) },
+                enabled = event.segmentPaths.isNotEmpty(),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("导出证据包")
+            }
+            OutlinedButton(
+                onClick = { onDelete(event) },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("删除事件")
+            }
         }
     }
 }

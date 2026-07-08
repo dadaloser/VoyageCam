@@ -146,6 +146,8 @@ private fun VoyageCamApp() {
     var selectedCameraFilter by rememberSaveable { mutableStateOf(SegmentCameraFilter.All) }
     var selectedLockFilter by rememberSaveable { mutableStateOf(SegmentLockFilter.All) }
     var pendingStorageCapacityChange by remember { mutableStateOf<PendingStorageCapacityChange?>(null) }
+    var pendingSegmentDelete by remember { mutableStateOf<RecordingSegment?>(null) }
+    var pendingEmergencyEventDelete by remember { mutableStateOf<EmergencyEvent?>(null) }
     var pendingStart by rememberSaveable { mutableStateOf(false) }
     var permissionRefreshKey by remember { mutableIntStateOf(0) }
     val availableDays = allSegments.map { it.day }.distinct()
@@ -388,6 +390,33 @@ private fun VoyageCamApp() {
         }.onFailure { error ->
             statusMessage = "解除锁定失败：${error.message ?: segment.name}"
         }
+    }
+
+    fun deleteSegment(segment: RecordingSegment) {
+        runCatching {
+            val dashcamPath = storageManager.dashcamRelativePath(File(segment.absolutePath))
+            val result = storageManager.deleteSegment(segment)
+            if (!result.deleted) error("片段不存在或不在可管理目录内")
+
+            emergencyEventStore.removeSegment(dashcamPath)
+            if (playbackItem?.file?.absolutePath == segment.absolutePath) {
+                playbackItem = null
+            }
+            refreshRecordingData()
+            emergencyEvents = emergencyEventStore.listRecentEvents()
+            statusMessage = "已删除片段：${segment.name}，释放 ${result.deletedBytes.asFileSize()}。"
+        }.onFailure { error ->
+            statusMessage = "删除片段失败：${error.message ?: segment.name}"
+        }
+    }
+
+    fun deleteEmergencyEvent(event: EmergencyEvent) {
+        emergencyEventStore.deleteEvent(event.id)
+        if (evidenceExportState?.eventId == event.id) {
+            evidenceExportState = null
+        }
+        emergencyEvents = emergencyEventStore.listRecentEvents()
+        statusMessage = "已删除紧急事件记录；关联录像仍保留在历史列表中。"
     }
 
     fun openEmergencyEvent(event: EmergencyEvent) {
@@ -719,6 +748,20 @@ private fun VoyageCamApp() {
                     )
                 }
 
+                pendingEmergencyEventDelete?.let { event ->
+                    EmergencyEventDeleteConfirmationPanel(
+                        event = event,
+                        onConfirm = {
+                            pendingEmergencyEventDelete = null
+                            deleteEmergencyEvent(event)
+                        },
+                        onCancel = {
+                            pendingEmergencyEventDelete = null
+                            statusMessage = "已取消删除紧急事件。"
+                        },
+                    )
+                }
+
                 EmergencyEventPanel(
                     events = emergencyEvents,
                     exportState = evidenceExportState,
@@ -746,7 +789,24 @@ private fun VoyageCamApp() {
                     onOpenMap = { event ->
                         openEmergencyEventMap(event)
                     },
+                    onDelete = { event ->
+                        pendingEmergencyEventDelete = event
+                    },
                 )
+
+                pendingSegmentDelete?.let { segment ->
+                    SegmentDeleteConfirmationPanel(
+                        segment = segment,
+                        onConfirm = {
+                            pendingSegmentDelete = null
+                            deleteSegment(segment)
+                        },
+                        onCancel = {
+                            pendingSegmentDelete = null
+                            statusMessage = "已取消删除录像片段。"
+                        },
+                    )
+                }
 
                 SegmentHistoryPanel(
                     segments = filteredSegments,
@@ -770,6 +830,9 @@ private fun VoyageCamApp() {
                     },
                     onUnlock = { segment ->
                         unlockSegment(segment)
+                    },
+                    onDelete = { segment ->
+                        pendingSegmentDelete = segment
                     },
                 )
             }
@@ -876,6 +939,99 @@ private fun StorageCapacityConfirmationPanel(
             ) {
                 Text("确认清理")
             }
+        }
+    }
+}
+
+@Composable
+private fun EmergencyEventDeleteConfirmationPanel(
+    event: EmergencyEvent,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    SectionCard {
+        Text(
+            text = "确认删除紧急事件",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF163036),
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "${event.trigger.label} · ${event.triggeredAtMillis.asTime()} · ${event.segmentPaths.size} 段关联录像",
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color(0xFF4D6267),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "这只会删除事件记录和取证元数据，不会删除关联录像文件。",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF64777B),
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        ConfirmationButtonRow(
+            confirmLabel = "删除事件",
+            onConfirm = onConfirm,
+            onCancel = onCancel,
+        )
+    }
+}
+
+@Composable
+private fun SegmentDeleteConfirmationPanel(
+    segment: RecordingSegment,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    SectionCard {
+        Text(
+            text = "确认删除录像片段",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF163036),
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "${segment.cameraDirection.label} · ${if (segment.locked) "已锁定" else "普通"} · ${segment.sizeBytes.asFileSize()}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color(0xFF4D6267),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "确认后会删除本地视频文件，并从紧急事件记录中移除该片段引用。",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF9B2C2C),
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        ConfirmationButtonRow(
+            confirmLabel = "删除片段",
+            onConfirm = onConfirm,
+            onCancel = onCancel,
+        )
+    }
+}
+
+@Composable
+private fun ConfirmationButtonRow(
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        OutlinedButton(
+            onClick = onCancel,
+            modifier = Modifier.weight(1f),
+        ) {
+            Text("取消")
+        }
+        Button(
+            onClick = onConfirm,
+            modifier = Modifier.weight(1f),
+        ) {
+            Text(confirmLabel)
         }
     }
 }

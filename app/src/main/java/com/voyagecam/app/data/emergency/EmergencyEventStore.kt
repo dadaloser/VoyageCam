@@ -61,6 +61,14 @@ class EmergencyEventStore(context: Context) {
     }
 
     @Synchronized
+    fun deleteEvent(eventId: String?) {
+        if (eventId.isNullOrBlank()) return
+
+        val updated = listRecentEvents(MAX_EVENT_COUNT).filterNot { it.id == eventId }
+        writeEvents(updated)
+    }
+
+    @Synchronized
     fun listRecentEvents(limit: Int = DEFAULT_EVENT_LIST_LIMIT): List<EmergencyEvent> {
         if (!eventFile.exists()) return emptyList()
         return eventFile.readLines()
