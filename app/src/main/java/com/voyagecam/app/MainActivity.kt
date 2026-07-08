@@ -636,7 +636,10 @@ private fun RecordingPanel(
     onEmergencyLock: () -> Unit,
 ) {
     SectionCard {
-        RearCameraPreview(enabled = true)
+        RearCameraPreview(
+            enabled = true,
+            frontInsetEnabled = settings.dualCameraEnabled && capability.isAvailable && !isRecording,
+        )
         Spacer(modifier = Modifier.height(14.dp))
         Text(
             text = if (isRecording) "正在录制" else "准备录制",

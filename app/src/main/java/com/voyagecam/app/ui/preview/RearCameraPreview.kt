@@ -6,9 +6,11 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,14 +27,33 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.LifecycleOwner
+import com.voyagecam.app.core.camera.DualCameraPreviewController
 import com.voyagecam.app.core.camera.RearCameraPreviewController
 
 @Composable
 fun RearCameraPreview(
     enabled: Boolean,
+    frontInsetEnabled: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    var dualPreviewUnavailable by remember { mutableStateOf(false) }
+
+    LaunchedEffect(frontInsetEnabled) {
+        if (!frontInsetEnabled) {
+            dualPreviewUnavailable = false
+        }
+    }
+
+    if (enabled && frontInsetEnabled && !dualPreviewUnavailable) {
+        DualCameraPreview(
+            modifier = modifier,
+            onUnavailable = { dualPreviewUnavailable = true },
+        )
+        return
+    }
+
     val controller = remember { RearCameraPreviewController(context) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -76,7 +97,99 @@ fun RearCameraPreview(
                 errorMessage?.let { message ->
                     PreviewMessage(message)
                 }
+                if (frontInsetEnabled && dualPreviewUnavailable) {
+                    PreviewMessage("前摄小窗暂不可用，已回落到后摄预览")
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun DualCameraPreview(
+    modifier: Modifier = Modifier,
+    onUnavailable: () -> Unit,
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = context as? LifecycleOwner
+    if (lifecycleOwner == null) {
+        PreviewMessage("双摄预览需要 Activity 生命周期")
+        return
+    }
+    val controller = remember(context, lifecycleOwner) {
+        DualCameraPreviewController(
+            context = context,
+            lifecycleOwner = lifecycleOwner,
+        )
+    }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            controller.destroy()
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(16f / 9f)
+            .background(Color(0xFF10282E)),
+        contentAlignment = Alignment.Center,
+    ) {
+        var rearPreviewView by remember { mutableStateOf<PreviewView?>(null) }
+        var frontPreviewView by remember { mutableStateOf<PreviewView?>(null) }
+
+        AndroidView(
+            factory = { viewContext ->
+                PreviewView(viewContext).also { previewView ->
+                    previewView.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                    previewView.scaleType = PreviewView.ScaleType.FILL_CENTER
+                    rearPreviewView = previewView
+                }
+            },
+            update = {},
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(10.dp)
+            .width(126.dp)
+            .height(72.dp)
+            .background(Color(0xCC10282E)),
+            contentAlignment = Alignment.Center,
+        ) {
+            AndroidView(
+                factory = { viewContext ->
+                    PreviewView(viewContext).also { previewView ->
+                        previewView.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                        previewView.scaleType = PreviewView.ScaleType.FILL_CENTER
+                        frontPreviewView = previewView
+                    }
+                },
+                update = {},
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        LaunchedEffect(rearPreviewView, frontPreviewView) {
+            val rear = rearPreviewView
+            val front = frontPreviewView
+            if (rear != null && front != null) {
+                controller.start(
+                    rearPreviewView = rear,
+                    frontPreviewView = front,
+                ) { message ->
+                    errorMessage = message
+                    onUnavailable()
+                }
+            }
+        }
+
+        errorMessage?.let { message ->
+            PreviewMessage(message)
         }
     }
 }

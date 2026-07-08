@@ -40,6 +40,7 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 34. Generate optional SRT watermark sidecar subtitles during evidence export with time, speed, and coordinates while preserving original video files.
 35. Capture optional GPS bearing/heading data and surface it in event summaries, route previews, CSV exports, and watermark subtitles.
 36. Restore default settings through a confirmation flow without deleting recordings, emergency events, or exported evidence packages.
+37. Bind rear and front CameraX previews together before recording when dual-camera mode is enabled, with rear-preview fallback if concurrent preview startup fails.
 
 ## Current Status
 
@@ -73,6 +74,7 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 - Evidence export can include `watermark/*.srt` sidecar subtitles derived from event GPS data, so time/speed/location overlays can be previewed without transcoding or modifying source clips.
 - GPS metadata now preserves device-provided bearing when available, while old event records without bearing remain readable.
 - Settings can be restored to defaults from an in-app confirmation panel; this resets configuration only and leaves recorded/evidence data intact.
+- Dual-camera mode now uses CameraX concurrent preview binding before recording on capable devices, while recording still falls back to the current rear-camera pipeline.
 
 ## Build
 
@@ -83,8 +85,8 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 
 ## Next Development Steps
 
-1. Keep preview visible during recording by sharing the Camera2 session or moving recording into an activity-bound preview pipeline.
-2. Implement dual-camera recording for devices that pass the capability check, with rear-only fallback.
+1. Keep the front-camera inset visible during recording by moving preview and recording into a unified dual-camera CameraX/Camera2 binding.
+2. Implement front-camera recording for devices that pass the capability check, with rear-only fallback.
 3. Add a transcoding pipeline to burn configured time/speed/location watermarks directly into exported video copies.
 4. Extract `core`, `data`, `feature`, and `ui` into Gradle modules once the package boundaries stabilize.
 5. Add a richer map-backed route viewer when map dependencies are introduced.
