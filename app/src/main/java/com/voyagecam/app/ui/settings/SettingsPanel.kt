@@ -61,6 +61,7 @@ fun SettingsPanel(
     onRedetect: () -> Unit,
     onDualCameraChanged: (Boolean) -> Unit,
     onStorageChanged: (Int) -> Unit,
+    onCleanupStorage: () -> Unit,
     onSegmentDurationChanged: (Int) -> Unit,
     onCollisionSensitivityChanged: (CollisionSensitivity) -> Unit,
     onAmbientAudioChanged: (Boolean) -> Unit,
@@ -185,6 +186,14 @@ fun SettingsPanel(
         )
         Spacer(modifier = Modifier.height(10.dp))
         StorageOverviewPanel(storageOverview = storageOverview)
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = onCleanupStorage,
+            enabled = !isRecording,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("立即按容量清理普通片段")
+        }
 
         Spacer(modifier = Modifier.height(12.dp))
         SettingSwitchRow(

@@ -2,8 +2,10 @@ package com.voyagecam.app.data.emergency
 
 import android.content.Context
 import com.voyagecam.app.core.model.EmergencyEvent
+import com.voyagecam.app.core.model.EmergencyEventRepairResult
 import com.voyagecam.app.core.model.EmergencyLocationSnapshot
 import com.voyagecam.app.core.model.EmergencyTrigger
+import com.voyagecam.app.core.model.GpsTrackPoint
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.util.Base64
@@ -19,6 +21,7 @@ class EmergencyEventStore(context: Context) {
         accelerationG: Float? = null,
         thresholdG: Float? = null,
         location: EmergencyLocationSnapshot? = null,
+        gpsTrackPoints: List<GpsTrackPoint> = emptyList(),
     ): EmergencyEvent {
         val event = EmergencyEvent(
             id = "evt_${triggeredAtMillis}_${UUID.randomUUID().toString().take(8)}",
@@ -31,6 +34,7 @@ class EmergencyEventStore(context: Context) {
             speedMetersPerSecond = location?.speedMetersPerSecond,
             locationCapturedAtMillis = location?.capturedAtMillis,
             segmentPaths = emptyList(),
+            gpsTrackPoints = gpsTrackPoints,
         )
         writeEvents((listOf(event) + listRecentEvents(MAX_EVENT_COUNT)).take(MAX_EVENT_COUNT))
         return event
@@ -69,6 +73,32 @@ class EmergencyEventStore(context: Context) {
     }
 
     @Synchronized
+    fun repairMissingSegments(segmentExists: (String) -> Boolean): EmergencyEventRepairResult {
+        var updatedEvents = 0
+        var removedSegmentPaths = 0
+        var emptyEvents = 0
+
+        val updated = listRecentEvents(MAX_EVENT_COUNT).map { event ->
+            val repairedPaths = event.segmentPaths.filter(segmentExists)
+            if (repairedPaths.size != event.segmentPaths.size) {
+                updatedEvents++
+                removedSegmentPaths += event.segmentPaths.size - repairedPaths.size
+            }
+            if (repairedPaths.isEmpty()) {
+                emptyEvents++
+            }
+            event.copy(segmentPaths = repairedPaths)
+        }
+
+        writeEvents(updated)
+        return EmergencyEventRepairResult(
+            updatedEvents = updatedEvents,
+            removedSegmentPaths = removedSegmentPaths,
+            emptyEvents = emptyEvents,
+        )
+    }
+
+    @Synchronized
     fun listRecentEvents(limit: Int = DEFAULT_EVENT_LIST_LIMIT): List<EmergencyEvent> {
         if (!eventFile.exists()) return emptyList()
         return eventFile.readLines()
@@ -99,16 +129,18 @@ class EmergencyEventStore(context: Context) {
             speedMetersPerSecond?.toString().orEmpty(),
             locationCapturedAtMillis?.toString().orEmpty(),
             segmentPaths.joinToString(separator = ",") { it.encodeField() },
+            gpsTrackPoints.toTrackField(),
         ).joinToString(separator = "\t")
     }
 
     private fun String.toEmergencyEventOrNull(): EmergencyEvent? {
-        val parts = split('\t', limit = NEW_EVENT_FIELD_COUNT)
+        val parts = split('\t', limit = EVENT_FIELD_COUNT)
         if (parts.size < 6) return null
         val trigger = runCatching { EmergencyTrigger.valueOf(parts[TRIGGER_INDEX]) }.getOrNull() ?: return null
         val triggeredAtMillis = parts[TRIGGERED_AT_INDEX].toLongOrNull() ?: return null
-        val hasLocationFields = parts.size >= NEW_EVENT_FIELD_COUNT
+        val hasLocationFields = parts.size >= LOCATION_EVENT_FIELD_COUNT
         val segmentField = if (hasLocationFields) parts[SEGMENT_PATHS_INDEX] else parts[OLD_SEGMENT_PATHS_INDEX]
+        val trackField = parts.getOrNull(GPS_TRACK_INDEX)
         return EmergencyEvent(
             id = parts[ID_INDEX],
             trigger = trigger,
@@ -124,7 +156,41 @@ class EmergencyEventStore(context: Context) {
                 ?.split(',')
                 ?.mapNotNull { it.decodeFieldOrNull() }
                 .orEmpty(),
+            gpsTrackPoints = trackField.toGpsTrackPoints(),
         )
+    }
+
+    private fun List<GpsTrackPoint>.toTrackField(): String {
+        if (isEmpty()) return ""
+        val encodedTrack = joinToString(separator = ";") { point ->
+            listOf(
+                point.capturedAtMillis.toString(),
+                point.latitude.toString(),
+                point.longitude.toString(),
+                point.speedMetersPerSecond?.toString().orEmpty(),
+            ).joinToString(separator = ",")
+        }
+        return encodedTrack.encodeField()
+    }
+
+    private fun String?.toGpsTrackPoints(): List<GpsTrackPoint> {
+        if (isNullOrBlank()) return emptyList()
+        val decoded = decodeFieldOrNull().orEmpty()
+        if (decoded.isBlank()) return emptyList()
+        return decoded
+            .split(';')
+            .mapNotNull { entry ->
+                val parts = entry.split(',', limit = GPS_TRACK_PART_COUNT)
+                val capturedAt = parts.getOrNull(GPS_TRACK_TIME_INDEX)?.toLongOrNull() ?: return@mapNotNull null
+                val latitude = parts.getOrNull(GPS_TRACK_LATITUDE_INDEX)?.toDoubleOrNull() ?: return@mapNotNull null
+                val longitude = parts.getOrNull(GPS_TRACK_LONGITUDE_INDEX)?.toDoubleOrNull() ?: return@mapNotNull null
+                GpsTrackPoint(
+                    latitude = latitude,
+                    longitude = longitude,
+                    speedMetersPerSecond = parts.getOrNull(GPS_TRACK_SPEED_INDEX)?.toFloatOrNull(),
+                    capturedAtMillis = capturedAt,
+                )
+            }
     }
 
     private fun String.encodeField(): String {
@@ -154,6 +220,13 @@ class EmergencyEventStore(context: Context) {
         private const val SPEED_INDEX = 7
         private const val LOCATION_CAPTURED_AT_INDEX = 8
         private const val SEGMENT_PATHS_INDEX = 9
-        private const val NEW_EVENT_FIELD_COUNT = 10
+        private const val GPS_TRACK_INDEX = 10
+        private const val LOCATION_EVENT_FIELD_COUNT = 10
+        private const val EVENT_FIELD_COUNT = 11
+        private const val GPS_TRACK_PART_COUNT = 4
+        private const val GPS_TRACK_TIME_INDEX = 0
+        private const val GPS_TRACK_LATITUDE_INDEX = 1
+        private const val GPS_TRACK_LONGITUDE_INDEX = 2
+        private const val GPS_TRACK_SPEED_INDEX = 3
     }
 }

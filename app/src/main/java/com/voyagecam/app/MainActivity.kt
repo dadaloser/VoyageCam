@@ -214,6 +214,16 @@ private fun VoyageCamApp() {
         }
     }
 
+    fun cleanupStorageNow() {
+        val cleanup = storageManager.cleanupNormalSegments(settings.storageCapacityGb)
+        refreshRecordingData()
+        statusMessage = if (cleanup.deletedFiles > 0) {
+            "已清理 ${cleanup.deletedFiles} 个普通片段，释放 ${cleanup.deletedBytes.asFileSize()}；锁定片段未受影响。"
+        } else {
+            "当前普通片段未超过 ${settings.storageCapacityGb}GB 容量，无需清理。"
+        }
+    }
+
     fun hasPermission(permission: String): Boolean {
         return permissionRefreshKey >= 0 &&
             ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
@@ -417,6 +427,18 @@ private fun VoyageCamApp() {
         }
         emergencyEvents = emergencyEventStore.listRecentEvents()
         statusMessage = "已删除紧急事件记录；关联录像仍保留在历史列表中。"
+    }
+
+    fun repairEmergencyEvents() {
+        val result = emergencyEventStore.repairMissingSegments { path ->
+            storageManager.dashcamFile(path)?.let { it.exists() && it.isFile } == true
+        }
+        emergencyEvents = emergencyEventStore.listRecentEvents()
+        statusMessage = if (result.removedSegmentPaths == 0) {
+            "紧急事件关联片段正常，无需修复。"
+        } else {
+            "已修复 ${result.updatedEvents} 个紧急事件，移除 ${result.removedSegmentPaths} 条失效片段引用；${result.emptyEvents} 个事件当前没有可用片段。"
+        }
     }
 
     fun openEmergencyEvent(event: EmergencyEvent) {
@@ -649,6 +671,9 @@ private fun VoyageCamApp() {
                     onStorageChanged = { capacityGb ->
                         requestStorageCapacityChange(capacityGb)
                     },
+                    onCleanupStorage = {
+                        cleanupStorageNow()
+                    },
                     onSegmentDurationChanged = { minutes ->
                         if (isRecording) {
                             statusMessage = "录制中不可修改分段时长；停止后修改会在下一次录制生效。"
@@ -767,6 +792,9 @@ private fun VoyageCamApp() {
                     exportState = evidenceExportState,
                     onRefresh = {
                         emergencyEvents = emergencyEventStore.listRecentEvents()
+                    },
+                    onRepairMissingSegments = {
+                        repairEmergencyEvents()
                     },
                     onOpen = { event ->
                         openEmergencyEvent(event)

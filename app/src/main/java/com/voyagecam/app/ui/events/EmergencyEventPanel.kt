@@ -33,6 +33,7 @@ fun EmergencyEventPanel(
     events: List<EmergencyEvent>,
     exportState: EvidenceExportState?,
     onRefresh: () -> Unit,
+    onRepairMissingSegments: () -> Unit,
     onOpen: (EmergencyEvent) -> Unit,
     onShare: (EmergencyEvent) -> Unit,
     onExport: (EmergencyEvent) -> Unit,
@@ -54,8 +55,13 @@ fun EmergencyEventPanel(
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF163036),
             )
-            OutlinedButton(onClick = onRefresh) {
-                Text("刷新")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onRepairMissingSegments) {
+                    Text("修复")
+                }
+                OutlinedButton(onClick = onRefresh) {
+                    Text("刷新")
+                }
             }
         }
         Spacer(modifier = Modifier.height(10.dp))
