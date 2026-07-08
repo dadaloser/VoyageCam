@@ -66,6 +66,7 @@ fun SettingsPanel(
     onCollisionSensitivityChanged: (CollisionSensitivity) -> Unit,
     onAmbientAudioChanged: (Boolean) -> Unit,
     onGpsMetadataChanged: (Boolean) -> Unit,
+    onExportWatermarkSubtitlesChanged: (Boolean) -> Unit,
     onAutoStartOnPowerChanged: (Boolean) -> Unit,
     onTrustedBluetoothDeviceChanged: (String) -> Unit,
     onAutoStartOnTrustedBluetoothChanged: (Boolean) -> Unit,
@@ -216,6 +217,15 @@ fun SettingsPanel(
             checked = settings.gpsMetadataEnabled,
             enabled = true,
             onCheckedChange = onGpsMetadataChanged,
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+        SettingSwitchRow(
+            title = "导出时间/速度水印字幕",
+            subtitle = "证据包导出时生成SRT侧车字幕；原始视频不转码、不改写",
+            checked = settings.exportWatermarkSubtitlesEnabled,
+            enabled = true,
+            onCheckedChange = onExportWatermarkSubtitlesChanged,
         )
 
         Spacer(modifier = Modifier.height(12.dp))

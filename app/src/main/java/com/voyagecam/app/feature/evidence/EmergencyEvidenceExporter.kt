@@ -3,6 +3,7 @@ package com.voyagecam.app.feature.evidence
 import android.content.Context
 import com.voyagecam.app.core.model.EmergencyEvent
 import com.voyagecam.app.core.model.EmergencyTrigger
+import com.voyagecam.app.core.model.GpsTrackPoint
 import com.voyagecam.app.data.storage.RecordingStorageManager
 import java.io.File
 import java.io.FileOutputStream
@@ -19,6 +20,8 @@ class EmergencyEvidenceExporter(
 ) {
     fun export(
         event: EmergencyEvent,
+        includeWatermarkSubtitles: Boolean = false,
+        segmentDurationMinutes: Int = DEFAULT_SEGMENT_DURATION_MINUTES,
         onProgress: (ExportProgress) -> Unit = {},
         isCancelled: () -> Boolean = { false },
     ): EvidencePackageFile {
@@ -29,7 +32,12 @@ class EmergencyEvidenceExporter(
         val packageFile = event.availableEvidencePackageFile(exportDir)
         val temporaryPackageFile = File.createTempFile(packageFile.nameWithoutExtension, TEMP_PACKAGE_SUFFIX, exportDir)
         val hasGpsTrack = event.gpsTrackPoints.isNotEmpty()
-        val totalSteps = files.size + 1 + if (hasGpsTrack) 1 else 0
+        val watermarkSubtitles = if (includeWatermarkSubtitles) {
+            event.watermarkSubtitles(files, segmentDurationMinutes)
+        } else {
+            emptyList()
+        }
+        val totalSteps = files.size + 1 + (if (hasGpsTrack) 1 else 0) + watermarkSubtitles.size
 
         try {
             checkNotCancelled(isCancelled)
@@ -44,7 +52,12 @@ class EmergencyEvidenceExporter(
             ZipOutputStream(FileOutputStream(temporaryPackageFile)).use { zip ->
                 checkNotCancelled(isCancelled)
                 zip.putNextEntry(ZipEntry("metadata.txt"))
-                zip.write(event.evidenceMetadata(files).toByteArray(StandardCharsets.UTF_8))
+                zip.write(
+                    event.evidenceMetadata(
+                        files = files,
+                        watermarkSubtitleCount = watermarkSubtitles.size,
+                    ).toByteArray(StandardCharsets.UTF_8),
+                )
                 zip.closeEntry()
                 var completedSteps = 1
                 onProgress(
@@ -66,6 +79,21 @@ class EmergencyEvidenceExporter(
                             completedSteps = completedSteps,
                             totalSteps = totalSteps,
                             currentItem = "gps_track.csv",
+                        ),
+                    )
+                }
+
+                watermarkSubtitles.forEach { subtitle ->
+                    checkNotCancelled(isCancelled)
+                    zip.putNextEntry(ZipEntry(subtitle.entryName))
+                    zip.write(subtitle.content.toByteArray(StandardCharsets.UTF_8))
+                    zip.closeEntry()
+                    completedSteps++
+                    onProgress(
+                        ExportProgress(
+                            completedSteps = completedSteps,
+                            totalSteps = totalSteps,
+                            currentItem = subtitle.entryName,
                         ),
                     )
                 }
@@ -133,7 +161,7 @@ class EmergencyEvidenceExporter(
         return candidate
     }
 
-    private fun EmergencyEvent.evidenceMetadata(files: List<File>): String {
+    private fun EmergencyEvent.evidenceMetadata(files: List<File>, watermarkSubtitleCount: Int): String {
         return buildString {
             appendLine("VoyageCam Emergency Evidence Package")
             appendLine()
@@ -147,6 +175,10 @@ class EmergencyEvidenceExporter(
                 appendLine("GPS Track Points: ${gpsTrackPoints.size}")
                 appendLine("GPS Track File: gps_track.csv")
             }
+            if (watermarkSubtitleCount > 0) {
+                appendLine("Watermark Subtitle Files: $watermarkSubtitleCount")
+                appendLine("Watermark Directory: watermark/")
+            }
             appendLine()
             appendLine("Linked Clips")
             files.forEachIndexed { index, file ->
@@ -157,6 +189,31 @@ class EmergencyEvidenceExporter(
             appendLine()
             appendLine("Original Relative Paths")
             segmentPaths.forEach { path -> appendLine(path) }
+        }
+    }
+
+    private fun EmergencyEvent.watermarkSubtitles(files: List<File>, segmentDurationMinutes: Int): List<WatermarkSubtitle> {
+        val clipWindowMillis = segmentDurationMinutes
+            .coerceAtLeast(1)
+            .toLong() * 60_000L + CLIP_WATERMARK_TOLERANCE_MS
+        val orderedTrack = gpsTrackPoints.sortedBy { it.capturedAtMillis }
+        return files.mapNotNull { file ->
+            val clipStartMillis = file.clipStartedAtMillis() ?: return@mapNotNull null
+            val clipEndMillis = clipStartMillis + clipWindowMillis
+            val cues = orderedTrack
+                .filter { point -> point.capturedAtMillis in clipStartMillis..clipEndMillis }
+                .map { point -> point.toWatermarkCue() }
+                .ifEmpty {
+                    eventLocationCue()
+                        ?.takeIf { cue -> cue.capturedAtMillis in clipStartMillis..clipEndMillis }
+                        ?.let(::listOf)
+                        .orEmpty()
+                }
+            val content = cues.toWatermarkSrt(clipStartMillis).takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            WatermarkSubtitle(
+                entryName = "watermark/${file.nameWithoutExtension}.srt",
+                content = content,
+            )
         }
     }
 
@@ -179,6 +236,62 @@ class EmergencyEvidenceExporter(
                     )
                 }
         }
+    }
+
+    private fun File.clipStartedAtMillis(): Long? {
+        val timestamp = CLIP_TIMESTAMP_PATTERN.find(nameWithoutExtension)?.value ?: return null
+        return runCatching {
+            SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).parse(timestamp)?.time
+        }.getOrNull()
+    }
+
+    private fun GpsTrackPoint.toWatermarkCue(): WatermarkCue {
+        return WatermarkCue(
+            capturedAtMillis = capturedAtMillis,
+            latitude = latitude,
+            longitude = longitude,
+            speedMetersPerSecond = speedMetersPerSecond,
+        )
+    }
+
+    private fun EmergencyEvent.eventLocationCue(): WatermarkCue? {
+        return WatermarkCue(
+            capturedAtMillis = locationCapturedAtMillis ?: triggeredAtMillis,
+            latitude = latitude,
+            longitude = longitude,
+            speedMetersPerSecond = speedMetersPerSecond,
+        ).takeIf { it.latitude != null || it.longitude != null || it.speedMetersPerSecond != null }
+    }
+
+    private fun List<WatermarkCue>.toWatermarkSrt(clipStartMillis: Long): String {
+        if (isEmpty()) return ""
+        val orderedCues = sortedBy { it.capturedAtMillis }
+        return buildString {
+            orderedCues.forEachIndexed { index, cue ->
+                val startOffset = (cue.capturedAtMillis - clipStartMillis).coerceAtLeast(0L)
+                val nextStartOffset = orderedCues.getOrNull(index + 1)
+                    ?.let { (it.capturedAtMillis - clipStartMillis).coerceAtLeast(startOffset + MIN_SUBTITLE_DURATION_MS) }
+                val endOffset = (nextStartOffset ?: startOffset + DEFAULT_SUBTITLE_DURATION_MS)
+                    .coerceAtLeast(startOffset + MIN_SUBTITLE_DURATION_MS)
+                appendLine(index + 1)
+                appendLine("${startOffset.asSrtOffset()} --> ${endOffset.asSrtOffset()}")
+                appendLine(cue.toWatermarkText())
+                appendLine()
+            }
+        }
+    }
+
+    private fun WatermarkCue.toWatermarkText(): String {
+        return buildList {
+            add("VoyageCam")
+            add(capturedAtMillis.asTime())
+            speedMetersPerSecond?.let {
+                add(String.format(Locale.getDefault(), "%.0fkm/h", it * METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR))
+            }
+            if (latitude != null && longitude != null) {
+                add(String.format(Locale.getDefault(), "%.5f, %.5f", latitude, longitude))
+            }
+        }.joinToString(separator = " · ")
     }
 
     private fun EmergencyEvent.collisionSummary(): String? {
@@ -213,6 +326,15 @@ class EmergencyEvidenceExporter(
         return SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(this))
     }
 
+    private fun Long.asSrtOffset(): String {
+        val safeMillis = coerceAtLeast(0L)
+        val hours = safeMillis / 3_600_000L
+        val minutes = safeMillis % 3_600_000L / 60_000L
+        val seconds = safeMillis % 60_000L / 1_000L
+        val millis = safeMillis % 1_000L
+        return String.format(Locale.US, "%02d:%02d:%02d,%03d", hours, minutes, seconds, millis)
+    }
+
     private fun Long.asFileSize(): String {
         val kb = this / 1024.0
         val mb = kb / 1024.0
@@ -229,8 +351,25 @@ class EmergencyEvidenceExporter(
         const val EVIDENCE_EXPORT_DIR_NAME = "evidence_exports"
         const val TEMP_PACKAGE_SUFFIX = ".tmp"
         const val METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR = 3.6f
+        const val DEFAULT_SEGMENT_DURATION_MINUTES = 3
+        const val DEFAULT_SUBTITLE_DURATION_MS = 5_000L
+        const val MIN_SUBTITLE_DURATION_MS = 1_000L
+        const val CLIP_WATERMARK_TOLERANCE_MS = 30_000L
+        val CLIP_TIMESTAMP_PATTERN = Regex("""\d{8}_\d{6}""")
     }
 }
+
+private data class WatermarkSubtitle(
+    val entryName: String,
+    val content: String,
+)
+
+private data class WatermarkCue(
+    val capturedAtMillis: Long,
+    val latitude: Double?,
+    val longitude: Double?,
+    val speedMetersPerSecond: Float?,
+)
 
 data class EvidencePackageFile(
     val file: File,

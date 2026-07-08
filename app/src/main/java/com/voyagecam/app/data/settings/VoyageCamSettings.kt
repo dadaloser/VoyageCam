@@ -14,6 +14,7 @@ data class VoyageCamSettings(
     val collisionSensitivity: CollisionSensitivity = CollisionSensitivity.Medium,
     val ambientAudioEnabled: Boolean = false,
     val gpsMetadataEnabled: Boolean = true,
+    val exportWatermarkSubtitlesEnabled: Boolean = true,
     val autoStartOnPowerConnected: Boolean = false,
     val autoStartOnTrustedBluetooth: Boolean = false,
     val trustedBluetoothDevice: String = "",
@@ -34,6 +35,7 @@ class VoyageCamSettingsStore(context: Context) {
             ).toCollisionSensitivity(),
             ambientAudioEnabled = prefs.getBoolean(KEY_AMBIENT_AUDIO_ENABLED, false),
             gpsMetadataEnabled = prefs.getBoolean(KEY_GPS_METADATA_ENABLED, true),
+            exportWatermarkSubtitlesEnabled = prefs.getBoolean(KEY_EXPORT_WATERMARK_SUBTITLES_ENABLED, true),
             autoStartOnPowerConnected = prefs.getBoolean(KEY_AUTO_START_ON_POWER_CONNECTED, false),
             autoStartOnTrustedBluetooth = prefs.getBoolean(KEY_AUTO_START_ON_TRUSTED_BLUETOOTH, false),
             trustedBluetoothDevice = prefs.getString(KEY_TRUSTED_BLUETOOTH_DEVICE, null).orEmpty(),
@@ -48,6 +50,7 @@ class VoyageCamSettingsStore(context: Context) {
             .putString(KEY_COLLISION_SENSITIVITY, settings.collisionSensitivity.name)
             .putBoolean(KEY_AMBIENT_AUDIO_ENABLED, settings.ambientAudioEnabled)
             .putBoolean(KEY_GPS_METADATA_ENABLED, settings.gpsMetadataEnabled)
+            .putBoolean(KEY_EXPORT_WATERMARK_SUBTITLES_ENABLED, settings.exportWatermarkSubtitlesEnabled)
             .putBoolean(KEY_AUTO_START_ON_POWER_CONNECTED, settings.autoStartOnPowerConnected)
             .putBoolean(KEY_AUTO_START_ON_TRUSTED_BLUETOOTH, settings.autoStartOnTrustedBluetooth)
             .putString(KEY_TRUSTED_BLUETOOTH_DEVICE, settings.trustedBluetoothDevice.trim())
@@ -101,6 +104,7 @@ class VoyageCamSettingsStore(context: Context) {
         private const val KEY_COLLISION_SENSITIVITY = "collision_sensitivity"
         private const val KEY_AMBIENT_AUDIO_ENABLED = "ambient_audio_enabled"
         private const val KEY_GPS_METADATA_ENABLED = "gps_metadata_enabled"
+        private const val KEY_EXPORT_WATERMARK_SUBTITLES_ENABLED = "export_watermark_subtitles_enabled"
         private const val KEY_AUTO_START_ON_POWER_CONNECTED = "auto_start_on_power_connected"
         private const val KEY_AUTO_START_ON_TRUSTED_BLUETOOTH = "auto_start_on_trusted_bluetooth"
         private const val KEY_TRUSTED_BLUETOOTH_DEVICE = "trusted_bluetooth_device"

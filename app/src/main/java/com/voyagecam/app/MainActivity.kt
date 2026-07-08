@@ -522,6 +522,8 @@ private fun VoyageCamApp() {
             val result = runCatching {
                 evidenceExporter.export(
                     event = event,
+                    includeWatermarkSubtitles = settings.exportWatermarkSubtitlesEnabled,
+                    segmentDurationMinutes = settings.segmentDurationMinutes,
                     onProgress = { progress ->
                         mainHandler.post {
                             if (evidenceExportCancelFlag === cancelFlag) {
@@ -749,6 +751,14 @@ private fun VoyageCamApp() {
                                     Manifest.permission.ACCESS_COARSE_LOCATION,
                                 ),
                             )
+                        }
+                    },
+                    onExportWatermarkSubtitlesChanged = { enabled ->
+                        persist(settings.copy(exportWatermarkSubtitlesEnabled = enabled))
+                        statusMessage = if (enabled) {
+                            "证据包导出会附带时间/速度水印字幕；原始视频保持不变。"
+                        } else {
+                            "已关闭导出水印字幕；证据包只包含元数据、轨迹和原始片段。"
                         }
                     },
                     onAutoStartOnPowerChanged = { enabled ->
