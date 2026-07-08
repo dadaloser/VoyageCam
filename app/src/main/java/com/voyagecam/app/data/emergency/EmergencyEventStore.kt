@@ -1,6 +1,16 @@
 package com.voyagecam.app.data.emergency
 
 import android.content.Context
+import androidx.room.Dao
+import androidx.room.Database
+import androidx.room.Entity
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.PrimaryKey
+import androidx.room.Query
+import androidx.room.Room
+import androidx.room.RoomDatabase
+import androidx.room.Update
 import com.voyagecam.app.core.model.EmergencyEvent
 import com.voyagecam.app.core.model.EmergencyEventRepairResult
 import com.voyagecam.app.core.model.EmergencyLocationSnapshot
@@ -10,11 +20,18 @@ import java.io.File
 import java.nio.charset.StandardCharsets
 import java.util.Base64
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 
 class EmergencyEventStore(context: Context) {
     private val eventFile = File(context.filesDir, EVENT_FILE_NAME)
+    private val database = EmergencyEventDatabase.from(context.applicationContext)
+    private val dao = database.emergencyEventDao()
 
-    @Synchronized
+    init {
+        ensureLegacyFileImported()
+    }
+
     fun createEvent(
         trigger: EmergencyTrigger,
         triggeredAtMillis: Long = System.currentTimeMillis(),
@@ -22,7 +39,7 @@ class EmergencyEventStore(context: Context) {
         thresholdG: Float? = null,
         location: EmergencyLocationSnapshot? = null,
         gpsTrackPoints: List<GpsTrackPoint> = emptyList(),
-    ): EmergencyEvent {
+    ): EmergencyEvent = runBlocking(Dispatchers.IO) {
         val event = EmergencyEvent(
             id = "evt_${triggeredAtMillis}_${UUID.randomUUID().toString().take(8)}",
             trigger = trigger,
@@ -37,85 +54,132 @@ class EmergencyEventStore(context: Context) {
             segmentPaths = emptyList(),
             gpsTrackPoints = gpsTrackPoints,
         )
-        writeEvents((listOf(event) + listRecentEvents(MAX_EVENT_COUNT)).take(MAX_EVENT_COUNT))
-        return event
+        dao.insert(event.toEntity())
+        dao.pruneToMostRecent(MAX_EVENT_COUNT)
+        event
     }
 
-    @Synchronized
     fun addLockedSegment(eventId: String?, segmentPath: String?) {
         if (eventId.isNullOrBlank() || segmentPath.isNullOrBlank()) return
 
-        val updated = listRecentEvents(MAX_EVENT_COUNT).map { event ->
-            if (event.id != eventId) {
-                event
-            } else {
-                event.copy(segmentPaths = (event.segmentPaths + segmentPath).distinct())
-            }
+        runBlocking(Dispatchers.IO) {
+            val event = dao.findById(eventId)?.toEmergencyEvent() ?: return@runBlocking
+            dao.update(event.copy(segmentPaths = (event.segmentPaths + segmentPath).distinct()).toEntity())
         }
-        writeEvents(updated)
     }
 
-    @Synchronized
     fun removeSegment(segmentPath: String?) {
         if (segmentPath.isNullOrBlank()) return
 
-        val updated = listRecentEvents(MAX_EVENT_COUNT).map { event ->
-            event.copy(segmentPaths = event.segmentPaths.filterNot { it == segmentPath })
+        runBlocking(Dispatchers.IO) {
+            dao.listRecent(MAX_EVENT_COUNT)
+                .map { it.toEmergencyEvent() }
+                .map { event -> event.copy(segmentPaths = event.segmentPaths.filterNot { it == segmentPath }) }
+                .forEach { dao.update(it.toEntity()) }
         }
-        writeEvents(updated)
     }
 
-    @Synchronized
     fun deleteEvent(eventId: String?) {
         if (eventId.isNullOrBlank()) return
 
-        val updated = listRecentEvents(MAX_EVENT_COUNT).filterNot { it.id == eventId }
-        writeEvents(updated)
-    }
-
-    @Synchronized
-    fun repairMissingSegments(segmentExists: (String) -> Boolean): EmergencyEventRepairResult {
-        var updatedEvents = 0
-        var removedSegmentPaths = 0
-        var emptyEvents = 0
-
-        val updated = listRecentEvents(MAX_EVENT_COUNT).map { event ->
-            val repairedPaths = event.segmentPaths.filter(segmentExists)
-            if (repairedPaths.size != event.segmentPaths.size) {
-                updatedEvents++
-                removedSegmentPaths += event.segmentPaths.size - repairedPaths.size
-            }
-            if (repairedPaths.isEmpty()) {
-                emptyEvents++
-            }
-            event.copy(segmentPaths = repairedPaths)
+        runBlocking(Dispatchers.IO) {
+            dao.deleteById(eventId)
         }
-
-        writeEvents(updated)
-        return EmergencyEventRepairResult(
-            updatedEvents = updatedEvents,
-            removedSegmentPaths = removedSegmentPaths,
-            emptyEvents = emptyEvents,
-        )
     }
 
-    @Synchronized
+    fun repairMissingSegments(segmentExists: (String) -> Boolean): EmergencyEventRepairResult {
+        return runBlocking(Dispatchers.IO) {
+            var updatedEvents = 0
+            var removedSegmentPaths = 0
+            var emptyEvents = 0
+
+            dao.listRecent(MAX_EVENT_COUNT)
+                .map { it.toEmergencyEvent() }
+                .map { event ->
+                    val repairedPaths = event.segmentPaths.filter(segmentExists)
+                    if (repairedPaths.size != event.segmentPaths.size) {
+                        updatedEvents++
+                        removedSegmentPaths += event.segmentPaths.size - repairedPaths.size
+                    }
+                    if (repairedPaths.isEmpty()) {
+                        emptyEvents++
+                    }
+                    event.copy(segmentPaths = repairedPaths)
+                }
+                .forEach { dao.update(it.toEntity()) }
+
+            EmergencyEventRepairResult(
+                updatedEvents = updatedEvents,
+                removedSegmentPaths = removedSegmentPaths,
+                emptyEvents = emptyEvents,
+            )
+        }
+    }
+
     fun listRecentEvents(limit: Int = DEFAULT_EVENT_LIST_LIMIT): List<EmergencyEvent> {
-        if (!eventFile.exists()) return emptyList()
-        return eventFile.readLines()
-            .mapNotNull { line -> line.toEmergencyEventOrNull() }
-            .sortedByDescending { it.triggeredAtMillis }
-            .take(limit)
+        return runBlocking(Dispatchers.IO) {
+            dao.listRecent(limit).map { it.toEmergencyEvent() }
+        }
     }
 
-    private fun writeEvents(events: List<EmergencyEvent>) {
-        eventFile.parentFile?.mkdirs()
-        eventFile.writeText(
-            events
+    private fun ensureLegacyFileImported() {
+        runBlocking(Dispatchers.IO) {
+            if (!eventFile.exists() || dao.count() > 0) return@runBlocking
+
+            val legacyEvents = eventFile.readLines()
+                .mapNotNull { line -> line.toEmergencyEventOrNull() }
                 .sortedByDescending { it.triggeredAtMillis }
                 .take(MAX_EVENT_COUNT)
-                .joinToString(separator = "\n") { it.toLine() },
+            if (legacyEvents.isNotEmpty()) {
+                dao.insertAll(legacyEvents.map { it.toEntity() })
+                dao.pruneToMostRecent(MAX_EVENT_COUNT)
+            }
+        }
+    }
+
+    private fun EmergencyEvent.toEntity(): EmergencyEventEntity {
+        return EmergencyEventEntity(
+            id = id,
+            trigger = trigger.name,
+            triggeredAtMillis = triggeredAtMillis,
+            accelerationG = accelerationG,
+            thresholdG = thresholdG,
+            latitude = latitude,
+            longitude = longitude,
+            speedMetersPerSecond = speedMetersPerSecond,
+            bearingDegrees = bearingDegrees,
+            locationCapturedAtMillis = locationCapturedAtMillis,
+            segmentPaths = segmentPaths.toSegmentPathField(),
+            gpsTrackPoints = gpsTrackPoints.toTrackField(),
         )
+    }
+
+    private fun EmergencyEventEntity.toEmergencyEvent(): EmergencyEvent {
+        return EmergencyEvent(
+            id = id,
+            trigger = runCatching { EmergencyTrigger.valueOf(trigger) }.getOrDefault(EmergencyTrigger.Manual),
+            triggeredAtMillis = triggeredAtMillis,
+            accelerationG = accelerationG,
+            thresholdG = thresholdG,
+            latitude = latitude,
+            longitude = longitude,
+            speedMetersPerSecond = speedMetersPerSecond,
+            bearingDegrees = bearingDegrees,
+            locationCapturedAtMillis = locationCapturedAtMillis,
+            segmentPaths = segmentPaths.toSegmentPaths(),
+            gpsTrackPoints = gpsTrackPoints.toGpsTrackPoints(),
+        )
+    }
+
+    private fun List<String>.toSegmentPathField(): String {
+        return joinToString(separator = ",") { it.encodeField() }
+    }
+
+    private fun String.toSegmentPaths(): List<String> {
+        return takeIf { it.isNotBlank() }
+            ?.split(',')
+            ?.mapNotNull { it.decodeFieldOrNull() }
+            .orEmpty()
     }
 
     private fun EmergencyEvent.toLine(): String {
@@ -168,11 +232,7 @@ class EmergencyEventStore(context: Context) {
             } else {
                 null
             },
-            segmentPaths = segmentField
-                .takeIf { it.isNotBlank() }
-                ?.split(',')
-                ?.mapNotNull { it.decodeFieldOrNull() }
-                .orEmpty(),
+            segmentPaths = segmentField.toSegmentPaths(),
             gpsTrackPoints = trackField.toGpsTrackPoints(),
         )
     }
@@ -253,5 +313,79 @@ class EmergencyEventStore(context: Context) {
         private const val GPS_TRACK_LONGITUDE_INDEX = 2
         private const val GPS_TRACK_SPEED_INDEX = 3
         private const val GPS_TRACK_BEARING_INDEX = 4
+    }
+}
+
+@Entity(tableName = "emergency_events")
+data class EmergencyEventEntity(
+    @PrimaryKey val id: String,
+    val trigger: String,
+    val triggeredAtMillis: Long,
+    val accelerationG: Float?,
+    val thresholdG: Float?,
+    val latitude: Double?,
+    val longitude: Double?,
+    val speedMetersPerSecond: Float?,
+    val bearingDegrees: Float?,
+    val locationCapturedAtMillis: Long?,
+    val segmentPaths: String,
+    val gpsTrackPoints: String,
+)
+
+@Dao
+interface EmergencyEventDao {
+    @Query("SELECT COUNT(*) FROM emergency_events")
+    fun count(): Int
+
+    @Query("SELECT * FROM emergency_events ORDER BY triggeredAtMillis DESC LIMIT :limit")
+    fun listRecent(limit: Int): List<EmergencyEventEntity>
+
+    @Query("SELECT * FROM emergency_events WHERE id = :id LIMIT 1")
+    fun findById(id: String): EmergencyEventEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insert(event: EmergencyEventEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertAll(events: List<EmergencyEventEntity>)
+
+    @Update
+    fun update(event: EmergencyEventEntity)
+
+    @Query("DELETE FROM emergency_events WHERE id = :id")
+    fun deleteById(id: String)
+
+    @Query(
+        """
+        DELETE FROM emergency_events
+        WHERE id NOT IN (
+            SELECT id FROM emergency_events ORDER BY triggeredAtMillis DESC LIMIT :maxCount
+        )
+        """,
+    )
+    fun pruneToMostRecent(maxCount: Int)
+}
+
+@Database(
+    entities = [EmergencyEventEntity::class],
+    version = 1,
+    exportSchema = false,
+)
+abstract class EmergencyEventDatabase : RoomDatabase() {
+    abstract fun emergencyEventDao(): EmergencyEventDao
+
+    companion object {
+        @Volatile
+        private var instance: EmergencyEventDatabase? = null
+
+        fun from(context: Context): EmergencyEventDatabase {
+            return instance ?: synchronized(this) {
+                instance ?: Room.databaseBuilder(
+                    context.applicationContext,
+                    EmergencyEventDatabase::class.java,
+                    "voyagecam_emergency_events.db",
+                ).build().also { instance = it }
+            }
+        }
     }
 }
