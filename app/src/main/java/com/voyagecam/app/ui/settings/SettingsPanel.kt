@@ -16,10 +16,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -73,16 +69,13 @@ fun SettingsPanel(
     onRequestResetSettings: () -> Unit,
     autoStartDiagnostic: AutoStartDiagnostic?,
     onRefreshAutoStartDiagnostic: () -> Unit,
-    pairedBluetoothDevices: List<TrustedBluetoothDevice>,
-    onRefreshPairedBluetoothDevices: () -> Unit,
+    bluetoothDevicePickerState: BluetoothDevicePickerState,
 ) {
     val visibleStorageCapacityGb = pendingStorageCapacityGb ?: settings.storageCapacityGb
-    var storageInput by remember(visibleStorageCapacityGb) {
-        mutableStateOf(visibleStorageCapacityGb.toString())
+    val storageInputState = androidx.compose.runtime.remember(visibleStorageCapacityGb) {
+        androidx.compose.runtime.mutableStateOf(visibleStorageCapacityGb.toString())
     }
-    var trustedBluetoothInput by remember(settings.trustedBluetoothDevice) {
-        mutableStateOf(settings.trustedBluetoothDevice)
-    }
+    val storageInput = storageInputState.value
 
     SectionCard {
         Text(
@@ -161,7 +154,7 @@ fun SettingsPanel(
             currentGb = visibleStorageCapacityGb,
             maxGb = storageLimit.maxGb,
             onStorageChanged = {
-                storageInput = it.toString()
+                storageInputState.value = it.toString()
                 onStorageChanged(it)
             },
         )
@@ -169,8 +162,8 @@ fun SettingsPanel(
         OutlinedTextField(
             value = storageInput,
             onValueChange = { value: String ->
-                storageInput = value.filter { it.isDigit() }.take(3)
-                val next = storageInput.toIntOrNull()
+                storageInputState.value = value.filter { it.isDigit() }.take(3)
+                val next = storageInputState.value.toIntOrNull()
                 if (next != null && next in VoyageCamSettingsStore.MIN_STORAGE_GB..storageLimit.maxGb) {
                     onStorageChanged(next)
                 }
@@ -211,9 +204,9 @@ fun SettingsPanel(
         SettingSwitchRow(
             title = "GPS位置与轨迹记录",
             subtitle = when {
-                locationPermissionGranted -> "开启后紧急事件会保存位置和最近轨迹；关闭后不记录位置元数据"
+                locationPermissionGranted -> "默认关闭；开启后紧急事件会保存位置和最近轨迹，关闭后不记录位置元数据"
                 settings.gpsMetadataEnabled -> "已允许记录；授权定位后才会保存位置和最近轨迹"
-                else -> "开启前需要授权定位；关闭后核心录制仍可使用"
+                else -> "默认关闭；开启前需要授权定位，关闭后核心录制仍可使用"
             },
             checked = settings.gpsMetadataEnabled,
             enabled = true,
@@ -223,7 +216,7 @@ fun SettingsPanel(
         Spacer(modifier = Modifier.height(12.dp))
         SettingSwitchRow(
             title = "导出时间/速度水印字幕",
-            subtitle = "证据包导出时生成SRT侧车字幕；原始视频不转码、不改写",
+            subtitle = "默认关闭；开启后仅在证据包导出时生成SRT侧车字幕，原始视频不转码、不改写",
             checked = settings.exportWatermarkSubtitlesEnabled,
             enabled = true,
             onCheckedChange = onExportWatermarkSubtitlesChanged,
@@ -240,10 +233,11 @@ fun SettingsPanel(
 
         Spacer(modifier = Modifier.height(12.dp))
         OutlinedTextField(
-            value = trustedBluetoothInput,
+            value = bluetoothDevicePickerState.trustedDeviceInput,
             onValueChange = { value ->
-                trustedBluetoothInput = value.take(MAX_TRUSTED_BLUETOOTH_LENGTH)
-                onTrustedBluetoothDeviceChanged(trustedBluetoothInput)
+                onTrustedBluetoothDeviceChanged(
+                    bluetoothDevicePickerState.updateTrustedDeviceInput(value),
+                )
             },
             label = { Text("可信蓝牙设备") },
             supportingText = { Text("填写车机蓝牙名称或 MAC 地址，完全匹配后自动启动") },
@@ -253,13 +247,11 @@ fun SettingsPanel(
         )
         Spacer(modifier = Modifier.height(10.dp))
         PairedBluetoothDevicePanel(
-            devices = pairedBluetoothDevices,
+            devices = bluetoothDevicePickerState.pairedDevices,
             bluetoothPermissionGranted = bluetoothPermissionGranted,
-            onRefresh = onRefreshPairedBluetoothDevices,
+            onRefresh = bluetoothDevicePickerState::refreshPairedDevices,
             onSelected = { device ->
-                val value = device.preferredMatchValue().take(MAX_TRUSTED_BLUETOOTH_LENGTH)
-                trustedBluetoothInput = value
-                onTrustedBluetoothDeviceChanged(value)
+                onTrustedBluetoothDeviceChanged(bluetoothDevicePickerState.selectDevice(device))
             },
         )
         Spacer(modifier = Modifier.height(12.dp))
@@ -267,7 +259,7 @@ fun SettingsPanel(
             title = "可信蓝牙连接自动开始录制",
             subtitle = "连接指定蓝牙设备时自动启动；需要相机、通知和蓝牙权限",
             checked = settings.autoStartOnTrustedBluetooth,
-            enabled = !isRecording && trustedBluetoothInput.isNotBlank(),
+            enabled = !isRecording && bluetoothDevicePickerState.trustedDeviceInput.isNotBlank(),
             onCheckedChange = onAutoStartOnTrustedBluetoothChanged,
         )
 
@@ -642,5 +634,4 @@ private fun Long.asDurationText(): String {
     }
 }
 
-private const val MAX_TRUSTED_BLUETOOTH_LENGTH = 80
 private const val MAX_PAIRED_BLUETOOTH_DEVICES = 6

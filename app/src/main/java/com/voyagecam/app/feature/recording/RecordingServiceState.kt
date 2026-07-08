@@ -8,7 +8,7 @@ class RecordingServiceState {
     var startedAtMillis: Long = 0L
     var dualCamera: Boolean = false
     var ambientAudio: Boolean = false
-    var gpsMetadataEnabled: Boolean = true
+    var gpsMetadataEnabled: Boolean = false
     var storageCapacityGb: Int = VoyageCamSettingsStore.MIN_STORAGE_GB
     var segmentDurationMinutes: Int = 3
     var collisionSensitivity: CollisionSensitivity = CollisionSensitivity.Medium

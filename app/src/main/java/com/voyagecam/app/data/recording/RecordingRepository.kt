@@ -15,18 +15,18 @@ class RecordingRepository(context: Context) {
     private val storageManager = RecordingStorageManager(context)
     private val emergencyEventStore = EmergencyEventStore(context)
 
-    fun listSegments(): List<RecordingSegment> = storageManager.listRecentSegments()
+    suspend fun listSegments(): List<RecordingSegment> = storageManager.listRecentSegments()
 
     suspend fun listEmergencyEvents(): List<EmergencyEvent> = emergencyEventStore.listRecentEvents()
 
-    fun storageOverview(settings: VoyageCamSettings, capability: DualCameraCapability): RecordingStorageOverview {
+    suspend fun storageOverview(settings: VoyageCamSettings, capability: DualCameraCapability): RecordingStorageOverview {
         return storageManager.storageOverview(
             settings = settings,
             dualCameraActive = settings.dualCameraEnabled && capability.isAvailable,
         )
     }
 
-    fun cleanupNormalSegments(maxStorageGb: Int): RecordingStorageManager.CleanupResult {
+    suspend fun cleanupNormalSegments(maxStorageGb: Int): RecordingStorageManager.CleanupResult {
         return storageManager.cleanupNormalSegments(maxStorageGb)
     }
 
@@ -51,6 +51,7 @@ class RecordingRepository(context: Context) {
     }
 
     suspend fun repairEmergencyEvents(): EmergencyEventRepairResult {
+        storageManager.rebuildSegmentIndex()
         return emergencyEventStore.repairMissingSegments { path ->
             storageManager.dashcamFile(path)?.let { it.exists() && it.isFile } == true
         }

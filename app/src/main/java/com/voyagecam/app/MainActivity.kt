@@ -1,19 +1,9 @@
 package com.voyagecam.app
 
-import android.Manifest
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothManager
-import android.content.ActivityNotFoundException
 import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -37,40 +27,33 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.voyagecam.app.core.common.toContentUri
 import com.voyagecam.app.core.model.DeviceCapabilityGrade
 import com.voyagecam.app.core.model.DualCameraCapability
 import com.voyagecam.app.core.model.EmergencyEvent
 import com.voyagecam.app.core.model.PendingStorageCapacityChange
 import com.voyagecam.app.core.model.RecordingSegment
-import com.voyagecam.app.core.model.TrustedBluetoothDevice
-import com.voyagecam.app.data.location.hasAnyLocationPermission
 import com.voyagecam.app.data.settings.VoyageCamSettings
 import com.voyagecam.app.feature.recording.RecordingForegroundService
+import com.voyagecam.app.ui.PermissionCoordinator
+import com.voyagecam.app.ui.rememberPermissionCoordinator
+import com.voyagecam.app.ui.rememberShareLauncher
 import com.voyagecam.app.ui.playback.PlaybackPanel
 import com.voyagecam.app.ui.events.EmergencyEventPanel
 import com.voyagecam.app.ui.history.SegmentHistoryPanel
 import com.voyagecam.app.ui.preview.RearCameraPreview
+import com.voyagecam.app.ui.settings.rememberBluetoothDevicePickerState
 import com.voyagecam.app.ui.settings.SettingsPanel
 import com.voyagecam.app.ui.theme.SectionCard
 import com.voyagecam.app.ui.theme.VoyageCamTheme
 import com.voyagecam.app.ui.VoyageCamViewModel
-import java.io.File
 import java.text.SimpleDateFormat
-import java.util.ArrayList
 import java.util.Date
 import java.util.Locale
 
@@ -95,30 +78,16 @@ private fun VoyageCamApp() {
     val statusMessage = uiState.statusMessage
     val allSegments = uiState.allSegments
     val emergencyEvents = uiState.emergencyEvents
-    var pairedBluetoothDevices by remember { mutableStateOf(context.pairedBluetoothDevices()) }
-    var pendingStart by rememberSaveable { mutableStateOf(false) }
-    var permissionRefreshKey by remember { mutableIntStateOf(0) }
     val availableDays = uiState.availableDays
     val filteredSegments = uiState.filteredSegments
-
-    fun hasPermission(permission: String): Boolean {
-        return permissionRefreshKey >= 0 &&
-            ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
-    }
-
-    fun hasNotificationPermission(): Boolean {
-        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            hasPermission(Manifest.permission.POST_NOTIFICATIONS)
-    }
-
-    fun hasLocationPermission(): Boolean {
-        return context.hasAnyLocationPermission()
-    }
-
-    fun hasBluetoothConnectPermission(): Boolean {
-        return Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
-            hasPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    }
+    val bluetoothDevicePickerState = rememberBluetoothDevicePickerState(
+        context = context,
+        trustedDeviceInput = settings.trustedBluetoothDevice,
+    )
+    val shareLauncher = rememberShareLauncher(
+        context = context,
+        onStatus = viewModel::setStatus,
+    )
 
     fun beginRecordingService() {
         viewModel.setStatus("正在启动后摄录制...")
@@ -140,171 +109,34 @@ private fun VoyageCamApp() {
     fun redetect() {
         viewModel.redetect()
     }
-
-    val cameraPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        permissionRefreshKey++
-        if (granted) {
-            redetect()
-            if (pendingStart && hasNotificationPermission()) {
-                pendingStart = false
-                beginRecordingService()
-            }
-        } else {
-            pendingStart = false
-            viewModel.setStatus("相机权限未授权，无法开始行车记录。")
-        }
-    }
-
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        permissionRefreshKey++
-        if (granted && pendingStart && hasPermission(Manifest.permission.CAMERA)) {
-            pendingStart = false
-            beginRecordingService()
-        } else if (!granted) {
-            pendingStart = false
-            viewModel.setStatus("通知权限未授权，后台录制状态无法可靠展示。")
-        }
-    }
-
-    val audioPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        permissionRefreshKey++
-        viewModel.persistSettings(settings.copy(ambientAudioEnabled = granted))
-        viewModel.setStatus(
-            if (granted) {
-                "行车环境声已开启；下一次录制会带音频。"
-            } else {
-                "麦克风权限未授权，已保持静音录制。"
-            },
-        )
-    }
-
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions(),
-    ) { grants ->
-        permissionRefreshKey++
-        val granted = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-            grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        if (granted && uiState.pendingGpsMetadataEnable) {
-            applyGpsMetadataSetting(true)
-        } else if (!granted && uiState.pendingGpsMetadataEnable) {
-            viewModel.setPendingGpsMetadataEnable(false)
-            viewModel.persistSettings(settings.copy(gpsMetadataEnabled = false))
-            viewModel.setStatus("定位权限未授权；已保持关闭GPS位置与轨迹记录。")
-        } else {
-            viewModel.setStatus(if (granted) {
-                if (settings.gpsMetadataEnabled && isRecording) {
-                    RecordingForegroundService.setGpsMetadataEnabled(context, true)
-                }
-                "定位权限已授权；紧急事件可记录最近可用坐标。"
-            } else {
-                "定位权限未授权；紧急事件仍会记录时间、触发类型和片段。"
-            })
-        }
-    }
-
-    val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        permissionRefreshKey++
-        viewModel.setStatus(if (granted) {
-            pairedBluetoothDevices = context.pairedBluetoothDevices()
-            "蓝牙权限已授权；可信蓝牙连接后可自动开始录制。"
-        } else {
-            "蓝牙权限未授权，可信蓝牙自动启动不可用。"
-        })
-    }
-
-    fun requestStartRecording() {
-        if (!hasPermission(Manifest.permission.CAMERA)) {
-            pendingStart = true
-            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-            return
-        }
-
-        if (!hasNotificationPermission()) {
-            pendingStart = true
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            return
-        }
-
-        beginRecordingService()
-    }
+    val permissionCoordinator: PermissionCoordinator = rememberPermissionCoordinator(
+        context = context,
+        settings = settings,
+        isRecording = isRecording,
+        pendingGpsMetadataEnable = uiState.pendingGpsMetadataEnable,
+        onRedetect = ::redetect,
+        onBeginRecording = ::beginRecordingService,
+        onPersistSettings = viewModel::persistSettings,
+        onApplyGpsMetadataSetting = ::applyGpsMetadataSetting,
+        onSetPendingGpsMetadataEnable = viewModel::setPendingGpsMetadataEnable,
+        onSetStatus = viewModel::setStatus,
+        onBluetoothPermissionGranted = bluetoothDevicePickerState::refreshPairedDevices,
+    )
 
     fun stopRecording() {
         RecordingForegroundService.stop(context)
         viewModel.setRecordingStopped()
     }
 
-    fun shareSegment(segment: RecordingSegment) {
-        runCatching {
-            val uri = segment.toContentUri(context)
-            val intent = Intent(Intent.ACTION_SEND)
-                .setType(VIDEO_MIME_TYPE)
-                .putExtra(Intent.EXTRA_STREAM, uri)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            context.startActivity(Intent.createChooser(intent, "分享录像片段"))
-        }.onFailure { error ->
-            viewModel.setStatus("无法分享片段：${error.message ?: segment.name}")
-        }
-    }
-
     fun shareEmergencyEvent(event: EmergencyEvent) {
         viewModel.loadEmergencyEventFiles(event) { result ->
             result
                 .onSuccess { files ->
-                    runCatching {
-                        val uris = ArrayList<Uri>(files.map { it.toContentUri(context) })
-                        val intent = if (uris.size == 1) {
-                            Intent(Intent.ACTION_SEND)
-                                .setType(VIDEO_MIME_TYPE)
-                                .putExtra(Intent.EXTRA_STREAM, uris.first())
-                        } else {
-                            Intent(Intent.ACTION_SEND_MULTIPLE)
-                                .setType(VIDEO_MIME_TYPE)
-                                .putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
-                        }.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-
-                        context.startActivity(Intent.createChooser(intent, "分享紧急事件片段"))
-                    }.onFailure { error ->
-                        viewModel.setStatus("无法分享紧急事件：${error.message ?: event.trigger.label}")
-                    }
+                    shareLauncher.shareEmergencyEventFiles(event, files)
                 }
                 .onFailure { error ->
                     viewModel.setStatus("无法分享紧急事件：${error.message ?: event.trigger.label}")
                 }
-        }
-    }
-
-    fun shareEvidencePackage(file: File) {
-        runCatching {
-            val uri = file.toContentUri(context)
-            val intent = Intent(Intent.ACTION_SEND)
-                .setType(ZIP_MIME_TYPE)
-                .putExtra(Intent.EXTRA_STREAM, uri)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            context.startActivity(Intent.createChooser(intent, "分享证据包"))
-        }.onFailure { error ->
-            viewModel.setStatus("无法分享证据包：${error.message ?: file.name}")
-        }
-    }
-
-    fun openEmergencyEventMap(event: EmergencyEvent) {
-        runCatching {
-            val uri = event.toGeoUri() ?: error("该事件没有可用坐标")
-            val intent = Intent(Intent.ACTION_VIEW, uri)
-            context.startActivity(intent)
-        }.onFailure { error ->
-            viewModel.setStatus(if (error is ActivityNotFoundException) {
-                "未找到可打开坐标的地图应用。"
-            } else {
-                "无法打开事件位置：${error.message ?: event.trigger.label}"
-            })
         }
     }
 
@@ -335,7 +167,7 @@ private fun VoyageCamApp() {
                     isRecording = isRecording,
                     statusMessage = statusMessage,
                     onToggleRecording = {
-                        if (isRecording) stopRecording() else requestStartRecording()
+                        if (isRecording) stopRecording() else permissionCoordinator.requestStartRecording()
                     },
                     onEmergencyLock = {
                         RecordingForegroundService.lockCurrent(context)
@@ -349,34 +181,17 @@ private fun VoyageCamApp() {
                     capability = capability,
                     isRecording = isRecording,
                     storageLimit = uiState.storageLimit,
-                    cameraPermissionGranted = hasPermission(Manifest.permission.CAMERA),
-                    notificationPermissionGranted = hasNotificationPermission(),
-                    audioPermissionGranted = hasPermission(Manifest.permission.RECORD_AUDIO),
-                    locationPermissionGranted = hasLocationPermission(),
-                    bluetoothPermissionGranted = hasBluetoothConnectPermission(),
+                    cameraPermissionGranted = permissionCoordinator.cameraPermissionGranted,
+                    notificationPermissionGranted = permissionCoordinator.notificationPermissionGranted,
+                    audioPermissionGranted = permissionCoordinator.audioPermissionGranted,
+                    locationPermissionGranted = permissionCoordinator.locationPermissionGranted,
+                    bluetoothPermissionGranted = permissionCoordinator.bluetoothPermissionGranted,
                     storageOverview = uiState.storageOverview,
                     pendingStorageCapacityGb = uiState.pendingStorageCapacityChange?.nextCapacityGb,
-                    onRequestCameraPermission = {
-                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                    },
-                    onRequestNotificationPermission = {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        }
-                    },
-                    onRequestLocationPermission = {
-                        locationPermissionLauncher.launch(
-                            arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION,
-                            ),
-                        )
-                    },
-                    onRequestBluetoothPermission = {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            bluetoothPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
-                        }
-                    },
+                    onRequestCameraPermission = permissionCoordinator.requestCameraPermission,
+                    onRequestNotificationPermission = permissionCoordinator.requestNotificationPermission,
+                    onRequestLocationPermission = permissionCoordinator.requestLocationPermission,
+                    onRequestBluetoothPermission = permissionCoordinator.requestBluetoothPermission,
                     onRedetect = { redetect() },
                     onDualCameraChanged = { enabled ->
                         if (!isRecording) {
@@ -418,12 +233,12 @@ private fun VoyageCamApp() {
                             return@SettingsPanel
                         }
 
-                        val granted = hasPermission(Manifest.permission.RECORD_AUDIO)
+                        val granted = permissionCoordinator.audioPermissionGranted
                         if (granted) {
                             viewModel.persistSettings(settings.copy(ambientAudioEnabled = true))
                             viewModel.setStatus("行车环境声已开启；音频仅写入本地行车视频。")
                         } else {
-                            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            permissionCoordinator.requestAudioPermission()
                         }
                     },
                     onGpsMetadataChanged = { enabled ->
@@ -432,16 +247,11 @@ private fun VoyageCamApp() {
                             return@SettingsPanel
                         }
 
-                        if (hasLocationPermission()) {
+                        if (permissionCoordinator.locationPermissionGranted) {
                             applyGpsMetadataSetting(true)
                         } else {
                             viewModel.setPendingGpsMetadataEnable(true)
-                            locationPermissionLauncher.launch(
-                                arrayOf(
-                                    Manifest.permission.ACCESS_FINE_LOCATION,
-                                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                                ),
-                            )
+                            permissionCoordinator.requestLocationPermission()
                         }
                     },
                     onExportWatermarkSubtitlesChanged = { enabled ->
@@ -487,10 +297,7 @@ private fun VoyageCamApp() {
                     onRefreshAutoStartDiagnostic = {
                         viewModel.refreshAutoStartDiagnostic()
                     },
-                    pairedBluetoothDevices = pairedBluetoothDevices,
-                    onRefreshPairedBluetoothDevices = {
-                        pairedBluetoothDevices = context.pairedBluetoothDevices()
-                    },
+                    bluetoothDevicePickerState = bluetoothDevicePickerState,
                 )
 
                 if (uiState.pendingSettingsReset) {
@@ -525,11 +332,7 @@ private fun VoyageCamApp() {
                         item = item,
                         onClose = { viewModel.closePlayback() },
                         onOpenInSystem = {
-                            openFileInSystem(
-                                context = context,
-                                file = item.primaryFile,
-                                onError = { message -> viewModel.setStatus(message) },
-                            )
+                            shareLauncher.openVideoFile(item.primaryFile)
                         },
                     )
                 }
@@ -569,13 +372,13 @@ private fun VoyageCamApp() {
                         viewModel.cancelEvidenceExport()
                     },
                     onShareExport = { file ->
-                        shareEvidencePackage(file)
+                        shareLauncher.shareEvidencePackage(file)
                     },
                     onDismissExport = {
                         viewModel.dismissEvidenceExport()
                     },
                     onOpenMap = { event ->
-                        openEmergencyEventMap(event)
+                        shareLauncher.openEmergencyEventMap(event)
                     },
                     onDelete = { event ->
                         viewModel.setPendingEmergencyEventDelete(event)
@@ -613,7 +416,7 @@ private fun VoyageCamApp() {
                         viewModel.openSegment(segment)
                     },
                     onShare = { segment ->
-                        shareSegment(segment)
+                        shareLauncher.shareSegment(segment)
                     },
                     onUnlock = { segment ->
                         viewModel.unlockSegment(segment)
@@ -880,60 +683,3 @@ private fun Long.asFileSize(): String {
         else -> "${this}B"
     }
 }
-
-private fun EmergencyEvent.toGeoUri(): Uri? {
-    val lat = latitude ?: return null
-    val lon = longitude ?: return null
-    val label = Uri.encode("VoyageCam ${trigger.label} ${triggeredAtMillis.asTime()}")
-    return Uri.parse("geo:$lat,$lon?q=$lat,$lon($label)")
-}
-
-private fun Context.pairedBluetoothDevices(): List<TrustedBluetoothDevice> {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-        ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
-    ) {
-        return emptyList()
-    }
-
-    return runCatching {
-        bluetoothAdapter()
-            ?.bondedDevices
-            .orEmpty()
-            .map { device ->
-                TrustedBluetoothDevice(
-                    name = runCatching { device.name }.getOrNull().orEmpty(),
-                    address = runCatching { device.address }.getOrNull().orEmpty(),
-                )
-            }
-            .filter { it.name.isNotBlank() || it.address.isNotBlank() }
-            .sortedWith(compareBy<TrustedBluetoothDevice> { it.name.ifBlank { it.address }.lowercase(Locale.getDefault()) })
-    }.getOrDefault(emptyList())
-}
-
-private fun Context.bluetoothAdapter(): BluetoothAdapter? {
-    return getSystemService(BluetoothManager::class.java)?.adapter
-}
-
-private fun openFileInSystem(
-    context: Context,
-    file: File,
-    onError: (String) -> Unit,
-) {
-    runCatching {
-        val uri = file.toContentUri(context)
-        val intent = Intent(Intent.ACTION_VIEW)
-            .setDataAndType(uri, VIDEO_MIME_TYPE)
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        context.startActivity(intent)
-    }.onFailure { error ->
-        val message = if (error is ActivityNotFoundException) {
-            "未找到可播放 MP4 的应用。"
-        } else {
-            "无法打开片段：${error.message ?: file.name}"
-        }
-        onError(message)
-    }
-}
-
-private const val VIDEO_MIME_TYPE = "video/mp4"
-private const val ZIP_MIME_TYPE = "application/zip"

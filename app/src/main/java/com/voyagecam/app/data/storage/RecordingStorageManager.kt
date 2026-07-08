@@ -2,7 +2,6 @@ package com.voyagecam.app.data.storage
 
 import android.content.Context
 import android.os.Environment
-import com.voyagecam.app.core.model.CameraDirection
 import com.voyagecam.app.core.model.RecordingSegment
 import com.voyagecam.app.core.model.RecordingStorageOverview
 import com.voyagecam.app.core.model.SegmentFileNames
@@ -12,6 +11,8 @@ import com.voyagecam.app.data.settings.VoyageCamSettingsStore
 import java.io.File
 
 class RecordingStorageManager(private val context: Context) {
+    private val segmentIndexStore = RecordingSegmentIndexStore(context.applicationContext)
+
     val dashcamRoot: File
         get() = File(recordingRoot, DASHCAM_DIRECTORY)
 
@@ -30,10 +31,10 @@ class RecordingStorageManager(private val context: Context) {
         return File(directory, "${dateParts.filePrefix}_$cameraDirection.mp4")
     }
 
-    fun cleanupNormalSegments(maxStorageGb: Int): CleanupResult {
+    suspend fun cleanupNormalSegments(maxStorageGb: Int): CleanupResult {
         val maxBytes = maxStorageGb.coerceAtLeast(VoyageCamSettingsStore.MIN_STORAGE_GB).toStorageBytes()
-        val segments = normalSegments()
-        val totalBytes = segments.sumOf { it.length() }
+        val segments = segmentIndexStore.normalSegmentEntities(normalRoot, lockedRoot, dashcamRoot)
+        val totalBytes = segments.sumOf { it.sizeBytes }
         if (totalBytes <= maxBytes) {
             return CleanupResult(totalBytes = totalBytes, deletedBytes = 0L, deletedFiles = 0)
         }
@@ -42,16 +43,22 @@ class RecordingStorageManager(private val context: Context) {
         var deletedBytes = 0L
         var deletedFiles = 0
 
-        segments
-            .sortedWith(compareBy<File> { it.lastModified() }.thenBy { it.absolutePath })
-            .forEach { file ->
+        segments.forEach { segment ->
                 if (currentBytes <= maxBytes) return@forEach
+
+                val file = File(dashcamRoot, segment.dashcamPath)
+                if (!file.exists() || !file.isFile) {
+                    segmentIndexStore.deleteMissing(segment)
+                    currentBytes -= segment.sizeBytes
+                    return@forEach
+                }
 
                 val size = file.length()
                 if (file.delete()) {
                     currentBytes -= size
                     deletedBytes += size
                     deletedFiles++
+                    segmentIndexStore.deleteByDashcamPath(segment.dashcamPath)
                     pruneEmptyParents(file.parentFile)
                 }
             }
@@ -63,18 +70,17 @@ class RecordingStorageManager(private val context: Context) {
         )
     }
 
-    fun normalUsageBytes(): Long {
-        return normalSegments().sumOf { it.length() }
+    suspend fun normalUsageBytes(): Long {
+        return segmentIndexStore.storageSnapshot(normalRoot, lockedRoot, dashcamRoot).normalBytes
     }
 
-    fun storageOverview(settings: VoyageCamSettings, dualCameraActive: Boolean): RecordingStorageOverview {
-        val normal = normalSegments()
-        val locked = lockedSegments()
+    suspend fun storageOverview(settings: VoyageCamSettings, dualCameraActive: Boolean): RecordingStorageOverview {
+        val snapshot = segmentIndexStore.storageSnapshot(normalRoot, lockedRoot, dashcamRoot)
         return RecordingStorageOverview(
-            normalBytes = normal.sumOf { it.length() },
-            lockedBytes = locked.sumOf { it.length() },
-            normalClipCount = normal.size,
-            lockedClipCount = locked.size,
+            normalBytes = snapshot.normalBytes,
+            lockedBytes = snapshot.lockedBytes,
+            normalClipCount = snapshot.normalClipCount,
+            lockedClipCount = snapshot.lockedClipCount,
             maxStorageBytes = settings.storageCapacityGb.coerceAtLeast(VoyageCamSettingsStore.MIN_STORAGE_GB).toStorageBytes(),
             estimatedBytesPerMinute = estimateBytesPerMinute(
                 dualCameraActive = dualCameraActive,
@@ -83,20 +89,11 @@ class RecordingStorageManager(private val context: Context) {
         )
     }
 
-    fun listRecentSegments(limit: Int = DEFAULT_SEGMENT_LIST_LIMIT): List<RecordingSegment> {
-        val normal = normalSegments().map { file ->
-            file.toRecordingSegment(locked = false)
-        }
-        val locked = lockedSegments().map { file ->
-            file.toRecordingSegment(locked = true)
-        }
-
-        return (normal + locked)
-            .sortedWith(compareByDescending<RecordingSegment> { it.lastModifiedMillis }.thenBy { it.relativePath })
-            .take(limit)
+    suspend fun listRecentSegments(limit: Int = DEFAULT_SEGMENT_LIST_LIMIT): List<RecordingSegment> {
+        return segmentIndexStore.listRecentSegments(normalRoot, lockedRoot, dashcamRoot, limit)
     }
 
-    fun lockNormalSegment(file: File?): File? {
+    suspend fun lockNormalSegment(file: File?): File? {
         if (file == null || !file.exists() || !file.isFile) return null
         val normalPath = normalRoot.canonicalFile.toPath()
         val filePath = file.canonicalFile.toPath()
@@ -111,12 +108,14 @@ class RecordingStorageManager(private val context: Context) {
             file.copyTo(lockedFile, overwrite = true)
             file.delete()
         }
+        segmentIndexStore.deleteByFile(file, dashcamRoot)
+        segmentIndexStore.upsertFile(lockedFile, dashcamRoot, locked = true)
         pruneEmptyParents(file.parentFile)
 
         return lockedFile
     }
 
-    fun unlockSegment(segment: RecordingSegment): File? {
+    suspend fun unlockSegment(segment: RecordingSegment): File? {
         if (!segment.locked) return File(segment.absolutePath).takeIf { it.exists() && it.isFile }
         val lockedFile = File(segment.absolutePath)
         if (!lockedFile.exists() || !lockedFile.isFile) return null
@@ -134,12 +133,14 @@ class RecordingStorageManager(private val context: Context) {
             lockedFile.copyTo(normalFile, overwrite = true)
             lockedFile.delete()
         }
+        segmentIndexStore.deleteByFile(lockedFile, dashcamRoot)
+        segmentIndexStore.upsertFile(normalFile, dashcamRoot, locked = false)
         pruneEmptyParents(lockedFile.parentFile)
 
         return normalFile
     }
 
-    fun deleteSegment(segment: RecordingSegment): DeleteResult {
+    suspend fun deleteSegment(segment: RecordingSegment): DeleteResult {
         val file = File(segment.absolutePath)
         if (!file.exists() || !file.isFile) return DeleteResult(deleted = false, deletedBytes = 0L)
 
@@ -149,6 +150,7 @@ class RecordingStorageManager(private val context: Context) {
         val size = canonicalFile.length()
         val deleted = canonicalFile.delete()
         if (deleted) {
+            segmentIndexStore.deleteByFile(canonicalFile, dashcamRoot)
             pruneEmptyParents(canonicalFile.parentFile)
         }
 
@@ -178,40 +180,12 @@ class RecordingStorageManager(private val context: Context) {
         }
     }
 
-    private fun normalSegments(): List<File> {
-        if (!normalRoot.exists()) return emptyList()
-        return normalRoot.walkTopDown()
-            .filter { it.isFile && it.extension.equals("mp4", ignoreCase = true) }
-            .toList()
+    suspend fun indexSegmentFile(file: File?, locked: Boolean? = null) {
+        segmentIndexStore.upsertFile(file, dashcamRoot, locked)
     }
 
-    private fun lockedSegments(): List<File> {
-        if (!lockedRoot.exists()) return emptyList()
-        return lockedRoot.walkTopDown()
-            .filter { it.isFile && it.extension.equals("mp4", ignoreCase = true) }
-            .toList()
-    }
-
-    private fun File.toRecordingSegment(locked: Boolean): RecordingSegment {
-        val root = if (locked) lockedRoot else normalRoot
-        val relativePath = runCatching {
-            root.canonicalFile.toPath().relativize(canonicalFile.toPath()).toString()
-        }.getOrDefault(name)
-
-        return RecordingSegment(
-            name = name,
-            relativePath = relativePath,
-            groupKey = relativePath.toSegmentGroupKey(),
-            absolutePath = absolutePath,
-            day = relativePath.toSegmentDay(),
-            cameraDirection = when {
-                name.contains("_front", ignoreCase = true) -> CameraDirection.Front
-                else -> CameraDirection.Rear
-            },
-            locked = locked,
-            sizeBytes = length(),
-            lastModifiedMillis = lastModified(),
-        )
+    suspend fun rebuildSegmentIndex() {
+        segmentIndexStore.rebuild(normalRoot, lockedRoot, dashcamRoot)
     }
 
     private fun pruneEmptyParents(startDirectory: File?) {
@@ -274,16 +248,4 @@ class RecordingStorageManager(private val context: Context) {
             return File(parentFile, normalName)
         }
     }
-}
-
-private fun String.toSegmentDay(): String {
-    return split('/', File.separatorChar)
-        .firstOrNull()
-        ?.takeIf { it.isNotBlank() }
-        ?: "未知日期"
-}
-
-private fun String.toSegmentGroupKey(): String {
-    val normalized = replace(File.separatorChar, '/')
-    return normalized.substringBeforeLast('/', missingDelimiterValue = normalized)
 }

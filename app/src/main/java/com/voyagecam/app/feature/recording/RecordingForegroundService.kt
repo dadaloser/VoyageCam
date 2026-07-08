@@ -109,7 +109,9 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         )
         gpsTrackBuffer.clear()
 
-        storageManager.cleanupNormalSegments(state.storageCapacityGb)
+        serviceScope.launch(Dispatchers.IO) {
+            storageManager.cleanupNormalSegments(state.storageCapacityGb)
+        }
         val notification = notificationController.build(notificationState())
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
@@ -146,6 +148,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
     override fun onDestroy() {
         mainHandler.removeCallbacks(updateNotificationTask)
         mainHandler.removeCallbacks(gpsTrackSampleTask)
+        emergencyLocationProvider.stopUpdates()
         collisionDetector?.stop()
         collisionDetector = null
         recorder?.stop()
@@ -175,21 +178,34 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
     }
 
     override fun onSegmentFinalized(files: RecordingSegmentFileSet) {
-        val finalizedFiles = if (state.pendingLockNextSegment) {
+        if (state.pendingLockNextSegment) {
             val eventId = state.pendingLockNextEventId
             state.pendingLockNextSegment = false
             state.pendingLockNextEventId = null
-            lockSegments(files, eventId)
+            lockSegmentsAsync(files, eventId) { finalizedFiles ->
+                onFinalizedFilesReady(finalizedFiles)
+            }
         } else {
-            files
+            serviceScope.launch(Dispatchers.IO) {
+                files.files.forEach { file -> storageManager.indexSegmentFile(file, locked = false) }
+                val cleanup = storageManager.cleanupNormalSegments(state.storageCapacityGb)
+                withContext(Dispatchers.Main) {
+                    onFinalizedFilesReady(files, cleanup)
+                }
+            }
         }
-        val cleanup = storageManager.cleanupNormalSegments(state.storageCapacityGb)
+    }
+
+    private fun onFinalizedFilesReady(
+        finalizedFiles: RecordingSegmentFileSet,
+        cleanup: RecordingStorageManager.CleanupResult? = null,
+    ) {
         state.previousSegmentFiles = finalizedFiles
         state.currentSegmentFiles = RecordingSegmentFileSet(rear = null)
         state.currentFileName = finalizedFiles.primary?.name ?: state.currentFileName
         state.status = buildString {
             append(if (finalizedFiles.files.any { it.name.contains("_locked") }) "相邻片段已锁定" else "片段已完成")
-            if (cleanup.deletedFiles > 0) {
+            if (cleanup != null && cleanup.deletedFiles > 0) {
                 append("，已清理 ${cleanup.deletedFiles} 个旧普通片段")
             }
         }
@@ -198,27 +214,39 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
 
     override fun onSegmentLockRequested(files: RecordingSegmentFileSet) {
         val eventId = state.pendingLockNextEventId
-        val lockedCurrent = lockSegments(files, eventId)
-        val lockedPrevious = lockSegments(state.previousSegmentFiles, eventId)
-        state.previousSegmentFiles = lockedCurrent.takeIf { it.primary != null }
-            ?: lockedPrevious.takeIf { it.primary != null }
-            ?: state.previousSegmentFiles
-        state.currentSegmentFiles = RecordingSegmentFileSet(rear = null)
-        state.currentFileName = lockedCurrent.primary?.name ?: lockedPrevious.primary?.name ?: state.currentFileName
-        state.pendingLockNextSegment = true
-        state.status = "紧急锁定已触发，当前/上一片段已保护，下一片段完成后也会锁定"
-        notifyRecordingState()
+        lockSegmentsAsync(files, eventId) { lockedCurrent ->
+            lockSegmentsAsync(state.previousSegmentFiles, eventId) { lockedPrevious ->
+                state.previousSegmentFiles = lockedCurrent.takeIf { it.primary != null }
+                    ?: lockedPrevious.takeIf { it.primary != null }
+                    ?: state.previousSegmentFiles
+                state.currentSegmentFiles = RecordingSegmentFileSet(rear = null)
+                state.currentFileName = lockedCurrent.primary?.name ?: lockedPrevious.primary?.name ?: state.currentFileName
+                state.pendingLockNextSegment = true
+                state.status = "紧急锁定已触发，当前/上一片段已保护，下一片段完成后也会锁定"
+                notifyRecordingState()
+            }
+        }
     }
 
     override fun onRecordingStopped(files: RecordingSegmentFileSet) {
-        val finalFiles = if (state.pendingLockNextSegment) {
+        if (state.pendingLockNextSegment) {
             val eventId = state.pendingLockNextEventId
             state.pendingLockNextSegment = false
             state.pendingLockNextEventId = null
-            lockSegments(files, eventId)
+            lockSegmentsAsync(files, eventId) { finalFiles ->
+                onRecordingStoppedFilesReady(finalFiles)
+            }
         } else {
-            files
+            serviceScope.launch(Dispatchers.IO) {
+                files.files.forEach { file -> storageManager.indexSegmentFile(file, locked = false) }
+                withContext(Dispatchers.Main) {
+                    onRecordingStoppedFilesReady(files)
+                }
+            }
         }
+    }
+
+    private fun onRecordingStoppedFilesReady(finalFiles: RecordingSegmentFileSet) {
         state.previousSegmentFiles = finalFiles.takeIf { it.primary != null } ?: state.previousSegmentFiles
         state.currentSegmentFiles = RecordingSegmentFileSet(rear = null)
         state.currentFileName = finalFiles.primary?.name ?: state.currentFileName
@@ -311,7 +339,13 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
     private fun startGpsTrackSampling() {
         mainHandler.removeCallbacks(gpsTrackSampleTask)
         if (!state.gpsMetadataEnabled || !hasAnyLocationPermission()) return
-        mainHandler.post(gpsTrackSampleTask)
+        emergencyLocationProvider.startUpdates()
+        emergencyLocationProvider.currentSnapshot()?.toGpsTrackPoint()?.let { point ->
+            if (gpsTrackBuffer.lastOrNull()?.capturedAtMillis != point.capturedAtMillis) {
+                gpsTrackBuffer += point
+            }
+        }
+        mainHandler.postDelayed(gpsTrackSampleTask, GPS_TRACK_SAMPLE_INTERVAL_MS)
     }
 
     private fun sampleGpsTrackPoint() {
@@ -324,6 +358,15 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
 
     private fun recentGpsTrackPoints(triggeredAtMillis: Long): List<GpsTrackPoint> {
         if (!state.gpsMetadataEnabled) return emptyList()
+        val continuousPoints = emergencyLocationProvider
+            .recentSnapshots(
+                triggeredAtMillis = triggeredAtMillis,
+                retentionMillis = GPS_TRACK_RETENTION_MS,
+                limit = MAX_GPS_TRACK_POINTS,
+            )
+            .map { it.toGpsTrackPoint() }
+        if (continuousPoints.isNotEmpty()) return continuousPoints
+
         sampleGpsTrackPoint()
         pruneGpsTrackBuffer(triggeredAtMillis)
         val startMillis = triggeredAtMillis - GPS_TRACK_RETENTION_MS
@@ -359,6 +402,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
             state.status = "GPS位置与轨迹记录已开启"
         } else {
             mainHandler.removeCallbacks(gpsTrackSampleTask)
+            emergencyLocationProvider.stopUpdates()
             gpsTrackBuffer.clear()
             state.status = "GPS位置与轨迹记录已关闭"
         }
@@ -382,26 +426,35 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         return state.notificationState()
     }
 
-    private fun lockSegments(files: RecordingSegmentFileSet, eventId: String?): RecordingSegmentFileSet {
-        return RecordingSegmentFileSet(
-            rear = lockSegment(files.rear, eventId),
-            front = lockSegment(files.front, eventId),
-        )
+    private fun lockSegmentsAsync(
+        files: RecordingSegmentFileSet,
+        eventId: String?,
+        onComplete: (RecordingSegmentFileSet) -> Unit,
+    ) {
+        serviceScope.launch(Dispatchers.IO) {
+            val lockedFiles = RecordingSegmentFileSet(
+                rear = lockSegment(files.rear, eventId),
+                front = lockSegment(files.front, eventId),
+            )
+            withContext(Dispatchers.Main) {
+                onComplete(lockedFiles)
+            }
+        }
     }
 
-    private fun lockSegment(file: File?, eventId: String?): File? {
+    private suspend fun lockSegment(file: File?, eventId: String?): File? {
         val lockedFile = storageManager.lockNormalSegment(file)
         if (lockedFile != null && lockedFile != file) {
-            state.lockedSegmentCount++
+            withContext(Dispatchers.Main) {
+                state.lockedSegmentCount++
+            }
         }
         val segmentPath = storageManager.dashcamRelativePath(lockedFile)
         if (!eventId.isNullOrBlank() && !segmentPath.isNullOrBlank()) {
-            serviceScope.launch(Dispatchers.IO) {
-                emergencyEventStore.addLockedSegment(
-                    eventId = eventId,
-                    segmentPath = segmentPath,
-                )
-            }
+            emergencyEventStore.addLockedSegment(
+                eventId = eventId,
+                segmentPath = segmentPath,
+            )
         }
         return lockedFile
     }

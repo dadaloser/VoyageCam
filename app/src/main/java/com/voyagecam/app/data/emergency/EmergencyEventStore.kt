@@ -4,13 +4,15 @@ import android.content.Context
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import androidx.room.Update
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.voyagecam.app.core.model.EmergencyEvent
 import com.voyagecam.app.core.model.EmergencyEventRepairResult
 import com.voyagecam.app.core.model.EmergencyLocationSnapshot
@@ -31,6 +33,7 @@ class EmergencyEventStore(context: Context) {
     private val dao = database.emergencyEventDao()
     private val legacyImportMutex = Mutex()
     private var legacyImportChecked = false
+    private var legacyRelationImportChecked = false
 
     suspend fun createEvent(
         trigger: EmergencyTrigger,
@@ -55,8 +58,12 @@ class EmergencyEventStore(context: Context) {
             segmentPaths = emptyList(),
             gpsTrackPoints = gpsTrackPoints,
         )
-        dao.insert(event.toEntity())
+        dao.insertEvent(event.toEntity())
+        dao.replaceSegments(event.id, event.segmentPaths.mapIndexed { index, path -> event.toSegmentEntity(index, path) })
+        dao.replaceTrackPoints(event.id, event.gpsTrackPoints.mapIndexed { index, point -> event.toTrackPointEntity(index, point) })
         dao.pruneToMostRecent(MAX_EVENT_COUNT)
+        dao.pruneSegmentsToMostRecent(MAX_EVENT_COUNT)
+        dao.pruneTrackPointsToMostRecent(MAX_EVENT_COUNT)
         return event
     }
 
@@ -64,24 +71,33 @@ class EmergencyEventStore(context: Context) {
         if (eventId.isNullOrBlank() || segmentPath.isNullOrBlank()) return
 
         ensureLegacyFileImported()
-        val event = dao.findById(eventId)?.toEmergencyEvent() ?: return
-        dao.update(event.copy(segmentPaths = (event.segmentPaths + segmentPath).distinct()).toEntity())
+        dao.findById(eventId) ?: return
+        val existing = dao.listSegments(eventId).map { it.segmentPath }
+        if (segmentPath !in existing) {
+            dao.insertSegment(
+                EmergencyEventSegmentEntity(
+                    id = "$eventId:${segmentPath.encodeField()}",
+                    eventId = eventId,
+                    segmentPath = segmentPath,
+                    sortOrder = existing.size,
+                ),
+            )
+        }
     }
 
     suspend fun removeSegment(segmentPath: String?) {
         if (segmentPath.isNullOrBlank()) return
 
         ensureLegacyFileImported()
-        dao.listRecent(MAX_EVENT_COUNT)
-            .map { it.toEmergencyEvent() }
-            .map { event -> event.copy(segmentPaths = event.segmentPaths.filterNot { it == segmentPath }) }
-            .forEach { dao.update(it.toEntity()) }
+        dao.deleteSegmentPath(segmentPath)
     }
 
     suspend fun deleteEvent(eventId: String?) {
         if (eventId.isNullOrBlank()) return
 
         ensureLegacyFileImported()
+        dao.deleteSegmentsByEventId(eventId)
+        dao.deleteTrackPointsByEventId(eventId)
         dao.deleteById(eventId)
     }
 
@@ -104,7 +120,12 @@ class EmergencyEventStore(context: Context) {
                 }
                 event.copy(segmentPaths = repairedPaths)
             }
-            .forEach { dao.update(it.toEntity()) }
+            .forEach { event ->
+                dao.replaceSegments(
+                    eventId = event.id,
+                    segments = event.segmentPaths.mapIndexed { index, path -> event.toSegmentEntity(index, path) },
+                )
+            }
 
         return EmergencyEventRepairResult(
             updatedEvents = updatedEvents,
@@ -125,6 +146,7 @@ class EmergencyEventStore(context: Context) {
             if (legacyImportChecked) return
 
             if (!eventFile.exists() || dao.count() > 0) {
+                ensureLegacyRelationsImported()
                 legacyImportChecked = true
                 return
             }
@@ -134,11 +156,45 @@ class EmergencyEventStore(context: Context) {
                 .sortedByDescending { it.triggeredAtMillis }
                 .take(MAX_EVENT_COUNT)
             if (legacyEvents.isNotEmpty()) {
-                dao.insertAll(legacyEvents.map { it.toEntity() })
+                dao.insertEvents(legacyEvents.map { it.toEntity() })
+                legacyEvents.forEach { event ->
+                    dao.replaceSegments(
+                        event.id,
+                        event.segmentPaths.mapIndexed { index, path -> event.toSegmentEntity(index, path) },
+                    )
+                    dao.replaceTrackPoints(
+                        event.id,
+                        event.gpsTrackPoints.mapIndexed { index, point -> event.toTrackPointEntity(index, point) },
+                    )
+                }
                 dao.pruneToMostRecent(MAX_EVENT_COUNT)
+                dao.pruneSegmentsToMostRecent(MAX_EVENT_COUNT)
+                dao.pruneTrackPointsToMostRecent(MAX_EVENT_COUNT)
             }
+            ensureLegacyRelationsImported()
             legacyImportChecked = true
         }
+    }
+
+    private suspend fun ensureLegacyRelationsImported() {
+        if (legacyRelationImportChecked) return
+        if (dao.segmentCount() > 0 || dao.trackPointCount() > 0) {
+            legacyRelationImportChecked = true
+            return
+        }
+
+        dao.listRecent(MAX_EVENT_COUNT).forEach { entity ->
+            val event = entity.toEmergencyEventFromLegacyFields()
+            dao.replaceSegments(
+                event.id,
+                event.segmentPaths.mapIndexed { index, path -> event.toSegmentEntity(index, path) },
+            )
+            dao.replaceTrackPoints(
+                event.id,
+                event.gpsTrackPoints.mapIndexed { index, point -> event.toTrackPointEntity(index, point) },
+            )
+        }
+        legacyRelationImportChecked = true
     }
 
     private fun EmergencyEvent.toEntity(): EmergencyEventEntity {
@@ -153,12 +209,14 @@ class EmergencyEventStore(context: Context) {
             speedMetersPerSecond = speedMetersPerSecond,
             bearingDegrees = bearingDegrees,
             locationCapturedAtMillis = locationCapturedAtMillis,
-            segmentPaths = segmentPaths.toSegmentPathField(),
-            gpsTrackPoints = gpsTrackPoints.toTrackField(),
+            legacySegmentPaths = segmentPaths.toSegmentPathField(),
+            legacyGpsTrackPoints = gpsTrackPoints.toTrackField(),
         )
     }
 
-    private fun EmergencyEventEntity.toEmergencyEvent(): EmergencyEvent {
+    private suspend fun EmergencyEventEntity.toEmergencyEvent(): EmergencyEvent {
+        val segments = dao.listSegments(id).map { it.segmentPath }
+        val trackPoints = dao.listTrackPoints(id).map { it.toGpsTrackPoint() }
         return EmergencyEvent(
             id = id,
             trigger = runCatching { EmergencyTrigger.valueOf(trigger) }.getOrDefault(EmergencyTrigger.Manual),
@@ -170,8 +228,58 @@ class EmergencyEventStore(context: Context) {
             speedMetersPerSecond = speedMetersPerSecond,
             bearingDegrees = bearingDegrees,
             locationCapturedAtMillis = locationCapturedAtMillis,
-            segmentPaths = segmentPaths.toSegmentPaths(),
-            gpsTrackPoints = gpsTrackPoints.toGpsTrackPoints(),
+            segmentPaths = segments,
+            gpsTrackPoints = trackPoints,
+        )
+    }
+
+    private fun EmergencyEventEntity.toEmergencyEventFromLegacyFields(): EmergencyEvent {
+        @Suppress("DEPRECATION")
+        return EmergencyEvent(
+            id = id,
+            trigger = runCatching { EmergencyTrigger.valueOf(trigger) }.getOrDefault(EmergencyTrigger.Manual),
+            triggeredAtMillis = triggeredAtMillis,
+            accelerationG = accelerationG,
+            thresholdG = thresholdG,
+            latitude = latitude,
+            longitude = longitude,
+            speedMetersPerSecond = speedMetersPerSecond,
+            bearingDegrees = bearingDegrees,
+            locationCapturedAtMillis = locationCapturedAtMillis,
+            segmentPaths = legacySegmentPaths.toSegmentPaths(),
+            gpsTrackPoints = legacyGpsTrackPoints.toGpsTrackPoints(),
+        )
+    }
+
+    private fun EmergencyEvent.toSegmentEntity(index: Int, segmentPath: String): EmergencyEventSegmentEntity {
+        return EmergencyEventSegmentEntity(
+            id = "$id:${segmentPath.encodeField()}",
+            eventId = id,
+            segmentPath = segmentPath,
+            sortOrder = index,
+        )
+    }
+
+    private fun EmergencyEvent.toTrackPointEntity(index: Int, point: GpsTrackPoint): EmergencyGpsTrackPointEntity {
+        return EmergencyGpsTrackPointEntity(
+            id = "$id:${index}_${point.capturedAtMillis}",
+            eventId = id,
+            sortOrder = index,
+            capturedAtMillis = point.capturedAtMillis,
+            latitude = point.latitude,
+            longitude = point.longitude,
+            speedMetersPerSecond = point.speedMetersPerSecond,
+            bearingDegrees = point.bearingDegrees,
+        )
+    }
+
+    private fun EmergencyGpsTrackPointEntity.toGpsTrackPoint(): GpsTrackPoint {
+        return GpsTrackPoint(
+            latitude = latitude,
+            longitude = longitude,
+            speedMetersPerSecond = speedMetersPerSecond,
+            bearingDegrees = bearingDegrees,
+            capturedAtMillis = capturedAtMillis,
         )
     }
 
@@ -315,8 +423,39 @@ data class EmergencyEventEntity(
     val speedMetersPerSecond: Float?,
     val bearingDegrees: Float?,
     val locationCapturedAtMillis: Long?,
-    val segmentPaths: String,
-    val gpsTrackPoints: String,
+    @Deprecated("Use emergency_event_segments")
+    val legacySegmentPaths: String,
+    @Deprecated("Use emergency_gps_track_points")
+    val legacyGpsTrackPoints: String,
+)
+
+@Entity(
+    tableName = "emergency_event_segments",
+    indices = [
+        Index(value = ["eventId"]),
+        Index(value = ["segmentPath"], unique = true),
+    ],
+)
+data class EmergencyEventSegmentEntity(
+    @PrimaryKey val id: String,
+    val eventId: String,
+    val segmentPath: String,
+    val sortOrder: Int,
+)
+
+@Entity(
+    tableName = "emergency_gps_track_points",
+    indices = [Index(value = ["eventId"])],
+)
+data class EmergencyGpsTrackPointEntity(
+    @PrimaryKey val id: String,
+    val eventId: String,
+    val sortOrder: Int,
+    val capturedAtMillis: Long,
+    val latitude: Double,
+    val longitude: Double,
+    val speedMetersPerSecond: Float?,
+    val bearingDegrees: Float?,
 )
 
 @Dao
@@ -331,16 +470,53 @@ interface EmergencyEventDao {
     suspend fun findById(id: String): EmergencyEventEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(event: EmergencyEventEntity)
+    suspend fun insertEvent(event: EmergencyEventEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(events: List<EmergencyEventEntity>)
-
-    @Update
-    suspend fun update(event: EmergencyEventEntity)
+    suspend fun insertEvents(events: List<EmergencyEventEntity>)
 
     @Query("DELETE FROM emergency_events WHERE id = :id")
     suspend fun deleteById(id: String)
+
+    @Query("SELECT * FROM emergency_event_segments WHERE eventId = :eventId ORDER BY sortOrder ASC")
+    suspend fun listSegments(eventId: String): List<EmergencyEventSegmentEntity>
+
+    @Query("SELECT COUNT(*) FROM emergency_event_segments")
+    suspend fun segmentCount(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSegment(segment: EmergencyEventSegmentEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSegments(segments: List<EmergencyEventSegmentEntity>)
+
+    @Query("DELETE FROM emergency_event_segments WHERE eventId = :eventId")
+    suspend fun deleteSegmentsByEventId(eventId: String)
+
+    @Query("DELETE FROM emergency_event_segments WHERE segmentPath = :segmentPath")
+    suspend fun deleteSegmentPath(segmentPath: String)
+
+    suspend fun replaceSegments(eventId: String, segments: List<EmergencyEventSegmentEntity>) {
+        deleteSegmentsByEventId(eventId)
+        if (segments.isNotEmpty()) insertSegments(segments)
+    }
+
+    @Query("SELECT * FROM emergency_gps_track_points WHERE eventId = :eventId ORDER BY sortOrder ASC")
+    suspend fun listTrackPoints(eventId: String): List<EmergencyGpsTrackPointEntity>
+
+    @Query("SELECT COUNT(*) FROM emergency_gps_track_points")
+    suspend fun trackPointCount(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTrackPoints(points: List<EmergencyGpsTrackPointEntity>)
+
+    @Query("DELETE FROM emergency_gps_track_points WHERE eventId = :eventId")
+    suspend fun deleteTrackPointsByEventId(eventId: String)
+
+    suspend fun replaceTrackPoints(eventId: String, points: List<EmergencyGpsTrackPointEntity>) {
+        deleteTrackPointsByEventId(eventId)
+        if (points.isNotEmpty()) insertTrackPoints(points)
+    }
 
     @Query(
         """
@@ -351,11 +527,35 @@ interface EmergencyEventDao {
         """,
     )
     suspend fun pruneToMostRecent(maxCount: Int)
+
+    @Query(
+        """
+        DELETE FROM emergency_event_segments
+        WHERE eventId NOT IN (
+            SELECT id FROM emergency_events ORDER BY triggeredAtMillis DESC LIMIT :maxCount
+        )
+        """,
+    )
+    suspend fun pruneSegmentsToMostRecent(maxCount: Int)
+
+    @Query(
+        """
+        DELETE FROM emergency_gps_track_points
+        WHERE eventId NOT IN (
+            SELECT id FROM emergency_events ORDER BY triggeredAtMillis DESC LIMIT :maxCount
+        )
+        """,
+    )
+    suspend fun pruneTrackPointsToMostRecent(maxCount: Int)
 }
 
 @Database(
-    entities = [EmergencyEventEntity::class],
-    version = 1,
+    entities = [
+        EmergencyEventEntity::class,
+        EmergencyEventSegmentEntity::class,
+        EmergencyGpsTrackPointEntity::class,
+    ],
+    version = 2,
     exportSchema = false,
 )
 abstract class EmergencyEventDatabase : RoomDatabase() {
@@ -371,7 +571,44 @@ abstract class EmergencyEventDatabase : RoomDatabase() {
                     context.applicationContext,
                     EmergencyEventDatabase::class.java,
                     "voyagecam_emergency_events.db",
-                ).build().also { instance = it }
+                )
+                    .addMigrations(MIGRATION_1_2)
+                    .build()
+                    .also { instance = it }
+            }
+        }
+
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `emergency_event_segments` (
+                        `id` TEXT NOT NULL,
+                        `eventId` TEXT NOT NULL,
+                        `segmentPath` TEXT NOT NULL,
+                        `sortOrder` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """,
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_emergency_event_segments_eventId` ON `emergency_event_segments` (`eventId`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_emergency_event_segments_segmentPath` ON `emergency_event_segments` (`segmentPath`)")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `emergency_gps_track_points` (
+                        `id` TEXT NOT NULL,
+                        `eventId` TEXT NOT NULL,
+                        `sortOrder` INTEGER NOT NULL,
+                        `capturedAtMillis` INTEGER NOT NULL,
+                        `latitude` REAL NOT NULL,
+                        `longitude` REAL NOT NULL,
+                        `speedMetersPerSecond` REAL,
+                        `bearingDegrees` REAL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """,
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_emergency_gps_track_points_eventId` ON `emergency_gps_track_points` (`eventId`)")
             }
         }
     }
