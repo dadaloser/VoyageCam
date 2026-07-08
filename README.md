@@ -41,6 +41,9 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 35. Capture optional GPS bearing/heading data and surface it in event summaries, route previews, CSV exports, and watermark subtitles.
 36. Restore default settings through a confirmation flow without deleting recordings, emergency events, or exported evidence packages.
 37. Bind rear and front CameraX previews together before recording when dual-camera mode is enabled, with rear-preview fallback if concurrent preview startup fails.
+38. Attempt concurrent front/rear CameraX recording in dual-camera mode, writing paired `_rear` and `_front` MP4 files and falling back to rear-only recording if startup fails.
+39. Group front/rear clips in history and open paired clips in a two-pane in-app playback view when both files are available.
+40. Provide shared in-app controls for paired playback, including play/pause, restart, and manual front/rear resync.
 
 ## Current Status
 
@@ -75,6 +78,9 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 - GPS metadata now preserves device-provided bearing when available, while old event records without bearing remain readable.
 - Settings can be restored to defaults from an in-app confirmation panel; this resets configuration only and leaves recorded/evidence data intact.
 - Dual-camera mode now uses CameraX concurrent preview binding before recording on capable devices, while recording still falls back to the current rear-camera pipeline.
+- Dual-camera recording now has a first CameraX concurrent-recording path: successful sessions create paired rear/front clips in the same segment group, and emergency locking protects both when available.
+- Recording history now identifies front/rear clips from the same segment group, and in-app playback can load both files together for a basic synchronized review surface.
+- Paired playback now uses shared controls so the front/rear views can pause, restart, and manually realign without relying on separate native video controls.
 
 ## Build
 
@@ -86,7 +92,7 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 ## Next Development Steps
 
 1. Keep the front-camera inset visible during recording by moving preview and recording into a unified dual-camera CameraX/Camera2 binding.
-2. Implement front-camera recording for devices that pass the capability check, with rear-only fallback.
+2. Add automatic drift monitoring/correction for front/rear synchronized review, plus clearer dual-camera fallback diagnostics.
 3. Add a transcoding pipeline to burn configured time/speed/location watermarks directly into exported video copies.
 4. Extract `core`, `data`, `feature`, and `ui` into Gradle modules once the package boundaries stabilize.
 5. Add a richer map-backed route viewer when map dependencies are introduced.

@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.voyagecam.app.core.camera.CameraCapabilityDetector
 import com.voyagecam.app.core.model.AutoStartDiagnostic
+import com.voyagecam.app.core.model.CameraDirection
 import com.voyagecam.app.core.model.DualCameraCapability
 import com.voyagecam.app.core.model.DualCameraSwitchState
 import com.voyagecam.app.core.model.EmergencyEvent
@@ -285,12 +286,25 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun openSegment(segment: RecordingSegment) {
+        val groupSegments = _uiState.value.allSegments
+            .filter { it.groupKey == segment.groupKey }
+        val rear = groupSegments.firstOrNull { it.cameraDirection == CameraDirection.Rear }
+        val front = groupSegments.firstOrNull { it.cameraDirection == CameraDirection.Front }
+        val primary = if (segment.cameraDirection == CameraDirection.Front) front ?: segment else rear ?: segment
+        val secondary = when (primary.cameraDirection) {
+            CameraDirection.Rear -> front
+            CameraDirection.Front -> rear
+        }
+
         _uiState.update {
             it.copy(
                 playbackItem = PlaybackItem(
-                    title = segment.name,
-                    subtitle = "${segment.cameraDirection.label} · ${if (segment.locked) "已锁定" else "普通"}",
-                    file = File(segment.absolutePath),
+                    title = primary.name,
+                    subtitle = primary.playbackSubtitle(secondary),
+                    primaryLabel = primary.cameraDirection.label,
+                    primaryFile = File(primary.absolutePath),
+                    secondaryLabel = secondary?.cameraDirection?.label,
+                    secondaryFile = secondary?.let { File(it.absolutePath) },
                 ),
             )
         }
@@ -355,7 +369,10 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
                                 allSegments = segments,
                                 emergencyEvents = events,
                                 storageOverview = overview,
-                                playbackItem = it.playbackItem?.takeIf { item -> item.file.absolutePath != segment.absolutePath },
+                                playbackItem = it.playbackItem?.takeIf { item ->
+                                    item.primaryFile.absolutePath != segment.absolutePath &&
+                                        item.secondaryFile?.absolutePath != segment.absolutePath
+                                },
                                 statusMessage = "已删除片段：${segment.name}，释放 ${delete.deletedBytes.asFileSize()}。",
                             )
                         }
@@ -411,18 +428,25 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
     fun openEmergencyEvent(event: EmergencyEvent) {
         viewModelScope.launch(Dispatchers.IO) {
             val result = runCatching {
-                recordingRepository.existingSegmentFiles(event).firstOrNull()
+                recordingRepository.existingSegmentFiles(event)
+                    .sortedWith(compareBy<File> { it.name.cameraDirectionSortOrder() }.thenBy { it.name })
+                    .takeIf { it.isNotEmpty() }
                     ?: error("关联片段文件不存在")
             }
             withContext(Dispatchers.Main) {
                 result
-                    .onSuccess { file ->
+                    .onSuccess { files ->
+                        val primary = files.first()
+                        val secondary = files.drop(1).firstOrNull()
                         _uiState.update {
                             it.copy(
                                 playbackItem = PlaybackItem(
-                                    title = file.name,
-                                    subtitle = "${event.trigger.label} · ${event.triggeredAtMillis.asTime()}",
-                                    file = file,
+                                    title = primary.name,
+                                    subtitle = "${event.trigger.label} · ${event.triggeredAtMillis.asTime()}${if (secondary != null) " · 双摄事件" else ""}",
+                                    primaryLabel = primary.name.cameraDirectionLabel(),
+                                    primaryFile = primary,
+                                    secondaryLabel = secondary?.name?.cameraDirectionLabel(),
+                                    secondaryFile = secondary,
                                 ),
                             )
                         }
@@ -628,6 +652,20 @@ private fun Long.asFileSize(): String {
         kb >= 1.0 -> String.format(Locale.getDefault(), "%.0fKB", kb)
         else -> "${this}B"
     }
+}
+
+private fun RecordingSegment.playbackSubtitle(secondary: RecordingSegment?): String {
+    val lockState = if (locked) "已锁定" else "普通"
+    val playbackMode = if (secondary != null) "双摄同步回放" else "单摄回放"
+    return "${cameraDirection.label} · $lockState · $playbackMode"
+}
+
+private fun String.cameraDirectionLabel(): String {
+    return if (contains("_front", ignoreCase = true)) CameraDirection.Front.label else CameraDirection.Rear.label
+}
+
+private fun String.cameraDirectionSortOrder(): Int {
+    return if (contains("_rear", ignoreCase = true)) 0 else 1
 }
 
 private const val REAR_VIDEO_BYTES_PER_MINUTE = 90L * 1024L * 1024L

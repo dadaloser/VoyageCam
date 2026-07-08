@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.voyagecam.app.core.model.CameraDirection
 import com.voyagecam.app.core.model.RecordingSegment
 import com.voyagecam.app.ui.theme.SectionCard
 import java.text.SimpleDateFormat
@@ -27,6 +28,7 @@ import java.util.Locale
 @Composable
 fun SegmentHistoryPanel(
     segments: List<RecordingSegment>,
+    allSegments: List<RecordingSegment>,
     totalSegmentCount: Int,
     availableDays: List<String>,
     selectedDay: String?,
@@ -41,6 +43,10 @@ fun SegmentHistoryPanel(
     onUnlock: (RecordingSegment) -> Unit,
     onDelete: (RecordingSegment) -> Unit,
 ) {
+    val groupedDirections = allSegments
+        .groupBy { it.groupKey }
+        .mapValues { entry -> entry.value.map { it.cameraDirection }.toSet() }
+
     SectionCard {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -90,6 +96,7 @@ fun SegmentHistoryPanel(
             segments.forEachIndexed { index, segment ->
                 RecordingSegmentRow(
                     segment = segment,
+                    groupedDirections = groupedDirections[segment.groupKey].orEmpty(),
                     onOpen = onOpen,
                     onShare = onShare,
                     onUnlock = onUnlock,
@@ -259,6 +266,7 @@ private fun FilterButton(
 @Composable
 private fun RecordingSegmentRow(
     segment: RecordingSegment,
+    groupedDirections: Set<CameraDirection>,
     onOpen: (RecordingSegment) -> Unit,
     onShare: (RecordingSegment) -> Unit,
     onUnlock: (RecordingSegment) -> Unit,
@@ -297,6 +305,15 @@ private fun RecordingSegmentRow(
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),
         )
+        Text(
+            text = "同组：${groupedDirections.asDirectionSummary()}",
+            style = MaterialTheme.typography.bodySmall,
+            color = if (groupedDirections.containsAll(setOf(CameraDirection.Rear, CameraDirection.Front))) {
+                Color(0xFF2F6F62)
+            } else {
+                Color(0xFF64777B)
+            },
+        )
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -334,6 +351,14 @@ private fun RecordingSegmentRow(
             }
         }
     }
+}
+
+private fun Set<CameraDirection>.asDirectionSummary(): String {
+    if (isEmpty()) return "未识别"
+    return buildList {
+        if (contains(CameraDirection.Rear)) add(CameraDirection.Rear.label)
+        if (contains(CameraDirection.Front)) add(CameraDirection.Front.label)
+    }.joinToString(" + ")
 }
 
 private fun Long.asTime(): String {

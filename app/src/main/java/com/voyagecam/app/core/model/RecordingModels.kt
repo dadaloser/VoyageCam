@@ -3,6 +3,7 @@ package com.voyagecam.app.core.model
 data class RecordingSegment(
     val name: String,
     val relativePath: String,
+    val groupKey: String,
     val absolutePath: String,
     val day: String,
     val cameraDirection: CameraDirection,

@@ -201,6 +201,7 @@ class RecordingStorageManager(private val context: Context) {
         return RecordingSegment(
             name = name,
             relativePath = relativePath,
+            groupKey = relativePath.toSegmentGroupKey(),
             absolutePath = absolutePath,
             day = relativePath.toSegmentDay(),
             cameraDirection = when {
@@ -280,4 +281,9 @@ private fun String.toSegmentDay(): String {
         .firstOrNull()
         ?.takeIf { it.isNotBlank() }
         ?: "未知日期"
+}
+
+private fun String.toSegmentGroupKey(): String {
+    val normalized = replace(File.separatorChar, '/')
+    return normalized.substringBeforeLast('/', missingDelimiterValue = normalized)
 }

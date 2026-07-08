@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -32,7 +33,10 @@ import java.io.File
 data class PlaybackItem(
     val title: String,
     val subtitle: String,
-    val file: File,
+    val primaryLabel: String,
+    val primaryFile: File,
+    val secondaryLabel: String? = null,
+    val secondaryFile: File? = null,
 )
 
 @Composable
@@ -41,6 +45,11 @@ fun PlaybackPanel(
     onClose: () -> Unit,
     onOpenInSystem: () -> Unit,
 ) {
+    var primaryVideoView by remember(item.primaryFile.absolutePath) { mutableStateOf<VideoView?>(null) }
+    var secondaryVideoView by remember(item.secondaryFile?.absolutePath) { mutableStateOf<VideoView?>(null) }
+    var isPlaying by remember(item.primaryFile.absolutePath, item.secondaryFile?.absolutePath) { mutableStateOf(true) }
+    val hasSecondary = item.secondaryFile != null
+
     SectionCard {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -72,7 +81,54 @@ fun PlaybackPanel(
             }
         }
         Spacer(modifier = Modifier.height(12.dp))
-        AndroidVideoPlayer(file = item.file)
+        VideoPane(
+            label = item.primaryLabel,
+            file = item.primaryFile,
+            autoPlay = true,
+            showNativeControls = !hasSecondary,
+            onVideoViewChanged = { primaryVideoView = it },
+        )
+        item.secondaryFile?.let { secondaryFile ->
+            Spacer(modifier = Modifier.height(10.dp))
+            VideoPane(
+                label = item.secondaryLabel ?: "副画面",
+                file = secondaryFile,
+                autoPlay = true,
+                showNativeControls = false,
+                onVideoViewChanged = { secondaryVideoView = it },
+            )
+        }
+        if (hasSecondary) {
+            Spacer(modifier = Modifier.height(10.dp))
+            SharedPlaybackControls(
+                isPlaying = isPlaying,
+                onTogglePlayback = {
+                    val nextPlaying = !isPlaying
+                    if (nextPlaying) {
+                        secondaryVideoView?.seekTo(primaryVideoView?.currentPosition ?: 0)
+                        primaryVideoView?.start()
+                        secondaryVideoView?.start()
+                    } else {
+                        primaryVideoView?.pause()
+                        secondaryVideoView?.pause()
+                    }
+                    isPlaying = nextPlaying
+                },
+                onRestart = {
+                    primaryVideoView?.seekTo(0)
+                    secondaryVideoView?.seekTo(0)
+                    primaryVideoView?.start()
+                    secondaryVideoView?.start()
+                    isPlaying = true
+                },
+                onResync = {
+                    secondaryVideoView?.seekTo(primaryVideoView?.currentPosition ?: 0)
+                    if (isPlaying) {
+                        secondaryVideoView?.start()
+                    }
+                },
+            )
+        }
         Spacer(modifier = Modifier.height(10.dp))
         OutlinedButton(
             onClick = onOpenInSystem,
@@ -84,12 +140,76 @@ fun PlaybackPanel(
 }
 
 @Composable
-private fun AndroidVideoPlayer(file: File) {
+private fun VideoPane(
+    label: String,
+    file: File,
+    autoPlay: Boolean,
+    showNativeControls: Boolean,
+    onVideoViewChanged: (VideoView?) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF163036),
+        )
+        AndroidVideoPlayer(
+            file = file,
+            autoPlay = autoPlay,
+            showNativeControls = showNativeControls,
+            onVideoViewChanged = onVideoViewChanged,
+        )
+    }
+}
+
+@Composable
+private fun SharedPlaybackControls(
+    isPlaying: Boolean,
+    onTogglePlayback: () -> Unit,
+    onRestart: () -> Unit,
+    onResync: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Button(
+                onClick = onTogglePlayback,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(if (isPlaying) "暂停" else "播放")
+            }
+            OutlinedButton(
+                onClick = onRestart,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("归零")
+            }
+            OutlinedButton(
+                onClick = onResync,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("对齐")
+            }
+        }
+    }
+}
+
+@Composable
+private fun AndroidVideoPlayer(
+    file: File,
+    autoPlay: Boolean,
+    showNativeControls: Boolean,
+    onVideoViewChanged: (VideoView?) -> Unit,
+) {
     val context = LocalContext.current
     var activeVideoView by remember { mutableStateOf<VideoView?>(null) }
     DisposableEffect(file.absolutePath) {
         onDispose {
             activeVideoView?.stopPlayback()
+            onVideoViewChanged(null)
             activeVideoView = null
         }
     }
@@ -97,17 +217,25 @@ private fun AndroidVideoPlayer(file: File) {
     AndroidView(
         factory = { viewContext ->
             VideoView(viewContext).apply {
-                setMediaController(MediaController(viewContext))
+                if (showNativeControls) {
+                    setMediaController(MediaController(viewContext))
+                }
             }
         },
         update = { videoView ->
             activeVideoView = videoView
-            val uri = file.toContentUri(context)
-            videoView.stopPlayback()
-            videoView.setVideoURI(uri)
-            videoView.setOnPreparedListener { player ->
-                player.isLooping = false
-                videoView.start()
+            onVideoViewChanged(videoView)
+            if (videoView.tag != file.absolutePath) {
+                val uri = file.toContentUri(context)
+                videoView.tag = file.absolutePath
+                videoView.stopPlayback()
+                videoView.setVideoURI(uri)
+                videoView.setOnPreparedListener { player ->
+                    player.isLooping = false
+                    if (autoPlay) {
+                        videoView.start()
+                    }
+                }
             }
         },
         modifier = Modifier

@@ -17,7 +17,7 @@ class RecordingRepository(context: Context) {
 
     fun listSegments(): List<RecordingSegment> = storageManager.listRecentSegments()
 
-    fun listEmergencyEvents(): List<EmergencyEvent> = emergencyEventStore.listRecentEvents()
+    suspend fun listEmergencyEvents(): List<EmergencyEvent> = emergencyEventStore.listRecentEvents()
 
     fun storageOverview(settings: VoyageCamSettings, capability: DualCameraCapability): RecordingStorageOverview {
         return storageManager.storageOverview(
@@ -30,14 +30,14 @@ class RecordingRepository(context: Context) {
         return storageManager.cleanupNormalSegments(maxStorageGb)
     }
 
-    fun unlockSegment(segment: RecordingSegment): File {
+    suspend fun unlockSegment(segment: RecordingSegment): File {
         val lockedDashcamPath = storageManager.dashcamRelativePath(File(segment.absolutePath))
         val unlockedFile = storageManager.unlockSegment(segment) ?: error("锁定片段不存在")
         emergencyEventStore.removeSegment(lockedDashcamPath)
         return unlockedFile
     }
 
-    fun deleteSegment(segment: RecordingSegment): RecordingStorageManager.DeleteResult {
+    suspend fun deleteSegment(segment: RecordingSegment): RecordingStorageManager.DeleteResult {
         val dashcamPath = storageManager.dashcamRelativePath(File(segment.absolutePath))
         val result = storageManager.deleteSegment(segment)
         if (result.deleted) {
@@ -46,11 +46,11 @@ class RecordingRepository(context: Context) {
         return result
     }
 
-    fun deleteEmergencyEvent(eventId: String?) {
+    suspend fun deleteEmergencyEvent(eventId: String?) {
         emergencyEventStore.deleteEvent(eventId)
     }
 
-    fun repairEmergencyEvents(): EmergencyEventRepairResult {
+    suspend fun repairEmergencyEvents(): EmergencyEventRepairResult {
         return emergencyEventStore.repairMissingSegments { path ->
             storageManager.dashcamFile(path)?.let { it.exists() && it.isFile } == true
         }

@@ -527,7 +527,7 @@ private fun VoyageCamApp() {
                         onOpenInSystem = {
                             openFileInSystem(
                                 context = context,
-                                file = item.file,
+                                file = item.primaryFile,
                                 onError = { message -> viewModel.setStatus(message) },
                             )
                         },
@@ -597,6 +597,7 @@ private fun VoyageCamApp() {
 
                 SegmentHistoryPanel(
                     segments = filteredSegments,
+                    allSegments = allSegments,
                     totalSegmentCount = allSegments.size,
                     availableDays = availableDays,
                     selectedDay = uiState.selectedDay,
