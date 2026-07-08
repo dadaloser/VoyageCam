@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.camera.core.CameraSelector
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoRecordEvent
+import com.voyagecam.app.core.model.DualCameraDiagnostic
 import java.io.File
 
 object DualCameraRecordingPipeline {
@@ -14,7 +15,7 @@ object DualCameraRecordingPipeline {
         audioEnabled: Boolean,
         onReady: (DualCameraRecordingSession) -> Unit,
         onEvent: (DualCameraRecordEvent) -> Unit,
-        onError: (String) -> Unit,
+        onError: (DualCameraDiagnostic) -> Unit,
     ) {
         DualCameraSessionCoordinator.startRecording(
             context = context,

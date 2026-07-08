@@ -30,6 +30,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import com.voyagecam.app.core.camera.DualCameraPreviewController
 import com.voyagecam.app.core.camera.RearCameraPreviewController
+import com.voyagecam.app.core.model.DualCameraDiagnostic
 
 @Composable
 fun RearCameraPreview(
@@ -181,8 +182,8 @@ private fun DualCameraPreview(
                 controller.start(
                     rearPreviewView = rear,
                     frontPreviewView = front,
-                ) { message ->
-                    errorMessage = message
+                ) { diagnostic ->
+                    errorMessage = diagnostic.summary()
                     onUnavailable()
                 }
             }

@@ -9,6 +9,7 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoRecordEvent
 import androidx.core.content.ContextCompat
+import com.voyagecam.app.core.model.DualCameraDiagnostic
 import com.voyagecam.app.data.storage.RecordingStorageManager
 import java.io.File
 
@@ -191,13 +192,13 @@ class RearCameraRecorder(
                     handleDualVideoRecordEvent(event)
                 }
             },
-            onError = { message ->
+            onError = { diagnostic ->
                 cameraHandler.post {
                     dualRecordingMode = false
                     frontFile.delete()
                     outputFrontFile = null
-                    callbacks.onDualCameraFallback(message)
-                    callbacks.onRecordingError("双摄录制启动失败，已回落后摄单录：$message")
+                    callbacks.onDualCameraFallback(diagnostic)
+                    callbacks.onRecordingError("双摄录制启动失败，已回落后摄单录：${diagnostic.summary()}")
                     startNextRearOnlySegment(rearFile)
                 }
             },
@@ -323,7 +324,7 @@ class RearCameraRecorder(
         fun onSegmentLockRequested(files: RecordingSegmentFileSet)
         fun onRecordingStopped(files: RecordingSegmentFileSet)
         fun onRecordingError(message: String)
-        fun onDualCameraFallback(message: String) = Unit
+        fun onDualCameraFallback(diagnostic: DualCameraDiagnostic) = Unit
         fun onSegmentTransitionMeasured(stats: RecordingSegmentTransitionStats) = Unit
     }
 

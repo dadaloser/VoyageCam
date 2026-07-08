@@ -3,6 +3,7 @@ package com.voyagecam.app.core.camera
 import android.content.Context
 import androidx.camera.view.PreviewView
 import androidx.lifecycle.LifecycleOwner
+import com.voyagecam.app.core.model.DualCameraDiagnostic
 
 class DualCameraPreviewController(
     private val context: Context,
@@ -14,7 +15,7 @@ class DualCameraPreviewController(
     fun start(
         rearPreviewView: PreviewView,
         frontPreviewView: PreviewView,
-        onError: (String) -> Unit,
+        onError: (DualCameraDiagnostic) -> Unit,
     ) {
         val rearProvider = rearPreviewView.surfaceProvider
         val frontProvider = frontPreviewView.surfaceProvider

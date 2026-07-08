@@ -24,6 +24,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import com.voyagecam.app.core.model.DualCameraDiagnostic
+import com.voyagecam.app.core.model.DualCameraDiagnosticStage
 import java.io.File
 
 object DualCameraSessionCoordinator : LifecycleOwner {
@@ -43,7 +45,7 @@ object DualCameraSessionCoordinator : LifecycleOwner {
         context: Context,
         rearProvider: Preview.SurfaceProvider,
         frontProvider: Preview.SurfaceProvider,
-        onError: (String) -> Unit,
+        onError: (DualCameraDiagnostic) -> Unit,
     ) {
         runOnMain {
             rearPreviewProvider = rearProvider
@@ -78,11 +80,16 @@ object DualCameraSessionCoordinator : LifecycleOwner {
         audioEnabled: Boolean,
         onReady: (DualCameraRecordingSession) -> Unit,
         onEvent: (DualCameraRecordEvent) -> Unit,
-        onError: (String) -> Unit,
+        onError: (DualCameraDiagnostic) -> Unit,
     ) {
         runOnMain {
             if (!hasCameraPermission(context)) {
-                onError("相机权限未授权，无法启动双摄录制")
+                onError(
+                    DualCameraDiagnostic(
+                        stage = DualCameraDiagnosticStage.ConcurrentRecording,
+                        detail = "相机权限未授权，无法启动双摄录制",
+                    ),
+                )
                 return@runOnMain
             }
 
@@ -133,7 +140,12 @@ object DualCameraSessionCoordinator : LifecycleOwner {
                 rearRecording = null
                 frontRecording = null
                 unbindIfIdle()
-                onError(error.message ?: "双摄录制初始化失败")
+                onError(
+                    DualCameraDiagnostic(
+                        stage = DualCameraDiagnosticStage.ConcurrentRecording,
+                        detail = error.message ?: "双摄录制初始化失败",
+                    ),
+                )
             }
         }
     }
@@ -153,10 +165,19 @@ object DualCameraSessionCoordinator : LifecycleOwner {
         context: Context,
         rearVideoCapture: VideoCapture<Recorder>?,
         frontVideoCapture: VideoCapture<Recorder>?,
-        onError: (String) -> Unit,
+        onError: (DualCameraDiagnostic) -> Unit,
     ) {
         if (!hasCameraPermission(context)) {
-            onError("相机权限未授权，无法显示双摄画面")
+            onError(
+                DualCameraDiagnostic(
+                    stage = if (rearVideoCapture == null && frontVideoCapture == null) {
+                        DualCameraDiagnosticStage.Preview
+                    } else {
+                        DualCameraDiagnosticStage.Session
+                    },
+                    detail = "相机权限未授权，无法显示双摄画面",
+                ),
+            )
             return
         }
         ensureLifecycleStarted()
@@ -195,7 +216,16 @@ object DualCameraSessionCoordinator : LifecycleOwner {
             concurrentCamera = provider.bindToLifecycle(listOf(rearConfig, frontConfig))
         }.onFailure { error ->
             concurrentCamera = null
-            onError(error.message ?: "双摄会话初始化失败")
+            onError(
+                DualCameraDiagnostic(
+                    stage = if (rearVideoCapture == null && frontVideoCapture == null) {
+                        DualCameraDiagnosticStage.Preview
+                    } else {
+                        DualCameraDiagnosticStage.Session
+                    },
+                    detail = error.message ?: "双摄会话初始化失败",
+                ),
+            )
         }
     }
 
@@ -205,7 +235,7 @@ object DualCameraSessionCoordinator : LifecycleOwner {
         concurrentCamera = null
     }
 
-    private fun rebindPreviewIfNeeded(context: Context, onError: (String) -> Unit) {
+    private fun rebindPreviewIfNeeded(context: Context, onError: (DualCameraDiagnostic) -> Unit) {
         if (rearPreviewProvider != null || frontPreviewProvider != null) {
             bind(
                 context = context,

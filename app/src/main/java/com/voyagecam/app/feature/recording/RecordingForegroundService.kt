@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import com.voyagecam.app.core.camera.RearCameraRecorder
 import com.voyagecam.app.core.camera.RecordingSegmentFileSet
 import com.voyagecam.app.core.camera.RecordingSegmentTransitionStats
+import com.voyagecam.app.core.model.DualCameraDiagnostic
 import com.voyagecam.app.core.model.EmergencyLocationSnapshot
 import com.voyagecam.app.core.model.EmergencyTrigger
 import com.voyagecam.app.core.model.GpsTrackPoint
@@ -264,10 +265,10 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         notifyRecordingState()
     }
 
-    override fun onDualCameraFallback(message: String) {
+    override fun onDualCameraFallback(diagnostic: DualCameraDiagnostic) {
         state.dualCamera = false
-        state.dualCameraDiagnostic = "双摄回退：$message"
-        state.status = "双摄录制启动失败，已回落后摄单录：$message"
+        state.dualCameraDiagnostic = diagnostic.summary()
+        state.status = "双摄录制启动失败，已回落后摄单录：${diagnostic.summary()}"
         notifyRecordingState()
     }
 
