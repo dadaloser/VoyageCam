@@ -10,10 +10,12 @@ import com.voyagecam.app.core.model.DualCameraCapability
 import com.voyagecam.app.core.model.DualCameraSwitchState
 import com.voyagecam.app.core.model.EmergencyEvent
 import com.voyagecam.app.core.model.PendingStorageCapacityChange
+import com.voyagecam.app.core.model.PersistedDualCameraDiagnostic
 import com.voyagecam.app.core.model.RecordingSegment
 import com.voyagecam.app.core.model.RecordingStorageOverview
 import com.voyagecam.app.core.model.toStorageBytes
 import com.voyagecam.app.data.autostart.AutoStartDiagnosticsStore
+import com.voyagecam.app.data.camera.DualCameraDiagnosticsStore
 import com.voyagecam.app.data.evidence.EvidenceRepository
 import com.voyagecam.app.data.recording.RecordingRepository
 import com.voyagecam.app.data.settings.StorageCapacityLimit
@@ -45,6 +47,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
     private val recordingRepository = RecordingRepository(appContext)
     private val evidenceRepository = EvidenceRepository(appContext)
     private val autoStartDiagnosticsStore = AutoStartDiagnosticsStore(appContext)
+    private val dualCameraDiagnosticsStore = DualCameraDiagnosticsStore(appContext)
     private val storageLimit = StorageCapacityLimit.from(appContext)
     private var evidenceExportCancelFlag: AtomicBoolean? = null
 
@@ -68,6 +71,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
     init {
         refreshRecordingData()
         refreshAutoStartDiagnostic()
+        refreshDualCameraDiagnostic()
         redetect()
     }
 
@@ -156,6 +160,10 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun refreshAutoStartDiagnostic() {
         _uiState.update { it.copy(autoStartDiagnostic = autoStartDiagnosticsStore.load()) }
+    }
+
+    fun refreshDualCameraDiagnostic() {
+        _uiState.update { it.copy(dualCameraDiagnostic = dualCameraDiagnosticsStore.load()) }
     }
 
     fun requestStorageCapacityChange(capacityGb: Int) {
@@ -616,6 +624,7 @@ data class VoyageCamUiState(
     val storageOverview: RecordingStorageOverview,
     val emergencyEvents: List<EmergencyEvent> = emptyList(),
     val autoStartDiagnostic: AutoStartDiagnostic? = null,
+    val dualCameraDiagnostic: PersistedDualCameraDiagnostic? = null,
     val playbackItem: PlaybackItem? = null,
     val evidenceExportState: EvidenceExportState? = null,
     val selectedDay: String? = null,

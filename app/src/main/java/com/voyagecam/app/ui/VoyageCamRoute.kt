@@ -277,7 +277,9 @@ fun VoyageCamRoute() {
                         }
                     },
                     autoStartDiagnostic = uiState.autoStartDiagnostic,
+                    dualCameraDiagnostic = uiState.dualCameraDiagnostic,
                     onRefreshAutoStartDiagnostic = viewModel::refreshAutoStartDiagnostic,
+                    onRefreshDualCameraDiagnostic = viewModel::refreshDualCameraDiagnostic,
                     bluetoothDevicePickerState = bluetoothDevicePickerState,
                 )
 

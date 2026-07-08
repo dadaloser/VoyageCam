@@ -27,6 +27,7 @@ import com.voyagecam.app.core.model.AutoStartResult
 import com.voyagecam.app.core.model.CollisionSensitivity
 import com.voyagecam.app.core.model.DualCameraCapability
 import com.voyagecam.app.core.model.DualCameraSwitchState
+import com.voyagecam.app.core.model.PersistedDualCameraDiagnostic
 import com.voyagecam.app.core.model.RecordingStorageOverview
 import com.voyagecam.app.core.model.TrustedBluetoothDevice
 import com.voyagecam.app.data.settings.StorageCapacityLimit
@@ -68,7 +69,9 @@ fun SettingsPanel(
     onAutoStartOnTrustedBluetoothChanged: (Boolean) -> Unit,
     onRequestResetSettings: () -> Unit,
     autoStartDiagnostic: AutoStartDiagnostic?,
+    dualCameraDiagnostic: PersistedDualCameraDiagnostic?,
     onRefreshAutoStartDiagnostic: () -> Unit,
+    onRefreshDualCameraDiagnostic: () -> Unit,
     bluetoothDevicePickerState: BluetoothDevicePickerState,
 ) {
     val visibleStorageCapacityGb = pendingStorageCapacityGb ?: settings.storageCapacityGb
@@ -266,6 +269,9 @@ fun SettingsPanel(
         Spacer(modifier = Modifier.height(16.dp))
         AutoStartDiagnosticPanel(autoStartDiagnostic, onRefreshAutoStartDiagnostic)
 
+        Spacer(modifier = Modifier.height(16.dp))
+        DualCameraDiagnosticPanel(dualCameraDiagnostic, onRefreshDualCameraDiagnostic)
+
         Spacer(modifier = Modifier.height(12.dp))
         OutlinedButton(
             onClick = onRequestResetSettings,
@@ -407,6 +413,55 @@ private fun AutoStartDiagnosticPanel(
                 color = Color(0xFF64777B),
             )
         }
+    }
+}
+
+@Composable
+private fun DualCameraDiagnosticPanel(
+    diagnostic: PersistedDualCameraDiagnostic?,
+    onRefresh: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = "双摄诊断",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF163036),
+        )
+        OutlinedButton(onClick = onRefresh) {
+            Text("刷新")
+        }
+    }
+    Spacer(modifier = Modifier.height(8.dp))
+    if (diagnostic == null) {
+        Text(
+            text = "暂无双摄降级记录。",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF64777B),
+        )
+    } else {
+        Text(
+            text = "${diagnostic.stage.label} · ${diagnostic.recordedAtMillis.asTime()}",
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF9B2C2C),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = diagnostic.detail,
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF4D6267),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "最近一次双摄录制已回落为后摄单录，可结合通知栏状态一起排查。",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF64777B),
+        )
     }
 }
 

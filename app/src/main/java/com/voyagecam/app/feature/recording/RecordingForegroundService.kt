@@ -18,6 +18,7 @@ import com.voyagecam.app.core.model.DualCameraDiagnostic
 import com.voyagecam.app.core.model.EmergencyLocationSnapshot
 import com.voyagecam.app.core.model.EmergencyTrigger
 import com.voyagecam.app.core.model.GpsTrackPoint
+import com.voyagecam.app.data.camera.DualCameraDiagnosticsStore
 import com.voyagecam.app.data.emergency.EmergencyEventStore
 import com.voyagecam.app.data.location.EmergencyLocationProvider
 import com.voyagecam.app.data.location.hasAnyLocationPermission
@@ -40,6 +41,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
     private lateinit var cameraHandler: Handler
     private lateinit var notificationController: RecordingNotificationController
     private lateinit var settingsStore: VoyageCamSettingsStore
+    private lateinit var dualCameraDiagnosticsStore: DualCameraDiagnosticsStore
     private lateinit var storageManager: RecordingStorageManager
     private lateinit var emergencyEventStore: EmergencyEventStore
     private lateinit var emergencyLocationProvider: EmergencyLocationProvider
@@ -72,6 +74,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         cameraHandler = Handler(cameraThread.looper)
         notificationController = RecordingNotificationController(this)
         settingsStore = VoyageCamSettingsStore(this)
+        dualCameraDiagnosticsStore = DualCameraDiagnosticsStore(this)
         storageManager = RecordingStorageManager(this)
         emergencyEventStore = EmergencyEventStore(this)
         emergencyLocationProvider = EmergencyLocationProvider(this)
@@ -170,6 +173,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
             state.dualCameraDiagnostic = null
         } else if (files.front != null) {
             state.dualCameraDiagnostic = "双摄并发录制正常"
+            dualCameraDiagnosticsStore.clear()
         }
         state.status = if (state.dualCamera) {
             if (files.front != null) {
@@ -268,6 +272,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
     override fun onDualCameraFallback(diagnostic: DualCameraDiagnostic) {
         state.dualCamera = false
         state.dualCameraDiagnostic = diagnostic.summary()
+        dualCameraDiagnosticsStore.record(diagnostic)
         state.status = "双摄录制启动失败，已回落后摄单录：${diagnostic.summary()}"
         notifyRecordingState()
     }
