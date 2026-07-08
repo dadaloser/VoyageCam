@@ -38,6 +38,7 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 32. Show an in-app route preview for emergency events with GPS tracks, including distance, duration, speed, and start/end coordinates.
 33. Let users disable GPS location and route metadata capture independently from core video recording.
 34. Generate optional SRT watermark sidecar subtitles during evidence export with time, speed, and coordinates while preserving original video files.
+35. Capture optional GPS bearing/heading data and surface it in event summaries, route previews, CSV exports, and watermark subtitles.
 
 ## Current Status
 
@@ -69,6 +70,7 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 - Emergency rows summarize GPS routes directly in-app, with calculated distance, duration, average speed, max speed, and start/end coordinates.
 - Settings include a GPS metadata privacy switch; disabling it stops route sampling, clears the in-memory GPS buffer, and keeps future emergency events free of location and track metadata.
 - Evidence export can include `watermark/*.srt` sidecar subtitles derived from event GPS data, so time/speed/location overlays can be previewed without transcoding or modifying source clips.
+- GPS metadata now preserves device-provided bearing when available, while old event records without bearing remain readable.
 
 ## Build
 

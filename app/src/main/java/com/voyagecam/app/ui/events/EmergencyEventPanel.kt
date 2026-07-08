@@ -408,7 +408,10 @@ private fun Float.toKilometersPerHourText(): String {
 }
 
 private fun GpsTrackPoint.coordinateText(): String {
-    return String.format(Locale.getDefault(), "%.5f, %.5f · %s", latitude, longitude, capturedAtMillis.asTime())
+    val bearingText = bearingDegrees?.let {
+        String.format(Locale.getDefault(), " · 航向 %.0f°", it)
+    }.orEmpty()
+    return String.format(Locale.getDefault(), "%.5f, %.5f%s · %s", latitude, longitude, bearingText, capturedAtMillis.asTime())
 }
 
 private const val METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR = 3.6f

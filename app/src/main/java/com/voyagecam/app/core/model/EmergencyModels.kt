@@ -15,6 +15,7 @@ data class EmergencyEvent(
     val latitude: Double?,
     val longitude: Double?,
     val speedMetersPerSecond: Float?,
+    val bearingDegrees: Float?,
     val locationCapturedAtMillis: Long?,
     val segmentPaths: List<String>,
     val gpsTrackPoints: List<GpsTrackPoint> = emptyList(),
@@ -30,6 +31,7 @@ data class GpsTrackPoint(
     val latitude: Double,
     val longitude: Double,
     val speedMetersPerSecond: Float?,
+    val bearingDegrees: Float?,
     val capturedAtMillis: Long,
 )
 

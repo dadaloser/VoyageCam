@@ -24,8 +24,11 @@ fun EmergencyEvent.locationSummary(): String? {
     val speedText = speedMetersPerSecond?.let {
         String.format(Locale.getDefault(), " · %.0fkm/h", it * METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR)
     }.orEmpty()
+    val bearingText = bearingDegrees?.let {
+        String.format(Locale.getDefault(), " · 航向 %.0f°", it)
+    }.orEmpty()
     val timeText = locationCapturedAtMillis?.let { " · ${it.asTime()}" }.orEmpty()
-    return "$coordinate$speedText$timeText"
+    return "$coordinate$speedText$bearingText$timeText"
 }
 
 fun EmergencyEvent.hasLocation(): Boolean {

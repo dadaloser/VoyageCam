@@ -392,6 +392,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
             latitude = latitude,
             longitude = longitude,
             speedMetersPerSecond = speedMetersPerSecond,
+            bearingDegrees = bearingDegrees,
             capturedAtMillis = capturedAtMillis,
         )
     }

@@ -32,6 +32,7 @@ class EmergencyEventStore(context: Context) {
             latitude = location?.latitude,
             longitude = location?.longitude,
             speedMetersPerSecond = location?.speedMetersPerSecond,
+            bearingDegrees = location?.bearingDegrees,
             locationCapturedAtMillis = location?.capturedAtMillis,
             segmentPaths = emptyList(),
             gpsTrackPoints = gpsTrackPoints,
@@ -127,6 +128,7 @@ class EmergencyEventStore(context: Context) {
             latitude?.toString().orEmpty(),
             longitude?.toString().orEmpty(),
             speedMetersPerSecond?.toString().orEmpty(),
+            bearingDegrees?.toString().orEmpty(),
             locationCapturedAtMillis?.toString().orEmpty(),
             segmentPaths.joinToString(separator = ",") { it.encodeField() },
             gpsTrackPoints.toTrackField(),
@@ -138,9 +140,17 @@ class EmergencyEventStore(context: Context) {
         if (parts.size < 6) return null
         val trigger = runCatching { EmergencyTrigger.valueOf(parts[TRIGGER_INDEX]) }.getOrNull() ?: return null
         val triggeredAtMillis = parts[TRIGGERED_AT_INDEX].toLongOrNull() ?: return null
-        val hasLocationFields = parts.size >= LOCATION_EVENT_FIELD_COUNT
-        val segmentField = if (hasLocationFields) parts[SEGMENT_PATHS_INDEX] else parts[OLD_SEGMENT_PATHS_INDEX]
-        val trackField = parts.getOrNull(GPS_TRACK_INDEX)
+        val hasBearingFields = parts.size >= BEARING_EVENT_FIELD_COUNT
+        val hasLocationFields = hasBearingFields || parts.size >= LOCATION_EVENT_FIELD_COUNT
+        val segmentField = when {
+            hasBearingFields -> parts[BEARING_SEGMENT_PATHS_INDEX]
+            hasLocationFields -> parts[SEGMENT_PATHS_INDEX]
+            else -> parts[OLD_SEGMENT_PATHS_INDEX]
+        }
+        val trackField = when {
+            hasBearingFields -> parts.getOrNull(BEARING_GPS_TRACK_INDEX)
+            else -> parts.getOrNull(GPS_TRACK_INDEX)
+        }
         return EmergencyEvent(
             id = parts[ID_INDEX],
             trigger = trigger,
@@ -150,7 +160,14 @@ class EmergencyEventStore(context: Context) {
             latitude = if (hasLocationFields) parts[LATITUDE_INDEX].toDoubleOrNull() else null,
             longitude = if (hasLocationFields) parts[LONGITUDE_INDEX].toDoubleOrNull() else null,
             speedMetersPerSecond = if (hasLocationFields) parts[SPEED_INDEX].toFloatOrNull() else null,
-            locationCapturedAtMillis = if (hasLocationFields) parts[LOCATION_CAPTURED_AT_INDEX].toLongOrNull() else null,
+            bearingDegrees = if (hasBearingFields) parts[BEARING_INDEX].toFloatOrNull() else null,
+            locationCapturedAtMillis = if (hasBearingFields) {
+                parts[BEARING_LOCATION_CAPTURED_AT_INDEX].toLongOrNull()
+            } else if (hasLocationFields) {
+                parts[LOCATION_CAPTURED_AT_INDEX].toLongOrNull()
+            } else {
+                null
+            },
             segmentPaths = segmentField
                 .takeIf { it.isNotBlank() }
                 ?.split(',')
@@ -168,6 +185,7 @@ class EmergencyEventStore(context: Context) {
                 point.latitude.toString(),
                 point.longitude.toString(),
                 point.speedMetersPerSecond?.toString().orEmpty(),
+                point.bearingDegrees?.toString().orEmpty(),
             ).joinToString(separator = ",")
         }
         return encodedTrack.encodeField()
@@ -180,7 +198,7 @@ class EmergencyEventStore(context: Context) {
         return decoded
             .split(';')
             .mapNotNull { entry ->
-                val parts = entry.split(',', limit = GPS_TRACK_PART_COUNT)
+                val parts = entry.split(',', limit = BEARING_GPS_TRACK_PART_COUNT)
                 val capturedAt = parts.getOrNull(GPS_TRACK_TIME_INDEX)?.toLongOrNull() ?: return@mapNotNull null
                 val latitude = parts.getOrNull(GPS_TRACK_LATITUDE_INDEX)?.toDoubleOrNull() ?: return@mapNotNull null
                 val longitude = parts.getOrNull(GPS_TRACK_LONGITUDE_INDEX)?.toDoubleOrNull() ?: return@mapNotNull null
@@ -188,6 +206,7 @@ class EmergencyEventStore(context: Context) {
                     latitude = latitude,
                     longitude = longitude,
                     speedMetersPerSecond = parts.getOrNull(GPS_TRACK_SPEED_INDEX)?.toFloatOrNull(),
+                    bearingDegrees = parts.getOrNull(GPS_TRACK_BEARING_INDEX)?.toFloatOrNull(),
                     capturedAtMillis = capturedAt,
                 )
             }
@@ -221,12 +240,18 @@ class EmergencyEventStore(context: Context) {
         private const val LOCATION_CAPTURED_AT_INDEX = 8
         private const val SEGMENT_PATHS_INDEX = 9
         private const val GPS_TRACK_INDEX = 10
+        private const val BEARING_INDEX = 8
+        private const val BEARING_LOCATION_CAPTURED_AT_INDEX = 9
+        private const val BEARING_SEGMENT_PATHS_INDEX = 10
+        private const val BEARING_GPS_TRACK_INDEX = 11
         private const val LOCATION_EVENT_FIELD_COUNT = 10
-        private const val EVENT_FIELD_COUNT = 11
-        private const val GPS_TRACK_PART_COUNT = 4
+        private const val EVENT_FIELD_COUNT = 12
+        private const val BEARING_EVENT_FIELD_COUNT = 12
+        private const val BEARING_GPS_TRACK_PART_COUNT = 5
         private const val GPS_TRACK_TIME_INDEX = 0
         private const val GPS_TRACK_LATITUDE_INDEX = 1
         private const val GPS_TRACK_LONGITUDE_INDEX = 2
         private const val GPS_TRACK_SPEED_INDEX = 3
+        private const val GPS_TRACK_BEARING_INDEX = 4
     }
 }

@@ -29,6 +29,7 @@ class EmergencyLocationProvider(private val context: Context) {
             latitude = latitude,
             longitude = longitude,
             speedMetersPerSecond = if (hasSpeed()) speed else null,
+            bearingDegrees = if (hasBearing()) bearing else null,
             capturedAtMillis = time.takeIf { it > 0L } ?: System.currentTimeMillis(),
         )
     }

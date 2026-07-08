@@ -219,7 +219,7 @@ class EmergencyEvidenceExporter(
 
     private fun EmergencyEvent.gpsTrackCsv(): String {
         return buildString {
-            appendLine("captured_at,latitude,longitude,speed_kmh")
+            appendLine("captured_at,latitude,longitude,speed_kmh,bearing_degrees")
             gpsTrackPoints
                 .sortedBy { it.capturedAtMillis }
                 .forEach { point ->
@@ -232,6 +232,9 @@ class EmergencyEvidenceExporter(
                             String.format(Locale.US, "%.6f", point.latitude),
                             String.format(Locale.US, "%.6f", point.longitude),
                             speedKmh,
+                            point.bearingDegrees
+                                ?.let { String.format(Locale.US, "%.0f", it) }
+                                .orEmpty(),
                         ).joinToString(separator = ","),
                     )
                 }
@@ -251,6 +254,7 @@ class EmergencyEvidenceExporter(
             latitude = latitude,
             longitude = longitude,
             speedMetersPerSecond = speedMetersPerSecond,
+            bearingDegrees = bearingDegrees,
         )
     }
 
@@ -260,7 +264,13 @@ class EmergencyEvidenceExporter(
             latitude = latitude,
             longitude = longitude,
             speedMetersPerSecond = speedMetersPerSecond,
-        ).takeIf { it.latitude != null || it.longitude != null || it.speedMetersPerSecond != null }
+            bearingDegrees = bearingDegrees,
+        ).takeIf {
+            it.latitude != null ||
+                it.longitude != null ||
+                it.speedMetersPerSecond != null ||
+                it.bearingDegrees != null
+        }
     }
 
     private fun List<WatermarkCue>.toWatermarkSrt(clipStartMillis: Long): String {
@@ -288,6 +298,9 @@ class EmergencyEvidenceExporter(
             speedMetersPerSecond?.let {
                 add(String.format(Locale.getDefault(), "%.0fkm/h", it * METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR))
             }
+            bearingDegrees?.let {
+                add(String.format(Locale.getDefault(), "航向 %.0f°", it))
+            }
             if (latitude != null && longitude != null) {
                 add(String.format(Locale.getDefault(), "%.5f, %.5f", latitude, longitude))
             }
@@ -312,8 +325,11 @@ class EmergencyEvidenceExporter(
         val speedText = speedMetersPerSecond?.let {
             String.format(Locale.getDefault(), " · %.0fkm/h", it * METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR)
         }.orEmpty()
+        val bearingText = bearingDegrees?.let {
+            String.format(Locale.getDefault(), " · 航向 %.0f°", it)
+        }.orEmpty()
         val timeText = locationCapturedAtMillis?.let { " · ${it.asTime()}" }.orEmpty()
-        return "$coordinate$speedText$timeText"
+        return "$coordinate$speedText$bearingText$timeText"
     }
 
     private fun EmergencyEvent.existingSegmentFiles(storageManager: RecordingStorageManager): List<File> {
@@ -369,6 +385,7 @@ private data class WatermarkCue(
     val latitude: Double?,
     val longitude: Double?,
     val speedMetersPerSecond: Float?,
+    val bearingDegrees: Float?,
 )
 
 data class EvidencePackageFile(
