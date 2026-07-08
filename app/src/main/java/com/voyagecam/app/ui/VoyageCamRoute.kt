@@ -42,6 +42,7 @@ import com.voyagecam.app.ui.events.EmergencyEventPanel
 import com.voyagecam.app.ui.history.SegmentHistoryPanel
 import com.voyagecam.app.ui.playback.PlaybackPanel
 import com.voyagecam.app.ui.preview.RearCameraPreview
+import com.voyagecam.app.ui.preview.shouldShowFrontInsetPreview
 import com.voyagecam.app.ui.settings.SettingsPanel
 import com.voyagecam.app.ui.settings.rememberBluetoothDevicePickerState
 import com.voyagecam.app.ui.theme.SectionCard
@@ -390,7 +391,11 @@ private fun RecordingPanel(
     SectionCard {
         RearCameraPreview(
             enabled = true,
-            frontInsetEnabled = settings.dualCameraEnabled && capability.isAvailable && !isRecording,
+            frontInsetEnabled = shouldShowFrontInsetPreview(
+                dualCameraEnabled = settings.dualCameraEnabled,
+                capability = capability,
+                isRecording = isRecording,
+            ),
         )
         Spacer(modifier = Modifier.height(14.dp))
         Text(

@@ -21,6 +21,7 @@ class RecordingServiceState {
     var pendingLockNextEventId: String? = null
     var lockedSegmentCount: Int = 0
     var segmentTransitionSummary: String? = null
+    var dualCameraDiagnostic: String? = null
 
     fun resetForStart(
         startedAtMillis: Long,
@@ -47,6 +48,7 @@ class RecordingServiceState {
         pendingLockNextEventId = null
         lockedSegmentCount = 0
         segmentTransitionSummary = null
+        dualCameraDiagnostic = null
     }
 
     fun clearAfterStop() {
@@ -64,6 +66,7 @@ class RecordingServiceState {
             status = status,
             currentFileName = currentFileName,
             segmentTransitionSummary = segmentTransitionSummary,
+            dualCameraDiagnostic = dualCameraDiagnostic,
         )
     }
 }

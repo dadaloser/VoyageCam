@@ -165,6 +165,11 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         state.currentSegmentIndex = segmentIndex
         state.currentSegmentFiles = files
         state.currentFileName = files.primary?.name
+        if (!state.dualCamera) {
+            state.dualCameraDiagnostic = null
+        } else if (files.front != null) {
+            state.dualCameraDiagnostic = "双摄并发录制正常"
+        }
         state.status = if (state.dualCamera) {
             if (files.front != null) {
                 "第 $segmentIndex 段前后双摄正在写入"
@@ -261,6 +266,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
 
     override fun onDualCameraFallback(message: String) {
         state.dualCamera = false
+        state.dualCameraDiagnostic = "双摄回退：$message"
         state.status = "双摄录制启动失败，已回落后摄单录：$message"
         notifyRecordingState()
     }

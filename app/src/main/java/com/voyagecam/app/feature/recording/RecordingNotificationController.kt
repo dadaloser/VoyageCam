@@ -22,6 +22,7 @@ data class RecordingNotificationState(
     val status: String,
     val currentFileName: String?,
     val segmentTransitionSummary: String?,
+    val dualCameraDiagnostic: String?,
 )
 
 class RecordingNotificationController(private val context: Context) {
@@ -62,6 +63,7 @@ class RecordingNotificationController(private val context: Context) {
         )
         val fileText = state.currentFileName?.let { " · $it" }.orEmpty()
         val transitionText = state.segmentTransitionSummary?.let { " · $it" }.orEmpty()
+        val diagnosticText = state.dualCameraDiagnostic?.let { " · $it" }.orEmpty()
 
         val openIntent = PendingIntent.getActivity(
             context,
@@ -88,7 +90,7 @@ class RecordingNotificationController(private val context: Context) {
             .setContentText("$mode · $segment$locked · $elapsedText$fileText")
             .setStyle(
                 NotificationCompat.BigTextStyle()
-                    .bigText("${state.status} · $mode · $audio · $segment$locked$transitionText · ${state.storageCapacityGb}GB循环空间 · 已运行 $elapsedText$fileText"),
+                    .bigText("${state.status} · $mode · $audio · $segment$locked$transitionText$diagnosticText · ${state.storageCapacityGb}GB循环空间 · 已运行 $elapsedText$fileText"),
             )
             .setOngoing(true)
             .setOnlyAlertOnce(true)

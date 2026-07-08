@@ -15,6 +15,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,9 +27,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.delay
 import com.voyagecam.app.core.common.toContentUri
 import com.voyagecam.app.ui.theme.SectionCard
 import java.io.File
+import kotlin.math.abs
 
 data class PlaybackItem(
     val title: String,
@@ -48,7 +51,31 @@ fun PlaybackPanel(
     var primaryVideoView by remember(item.primaryFile.absolutePath) { mutableStateOf<VideoView?>(null) }
     var secondaryVideoView by remember(item.secondaryFile?.absolutePath) { mutableStateOf<VideoView?>(null) }
     var isPlaying by remember(item.primaryFile.absolutePath, item.secondaryFile?.absolutePath) { mutableStateOf(true) }
+    var syncStatus by remember(item.primaryFile.absolutePath, item.secondaryFile?.absolutePath) {
+        mutableStateOf<PlaybackSyncStatus?>(null)
+    }
     val hasSecondary = item.secondaryFile != null
+
+    LaunchedEffect(primaryVideoView, secondaryVideoView, isPlaying, hasSecondary) {
+        if (!hasSecondary) {
+            syncStatus = null
+            return@LaunchedEffect
+        }
+        while (primaryVideoView != null && secondaryVideoView != null) {
+            val primary = primaryVideoView
+            val secondary = secondaryVideoView
+            if (primary == null || secondary == null) break
+            val status = playbackSyncStatus(
+                primaryPositionMs = primary.currentPosition,
+                secondaryPositionMs = secondary.currentPosition,
+            )
+            syncStatus = status
+            if (isPlaying && status.requiresCorrection) {
+                secondary.seekTo(primary.currentPosition)
+            }
+            delay(500L)
+        }
+    }
 
     SectionCard {
         Row(
@@ -123,11 +150,28 @@ fun PlaybackPanel(
                 },
                 onResync = {
                     secondaryVideoView?.seekTo(primaryVideoView?.currentPosition ?: 0)
+                    syncStatus = syncStatus?.copy(offsetMs = 0, requiresCorrection = false)
                     if (isPlaying) {
                         secondaryVideoView?.start()
                     }
                 },
             )
+            syncStatus?.let { status ->
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = if (status.requiresCorrection) {
+                        "双画面偏移 ${status.offsetMs}ms，已自动尝试纠偏"
+                    } else {
+                        "双画面偏移 ${status.offsetMs}ms"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (status.requiresCorrection || abs(status.offsetMs) >= 250) {
+                        Color(0xFF9B2C2C)
+                    } else {
+                        Color(0xFF64777B)
+                    },
+                )
+            }
         }
         Spacer(modifier = Modifier.height(10.dp))
         OutlinedButton(
