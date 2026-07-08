@@ -262,6 +262,13 @@ private fun EmergencyEventRow(
                 color = Color(0xFF4D6267),
             )
         }
+        if (event.gpsTrackPoints.isNotEmpty()) {
+            Text(
+                text = "GPS轨迹 ${event.gpsTrackPoints.size} 点",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF4D6267),
+            )
+        }
         val segmentText = event.segmentPaths.take(3).joinToString(separator = "\n")
         if (segmentText.isNotBlank()) {
             Text(

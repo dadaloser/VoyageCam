@@ -19,7 +19,9 @@ import com.voyagecam.app.MainActivity
 import com.voyagecam.app.R
 import com.voyagecam.app.core.camera.RearCameraRecorder
 import com.voyagecam.app.core.model.CollisionSensitivity
+import com.voyagecam.app.core.model.EmergencyLocationSnapshot
 import com.voyagecam.app.core.model.EmergencyTrigger
+import com.voyagecam.app.core.model.GpsTrackPoint
 import com.voyagecam.app.data.emergency.EmergencyEventStore
 import com.voyagecam.app.data.location.EmergencyLocationProvider
 import com.voyagecam.app.data.location.hasAnyLocationPermission
@@ -53,12 +55,22 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
     private var pendingLockNextSegment = false
     private var pendingLockNextEventId: String? = null
     private var lockedSegmentCount = 0
+    private val gpsTrackBuffer = mutableListOf<GpsTrackPoint>()
 
     private val updateNotificationTask = object : Runnable {
         override fun run() {
             if (startedAtMillis > 0L) {
                 notificationManager.notify(NOTIFICATION_ID, buildNotification())
                 mainHandler.postDelayed(this, NOTIFICATION_UPDATE_INTERVAL_MS)
+            }
+        }
+    }
+
+    private val gpsTrackSampleTask = object : Runnable {
+        override fun run() {
+            sampleGpsTrackPoint()
+            if (startedAtMillis > 0L) {
+                mainHandler.postDelayed(this, GPS_TRACK_SAMPLE_INTERVAL_MS)
             }
         }
     }
@@ -106,6 +118,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         pendingLockNextSegment = false
         pendingLockNextEventId = null
         lockedSegmentCount = 0
+        gpsTrackBuffer.clear()
 
         storageManager.cleanupNormalSegments(storageCapacityGb)
         val notification = buildNotification()
@@ -133,6 +146,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
             )
         }
         startCollisionDetection()
+        startGpsTrackSampling()
 
         mainHandler.removeCallbacks(updateNotificationTask)
         mainHandler.post(updateNotificationTask)
@@ -141,6 +155,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(updateNotificationTask)
+        mainHandler.removeCallbacks(gpsTrackSampleTask)
         collisionDetector?.stop()
         collisionDetector = null
         recorder?.stop()
@@ -298,6 +313,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
             accelerationG = collisionEvent?.accelerationG,
             thresholdG = collisionEvent?.thresholdG,
             location = emergencyLocationProvider.currentSnapshot(),
+            gpsTrackPoints = recentGpsTrackPoints(collisionEvent?.triggeredAtMillis ?: System.currentTimeMillis()),
         )
         pendingLockNextEventId = event.id
         recordingStatus = collisionEvent?.let {
@@ -327,6 +343,47 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         }
     }
 
+    private fun startGpsTrackSampling() {
+        mainHandler.removeCallbacks(gpsTrackSampleTask)
+        if (!hasAnyLocationPermission()) return
+        mainHandler.post(gpsTrackSampleTask)
+    }
+
+    private fun sampleGpsTrackPoint() {
+        val point = emergencyLocationProvider.currentSnapshot()?.toGpsTrackPoint() ?: return
+        if (gpsTrackBuffer.lastOrNull()?.capturedAtMillis == point.capturedAtMillis) return
+        gpsTrackBuffer += point
+        pruneGpsTrackBuffer(System.currentTimeMillis())
+    }
+
+    private fun recentGpsTrackPoints(triggeredAtMillis: Long): List<GpsTrackPoint> {
+        sampleGpsTrackPoint()
+        pruneGpsTrackBuffer(triggeredAtMillis)
+        val startMillis = triggeredAtMillis - GPS_TRACK_RETENTION_MS
+        val endMillis = triggeredAtMillis + GPS_TRACK_SAMPLE_INTERVAL_MS
+        return gpsTrackBuffer
+            .filter { point -> point.capturedAtMillis in startMillis..endMillis }
+            .takeLast(MAX_GPS_TRACK_POINTS)
+    }
+
+    private fun pruneGpsTrackBuffer(nowMillis: Long) {
+        val cutoff = nowMillis - GPS_TRACK_RETENTION_MS
+        gpsTrackBuffer.removeAll { it.capturedAtMillis < cutoff }
+        if (gpsTrackBuffer.size > MAX_GPS_TRACK_POINTS) {
+            val overflow = gpsTrackBuffer.size - MAX_GPS_TRACK_POINTS
+            repeat(overflow) { gpsTrackBuffer.removeAt(0) }
+        }
+    }
+
+    private fun EmergencyLocationSnapshot.toGpsTrackPoint(): GpsTrackPoint {
+        return GpsTrackPoint(
+            latitude = latitude,
+            longitude = longitude,
+            speedMetersPerSecond = speedMetersPerSecond,
+            capturedAtMillis = capturedAtMillis,
+        )
+    }
+
     private fun lockSegment(file: File?, eventId: String?): File? {
         val lockedFile = storageManager.lockNormalSegment(file)
         if (lockedFile != null && lockedFile != file) {
@@ -354,6 +411,9 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         private const val CHANNEL_ID = "voyage_cam_recording"
         private const val NOTIFICATION_ID = 1001
         private const val NOTIFICATION_UPDATE_INTERVAL_MS = 1_000L
+        private const val GPS_TRACK_SAMPLE_INTERVAL_MS = 10_000L
+        private const val GPS_TRACK_RETENTION_MS = 5 * 60 * 1000L
+        private const val MAX_GPS_TRACK_POINTS = 60
         private const val ACTION_STOP = "com.voyagecam.app.action.STOP_RECORDING"
         private const val ACTION_LOCK_CURRENT = "com.voyagecam.app.action.LOCK_CURRENT"
         private const val EXTRA_DUAL_CAMERA = "extra_dual_camera"

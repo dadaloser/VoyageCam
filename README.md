@@ -34,6 +34,7 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 28. Unlock historical locked clips from the recording list and remove their emergency-event references.
 29. Delete historical recording files and emergency-event records through in-app confirmation flows.
 30. Manually run loop-capacity cleanup for normal clips and repair stale emergency-event clip references.
+31. Capture recent GPS track points during recording and include `gps_track.csv` in emergency evidence packages.
 
 ## Current Status
 
@@ -61,6 +62,7 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 - Locked clips can be returned to normal loop-recording management from the history list, and related emergency-event metadata is updated.
 - Recording rows can delete managed local clip files after confirmation, while emergency events can delete only the event metadata and keep linked clips available in history.
 - Settings can manually trigger normal-clip cleanup using the current capacity limit, and emergency events can repair missing linked-clip references.
+- Emergency events can store recent GPS track points when location permission is available, and exported evidence ZIP files include a route-ready `gps_track.csv`.
 
 ## Build
 
@@ -73,6 +75,6 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 
 1. Keep preview visible during recording by sharing the Camera2 session or moving recording into an activity-bound preview pipeline.
 2. Implement dual-camera recording for devices that pass the capability check, with rear-only fallback.
-3. Add GPS route metadata and video watermarks for evidence exports.
+3. Add video watermarks and optional speed/time overlays for exported clips.
 4. Extract `core`, `data`, `feature`, and `ui` into Gradle modules once the package boundaries stabilize.
-5. Add route metadata capture and export-ready GPS track files for emergency events.
+5. Add a route preview view for emergency events with GPS tracks.

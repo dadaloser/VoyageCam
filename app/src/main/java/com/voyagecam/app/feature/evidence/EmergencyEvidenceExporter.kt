@@ -28,7 +28,8 @@ class EmergencyEvidenceExporter(
         val exportDir = File(context.filesDir, EVIDENCE_EXPORT_DIR_NAME).apply { mkdirs() }
         val packageFile = event.availableEvidencePackageFile(exportDir)
         val temporaryPackageFile = File.createTempFile(packageFile.nameWithoutExtension, TEMP_PACKAGE_SUFFIX, exportDir)
-        val totalSteps = files.size + 1
+        val hasGpsTrack = event.gpsTrackPoints.isNotEmpty()
+        val totalSteps = files.size + 1 + if (hasGpsTrack) 1 else 0
 
         try {
             checkNotCancelled(isCancelled)
@@ -45,13 +46,29 @@ class EmergencyEvidenceExporter(
                 zip.putNextEntry(ZipEntry("metadata.txt"))
                 zip.write(event.evidenceMetadata(files).toByteArray(StandardCharsets.UTF_8))
                 zip.closeEntry()
+                var completedSteps = 1
                 onProgress(
                     ExportProgress(
-                        completedSteps = 1,
+                        completedSteps = completedSteps,
                         totalSteps = totalSteps,
                         currentItem = "metadata.txt",
                     ),
                 )
+
+                if (hasGpsTrack) {
+                    checkNotCancelled(isCancelled)
+                    zip.putNextEntry(ZipEntry("gps_track.csv"))
+                    zip.write(event.gpsTrackCsv().toByteArray(StandardCharsets.UTF_8))
+                    zip.closeEntry()
+                    completedSteps++
+                    onProgress(
+                        ExportProgress(
+                            completedSteps = completedSteps,
+                            totalSteps = totalSteps,
+                            currentItem = "gps_track.csv",
+                        ),
+                    )
+                }
 
                 files.forEachIndexed { index, file ->
                     checkNotCancelled(isCancelled)
@@ -62,7 +79,7 @@ class EmergencyEvidenceExporter(
                     zip.closeEntry()
                     onProgress(
                         ExportProgress(
-                            completedSteps = index + 2,
+                            completedSteps = completedSteps + index + 1,
                             totalSteps = totalSteps,
                             currentItem = file.name,
                         ),
@@ -126,6 +143,10 @@ class EmergencyEvidenceExporter(
             appendLine("Triggered At: ${triggeredAtMillis.asTime()}")
             collisionSummary()?.let { appendLine("Collision: $it") }
             locationSummary()?.let { appendLine("Location: $it") }
+            if (gpsTrackPoints.isNotEmpty()) {
+                appendLine("GPS Track Points: ${gpsTrackPoints.size}")
+                appendLine("GPS Track File: gps_track.csv")
+            }
             appendLine()
             appendLine("Linked Clips")
             files.forEachIndexed { index, file ->
@@ -136,6 +157,27 @@ class EmergencyEvidenceExporter(
             appendLine()
             appendLine("Original Relative Paths")
             segmentPaths.forEach { path -> appendLine(path) }
+        }
+    }
+
+    private fun EmergencyEvent.gpsTrackCsv(): String {
+        return buildString {
+            appendLine("captured_at,latitude,longitude,speed_kmh")
+            gpsTrackPoints
+                .sortedBy { it.capturedAtMillis }
+                .forEach { point ->
+                    val speedKmh = point.speedMetersPerSecond
+                        ?.let { String.format(Locale.US, "%.1f", it * METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR) }
+                        .orEmpty()
+                    appendLine(
+                        listOf(
+                            point.capturedAtMillis.asTime(),
+                            String.format(Locale.US, "%.6f", point.latitude),
+                            String.format(Locale.US, "%.6f", point.longitude),
+                            speedKmh,
+                        ).joinToString(separator = ","),
+                    )
+                }
         }
     }
 
