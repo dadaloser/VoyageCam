@@ -1,7 +1,5 @@
 package com.voyagecam.app.ui.playback
 
-import android.widget.MediaController
-import android.widget.VideoView
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,10 +25,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import kotlinx.coroutines.delay
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import com.voyagecam.app.core.common.toContentUri
 import com.voyagecam.app.ui.theme.SectionCard
 import java.io.File
+import kotlinx.coroutines.delay
 import kotlin.math.abs
 
 data class PlaybackItem(
@@ -48,30 +51,60 @@ fun PlaybackPanel(
     onClose: () -> Unit,
     onOpenInSystem: () -> Unit,
 ) {
-    var primaryVideoView by remember(item.primaryFile.absolutePath) { mutableStateOf<VideoView?>(null) }
-    var secondaryVideoView by remember(item.secondaryFile?.absolutePath) { mutableStateOf<VideoView?>(null) }
-    var isPlaying by remember(item.primaryFile.absolutePath, item.secondaryFile?.absolutePath) { mutableStateOf(true) }
+    val primaryPlayer = rememberPlaybackPlayer(
+        file = item.primaryFile,
+        autoPlay = true,
+        muted = false,
+    )
+    val secondaryPlayer = item.secondaryFile?.let {
+        rememberPlaybackPlayer(
+            file = it,
+            autoPlay = true,
+            muted = true,
+        )
+    }
+    var isPlaying by remember(item.primaryFile.absolutePath, item.secondaryFile?.absolutePath) {
+        mutableStateOf(true)
+    }
     var syncStatus by remember(item.primaryFile.absolutePath, item.secondaryFile?.absolutePath) {
         mutableStateOf<PlaybackSyncStatus?>(null)
     }
     val hasSecondary = item.secondaryFile != null
 
-    LaunchedEffect(primaryVideoView, secondaryVideoView, isPlaying, hasSecondary) {
+    DisposableEffect(primaryPlayer, secondaryPlayer, hasSecondary) {
+        if (!hasSecondary) {
+            return@DisposableEffect onDispose { }
+        }
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(playing: Boolean) {
+                isPlaying = playing
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) {
+                    isPlaying = false
+                }
+            }
+        }
+        primaryPlayer.addListener(listener)
+        onDispose {
+            primaryPlayer.removeListener(listener)
+        }
+    }
+
+    LaunchedEffect(primaryPlayer, secondaryPlayer, isPlaying, hasSecondary) {
         if (!hasSecondary) {
             syncStatus = null
             return@LaunchedEffect
         }
-        while (primaryVideoView != null && secondaryVideoView != null) {
-            val primary = primaryVideoView
-            val secondary = secondaryVideoView
-            if (primary == null || secondary == null) break
+        while (secondaryPlayer != null) {
             val status = playbackSyncStatus(
-                primaryPositionMs = primary.currentPosition,
-                secondaryPositionMs = secondary.currentPosition,
+                primaryPositionMs = primaryPlayer.currentPosition,
+                secondaryPositionMs = secondaryPlayer.currentPosition,
             )
             syncStatus = status
             if (isPlaying && status.requiresCorrection) {
-                secondary.seekTo(primary.currentPosition)
+                secondaryPlayer.seekTo(primaryPlayer.currentPosition)
             }
             delay(500L)
         }
@@ -110,19 +143,15 @@ fun PlaybackPanel(
         Spacer(modifier = Modifier.height(12.dp))
         VideoPane(
             label = item.primaryLabel,
-            file = item.primaryFile,
-            autoPlay = true,
+            player = primaryPlayer,
             showNativeControls = !hasSecondary,
-            onVideoViewChanged = { primaryVideoView = it },
         )
-        item.secondaryFile?.let { secondaryFile ->
+        item.secondaryFile?.let {
             Spacer(modifier = Modifier.height(10.dp))
             VideoPane(
                 label = item.secondaryLabel ?: "副画面",
-                file = secondaryFile,
-                autoPlay = true,
+                player = secondaryPlayer ?: return@let,
                 showNativeControls = false,
-                onVideoViewChanged = { secondaryVideoView = it },
             )
         }
         if (hasSecondary) {
@@ -132,27 +161,27 @@ fun PlaybackPanel(
                 onTogglePlayback = {
                     val nextPlaying = !isPlaying
                     if (nextPlaying) {
-                        secondaryVideoView?.seekTo(primaryVideoView?.currentPosition ?: 0)
-                        primaryVideoView?.start()
-                        secondaryVideoView?.start()
+                        secondaryPlayer?.seekTo(primaryPlayer.currentPosition)
+                        primaryPlayer.play()
+                        secondaryPlayer?.play()
                     } else {
-                        primaryVideoView?.pause()
-                        secondaryVideoView?.pause()
+                        primaryPlayer.pause()
+                        secondaryPlayer?.pause()
                     }
                     isPlaying = nextPlaying
                 },
                 onRestart = {
-                    primaryVideoView?.seekTo(0)
-                    secondaryVideoView?.seekTo(0)
-                    primaryVideoView?.start()
-                    secondaryVideoView?.start()
+                    primaryPlayer.seekTo(0L)
+                    secondaryPlayer?.seekTo(0L)
+                    primaryPlayer.play()
+                    secondaryPlayer?.play()
                     isPlaying = true
                 },
                 onResync = {
-                    secondaryVideoView?.seekTo(primaryVideoView?.currentPosition ?: 0)
+                    secondaryPlayer?.seekTo(primaryPlayer.currentPosition)
                     syncStatus = syncStatus?.copy(offsetMs = 0, requiresCorrection = false)
                     if (isPlaying) {
-                        secondaryVideoView?.start()
+                        secondaryPlayer?.play()
                     }
                 },
             )
@@ -186,10 +215,8 @@ fun PlaybackPanel(
 @Composable
 private fun VideoPane(
     label: String,
-    file: File,
-    autoPlay: Boolean,
+    player: ExoPlayer,
     showNativeControls: Boolean,
-    onVideoViewChanged: (VideoView?) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
@@ -198,12 +225,7 @@ private fun VideoPane(
             fontWeight = FontWeight.SemiBold,
             color = Color(0xFF163036),
         )
-        AndroidVideoPlayer(
-            file = file,
-            autoPlay = autoPlay,
-            showNativeControls = showNativeControls,
-            onVideoViewChanged = onVideoViewChanged,
-        )
+        AndroidVideoPlayer(player = player, showNativeControls = showNativeControls)
     }
 }
 
@@ -243,47 +265,50 @@ private fun SharedPlaybackControls(
 
 @Composable
 private fun AndroidVideoPlayer(
-    file: File,
-    autoPlay: Boolean,
+    player: ExoPlayer,
     showNativeControls: Boolean,
-    onVideoViewChanged: (VideoView?) -> Unit,
 ) {
-    val context = LocalContext.current
-    var activeVideoView by remember { mutableStateOf<VideoView?>(null) }
-    DisposableEffect(file.absolutePath) {
-        onDispose {
-            activeVideoView?.stopPlayback()
-            onVideoViewChanged(null)
-            activeVideoView = null
-        }
-    }
-
     AndroidView(
         factory = { viewContext ->
-            VideoView(viewContext).apply {
-                if (showNativeControls) {
-                    setMediaController(MediaController(viewContext))
-                }
+            PlayerView(viewContext).apply {
+                useController = showNativeControls
+                controllerAutoShow = showNativeControls
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                this.player = player
             }
         },
-        update = { videoView ->
-            activeVideoView = videoView
-            onVideoViewChanged(videoView)
-            if (videoView.tag != file.absolutePath) {
-                val uri = file.toContentUri(context)
-                videoView.tag = file.absolutePath
-                videoView.stopPlayback()
-                videoView.setVideoURI(uri)
-                videoView.setOnPreparedListener { player ->
-                    player.isLooping = false
-                    if (autoPlay) {
-                        videoView.start()
-                    }
-                }
-            }
+        update = { playerView ->
+            playerView.player = player
+            playerView.useController = showNativeControls
+            playerView.controllerAutoShow = showNativeControls
         },
         modifier = Modifier
             .fillMaxWidth()
             .height(220.dp),
     )
+}
+
+@Composable
+private fun rememberPlaybackPlayer(
+    file: File,
+    autoPlay: Boolean,
+    muted: Boolean,
+): ExoPlayer {
+    val context = LocalContext.current.applicationContext
+    val player = remember(file.absolutePath, autoPlay, muted) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(file.toContentUri(context)))
+            repeatMode = Player.REPEAT_MODE_OFF
+            playWhenReady = autoPlay
+            volume = if (muted) 0f else 1f
+            prepare()
+        }
+    }
+    DisposableEffect(player) {
+        onDispose {
+            player.release()
+        }
+    }
+    return player
 }

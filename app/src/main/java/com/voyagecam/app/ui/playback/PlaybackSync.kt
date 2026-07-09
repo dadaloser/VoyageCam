@@ -3,22 +3,22 @@ package com.voyagecam.app.ui.playback
 import kotlin.math.abs
 
 data class PlaybackSyncSnapshot(
-    val primaryPositionMs: Int,
-    val secondaryPositionMs: Int,
+    val primaryPositionMs: Long,
+    val secondaryPositionMs: Long,
 ) {
-    val offsetMs: Int
+    val offsetMs: Long
         get() = secondaryPositionMs - primaryPositionMs
 }
 
 data class PlaybackSyncStatus(
-    val offsetMs: Int,
+    val offsetMs: Long,
     val requiresCorrection: Boolean,
 )
 
 fun playbackSyncStatus(
-    primaryPositionMs: Int,
-    secondaryPositionMs: Int,
-    driftThresholdMs: Int = DEFAULT_DRIFT_THRESHOLD_MS,
+    primaryPositionMs: Long,
+    secondaryPositionMs: Long,
+    driftThresholdMs: Long = DEFAULT_DRIFT_THRESHOLD_MS,
 ): PlaybackSyncStatus {
     val offsetMs = secondaryPositionMs - primaryPositionMs
     return PlaybackSyncStatus(
@@ -27,4 +27,4 @@ fun playbackSyncStatus(
     )
 }
 
-private const val DEFAULT_DRIFT_THRESHOLD_MS = 500
+private const val DEFAULT_DRIFT_THRESHOLD_MS = 500L
