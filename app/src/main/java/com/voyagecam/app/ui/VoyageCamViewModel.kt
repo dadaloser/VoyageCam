@@ -11,11 +11,13 @@ import com.voyagecam.app.core.model.DualCameraSwitchState
 import com.voyagecam.app.core.model.EmergencyEvent
 import com.voyagecam.app.core.model.PendingStorageCapacityChange
 import com.voyagecam.app.core.model.PersistedDualCameraDiagnostic
+import com.voyagecam.app.core.model.PersistedDualCameraSessionTelemetry
 import com.voyagecam.app.core.model.RecordingSegment
 import com.voyagecam.app.core.model.RecordingStorageOverview
 import com.voyagecam.app.core.model.toStorageBytes
 import com.voyagecam.app.data.autostart.AutoStartDiagnosticsStore
 import com.voyagecam.app.data.camera.DualCameraDiagnosticsStore
+import com.voyagecam.app.data.camera.DualCameraSessionTelemetryStore
 import com.voyagecam.app.data.evidence.EvidenceRepository
 import com.voyagecam.app.data.recording.RecordingRepository
 import com.voyagecam.app.data.settings.StorageCapacityLimit
@@ -28,6 +30,7 @@ import com.voyagecam.app.ui.history.SegmentCameraFilter
 import com.voyagecam.app.ui.history.SegmentLockFilter
 import com.voyagecam.app.ui.history.filterSegments
 import com.voyagecam.app.ui.playback.PlaybackItem
+import com.voyagecam.app.ui.preview.DualCameraTelemetryPresentation
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -48,6 +51,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
     private val evidenceRepository = EvidenceRepository(appContext)
     private val autoStartDiagnosticsStore = AutoStartDiagnosticsStore(appContext)
     private val dualCameraDiagnosticsStore = DualCameraDiagnosticsStore(appContext)
+    private val dualCameraSessionTelemetryStore = DualCameraSessionTelemetryStore(appContext)
     private val storageLimit = StorageCapacityLimit.from(appContext)
     private var evidenceExportCancelFlag: AtomicBoolean? = null
 
@@ -72,6 +76,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
         refreshRecordingData()
         refreshAutoStartDiagnostic()
         refreshDualCameraDiagnostic()
+        refreshDualCameraSessionTelemetry()
         redetect()
     }
 
@@ -164,6 +169,23 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun refreshDualCameraDiagnostic() {
         _uiState.update { it.copy(dualCameraDiagnostic = dualCameraDiagnosticsStore.load()) }
+    }
+
+    fun refreshDualCameraSessionTelemetry() {
+        _uiState.update { it.copy(dualCameraSessionTelemetry = dualCameraSessionTelemetryStore.load()) }
+    }
+
+    fun recordDualCameraSessionTelemetry(telemetry: DualCameraTelemetryPresentation) {
+        val current = _uiState.value.dualCameraSessionTelemetry
+        if (
+            current?.summary == telemetry.summary &&
+            current.detail == telemetry.detail &&
+            current.diagnostic == telemetry.diagnostic
+        ) {
+            return
+        }
+        dualCameraSessionTelemetryStore.record(telemetry)
+        refreshDualCameraSessionTelemetry()
     }
 
     fun requestStorageCapacityChange(capacityGb: Int) {
@@ -625,6 +647,7 @@ data class VoyageCamUiState(
     val emergencyEvents: List<EmergencyEvent> = emptyList(),
     val autoStartDiagnostic: AutoStartDiagnostic? = null,
     val dualCameraDiagnostic: PersistedDualCameraDiagnostic? = null,
+    val dualCameraSessionTelemetry: PersistedDualCameraSessionTelemetry? = null,
     val playbackItem: PlaybackItem? = null,
     val evidenceExportState: EvidenceExportState? = null,
     val selectedDay: String? = null,

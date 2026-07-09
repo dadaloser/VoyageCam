@@ -27,6 +27,8 @@ import androidx.lifecycle.LifecycleRegistry
 import com.voyagecam.app.core.model.DualCameraDiagnostic
 import com.voyagecam.app.core.model.DualCameraDiagnosticStage
 import java.io.File
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 object DualCameraSessionCoordinator : LifecycleOwner {
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -37,12 +39,16 @@ object DualCameraSessionCoordinator : LifecycleOwner {
     private var frontPreviewProvider: Preview.SurfaceProvider? = null
     private var rearRecording: Recording? = null
     private var frontRecording: Recording? = null
+    private val _sessionStatus = MutableStateFlow(DualCameraSessionStatus())
+
+    val sessionStatus: StateFlow<DualCameraSessionStatus> = _sessionStatus
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
 
     fun setPreviewSurfaceProviders(
         context: Context,
+        sessionToken: Int,
         rearProvider: Preview.SurfaceProvider,
         frontProvider: Preview.SurfaceProvider,
         onError: (DualCameraDiagnostic) -> Unit,
@@ -50,6 +56,10 @@ object DualCameraSessionCoordinator : LifecycleOwner {
         runOnMain {
             rearPreviewProvider = rearProvider
             frontPreviewProvider = frontProvider
+            publishSessionStatus(
+                previewSessionToken = sessionToken,
+                lastDiagnostic = null,
+            )
             bind(
                 context = context.applicationContext,
                 rearVideoCapture = null,
@@ -68,6 +78,8 @@ object DualCameraSessionCoordinator : LifecycleOwner {
             if (frontPreviewProvider === frontProvider) frontPreviewProvider = null
             if (rearPreviewProvider == null && frontPreviewProvider == null && rearRecording == null && frontRecording == null) {
                 stop()
+            } else {
+                publishSessionStatus()
             }
         }
     }
@@ -84,11 +96,12 @@ object DualCameraSessionCoordinator : LifecycleOwner {
     ) {
         runOnMain {
             if (!hasCameraPermission(context)) {
-                onError(
-                    DualCameraDiagnostic(
+                reportDiagnostic(
+                    diagnostic = DualCameraDiagnostic(
                         stage = DualCameraDiagnosticStage.ConcurrentRecording,
                         detail = "相机权限未授权，无法启动双摄录制",
                     ),
+                    onError = onError,
                 )
                 return@runOnMain
             }
@@ -125,6 +138,7 @@ object DualCameraSessionCoordinator : LifecycleOwner {
 
                 rearRecording = nextRearRecording
                 frontRecording = nextFrontRecording
+                publishSessionStatus(lastDiagnostic = null)
                 onReady(
                     DualCameraRecordingSession(
                         rearRecording = nextRearRecording,
@@ -132,6 +146,7 @@ object DualCameraSessionCoordinator : LifecycleOwner {
                         onStopped = {
                             rearRecording = null
                             frontRecording = null
+                            publishSessionStatus()
                             rebindPreviewIfNeeded(context.applicationContext, onError)
                         },
                     ),
@@ -140,11 +155,12 @@ object DualCameraSessionCoordinator : LifecycleOwner {
                 rearRecording = null
                 frontRecording = null
                 unbindIfIdle()
-                onError(
-                    DualCameraDiagnostic(
+                reportDiagnostic(
+                    diagnostic = DualCameraDiagnostic(
                         stage = DualCameraDiagnosticStage.ConcurrentRecording,
                         detail = error.message ?: "双摄录制初始化失败",
                     ),
+                    onError = onError,
                 )
             }
         }
@@ -158,6 +174,7 @@ object DualCameraSessionCoordinator : LifecycleOwner {
             frontRecording = null
             runCatching { cameraProvider?.unbindAll() }
             concurrentCamera = null
+            publishSessionStatus()
         }
     }
 
@@ -168,8 +185,8 @@ object DualCameraSessionCoordinator : LifecycleOwner {
         onError: (DualCameraDiagnostic) -> Unit,
     ) {
         if (!hasCameraPermission(context)) {
-            onError(
-                DualCameraDiagnostic(
+            reportDiagnostic(
+                diagnostic = DualCameraDiagnostic(
                     stage = if (rearVideoCapture == null && frontVideoCapture == null) {
                         DualCameraDiagnosticStage.Preview
                     } else {
@@ -177,6 +194,7 @@ object DualCameraSessionCoordinator : LifecycleOwner {
                     },
                     detail = "相机权限未授权，无法显示双摄画面",
                 ),
+                onError = onError,
             )
             return
         }
@@ -214,10 +232,11 @@ object DualCameraSessionCoordinator : LifecycleOwner {
                 this,
             )
             concurrentCamera = provider.bindToLifecycle(listOf(rearConfig, frontConfig))
+            publishSessionStatus(lastDiagnostic = null)
         }.onFailure { error ->
             concurrentCamera = null
-            onError(
-                DualCameraDiagnostic(
+            reportDiagnostic(
+                diagnostic = DualCameraDiagnostic(
                     stage = if (rearVideoCapture == null && frontVideoCapture == null) {
                         DualCameraDiagnosticStage.Preview
                     } else {
@@ -225,6 +244,7 @@ object DualCameraSessionCoordinator : LifecycleOwner {
                     },
                     detail = error.message ?: "双摄会话初始化失败",
                 ),
+                onError = onError,
             )
         }
     }
@@ -233,6 +253,7 @@ object DualCameraSessionCoordinator : LifecycleOwner {
         if (rearPreviewProvider != null || frontPreviewProvider != null || rearRecording != null || frontRecording != null) return
         runCatching { cameraProvider?.unbindAll() }
         concurrentCamera = null
+        publishSessionStatus()
     }
 
     private fun rebindPreviewIfNeeded(context: Context, onError: (DualCameraDiagnostic) -> Unit) {
@@ -279,5 +300,27 @@ object DualCameraSessionCoordinator : LifecycleOwner {
         } else {
             mainHandler.post(action)
         }
+    }
+
+    private fun publishSessionStatus(
+        previewSessionToken: Int? = _sessionStatus.value.previewSessionToken,
+        lastDiagnostic: DualCameraDiagnostic? = _sessionStatus.value.lastDiagnostic,
+    ) {
+        _sessionStatus.value = DualCameraSessionStatus(
+            previewSessionToken = previewSessionToken,
+            concurrentCameraActive = concurrentCamera != null,
+            recordingActive = rearRecording != null || frontRecording != null,
+            rearPreviewAttached = rearPreviewProvider != null,
+            frontPreviewAttached = frontPreviewProvider != null,
+            lastDiagnostic = lastDiagnostic,
+        )
+    }
+
+    private fun reportDiagnostic(
+        diagnostic: DualCameraDiagnostic,
+        onError: (DualCameraDiagnostic) -> Unit,
+    ) {
+        publishSessionStatus(lastDiagnostic = diagnostic)
+        onError(diagnostic)
     }
 }

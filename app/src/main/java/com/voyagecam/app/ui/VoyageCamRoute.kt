@@ -22,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -31,6 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.voyagecam.app.core.camera.DualCameraSessionCoordinator
 import com.voyagecam.app.core.model.DeviceCapabilityGrade
 import com.voyagecam.app.core.model.DualCameraCapability
 import com.voyagecam.app.core.model.EmergencyEvent
@@ -42,7 +44,8 @@ import com.voyagecam.app.ui.events.EmergencyEventPanel
 import com.voyagecam.app.ui.history.SegmentHistoryPanel
 import com.voyagecam.app.ui.playback.PlaybackPanel
 import com.voyagecam.app.ui.preview.RearCameraPreview
-import com.voyagecam.app.ui.preview.shouldShowFrontInsetPreview
+import com.voyagecam.app.ui.preview.dualCameraPreviewPresentation
+import com.voyagecam.app.ui.preview.dualCameraTelemetryPresentation
 import com.voyagecam.app.ui.settings.SettingsPanel
 import com.voyagecam.app.ui.settings.rememberBluetoothDevicePickerState
 import com.voyagecam.app.ui.theme.SectionCard
@@ -156,6 +159,7 @@ fun VoyageCamRoute() {
                         viewModel.setStatus("紧急锁定已发送：当前片段、上一片段和下一片段会被保护。")
                         viewModel.refreshRecordingData()
                     },
+                    onDualCameraTelemetry = viewModel::recordDualCameraSessionTelemetry,
                 )
 
                 SettingsPanel(
@@ -278,8 +282,10 @@ fun VoyageCamRoute() {
                     },
                     autoStartDiagnostic = uiState.autoStartDiagnostic,
                     dualCameraDiagnostic = uiState.dualCameraDiagnostic,
+                    dualCameraSessionTelemetry = uiState.dualCameraSessionTelemetry,
                     onRefreshAutoStartDiagnostic = viewModel::refreshAutoStartDiagnostic,
                     onRefreshDualCameraDiagnostic = viewModel::refreshDualCameraDiagnostic,
+                    onRefreshDualCameraSessionTelemetry = viewModel::refreshDualCameraSessionTelemetry,
                     bluetoothDevicePickerState = bluetoothDevicePickerState,
                 )
 
@@ -389,15 +395,27 @@ private fun RecordingPanel(
     statusMessage: String,
     onToggleRecording: () -> Unit,
     onEmergencyLock: () -> Unit,
+    onDualCameraTelemetry: (com.voyagecam.app.ui.preview.DualCameraTelemetryPresentation) -> Unit,
 ) {
+    val dualPreviewPresentation = dualCameraPreviewPresentation(
+        dualCameraEnabled = settings.dualCameraEnabled,
+        capability = capability,
+        isRecording = isRecording,
+    )
+    val dualCameraSessionStatus by DualCameraSessionCoordinator.sessionStatus.collectAsState()
+    val dualCameraTelemetry = dualCameraTelemetryPresentation(
+        frontInsetEnabled = dualPreviewPresentation.showFrontInset,
+        sessionToken = dualPreviewPresentation.sessionToken,
+        sessionStatus = dualCameraSessionStatus,
+    )
+    LaunchedEffect(dualCameraTelemetry?.summary, dualCameraTelemetry?.detail, dualCameraTelemetry?.diagnostic) {
+        dualCameraTelemetry?.let(onDualCameraTelemetry)
+    }
     SectionCard {
         RearCameraPreview(
             enabled = true,
-            frontInsetEnabled = shouldShowFrontInsetPreview(
-                dualCameraEnabled = settings.dualCameraEnabled,
-                capability = capability,
-                isRecording = isRecording,
-            ),
+            frontInsetEnabled = dualPreviewPresentation.showFrontInset,
+            dualCameraSessionToken = dualPreviewPresentation.sessionToken,
         )
         Spacer(modifier = Modifier.height(14.dp))
         Text(
@@ -442,6 +460,29 @@ private fun RecordingPanel(
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),
         )
+        dualCameraTelemetry?.let { telemetry ->
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = telemetry.summary,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                color = if (telemetry.diagnostic == null) Color(0xFF1F6F78) else Color(0xFF9B2C2C),
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = telemetry.detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF64777B),
+            )
+            telemetry.diagnostic?.let { diagnostic ->
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = diagnostic,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF9B2C2C),
+                )
+            }
+        }
     }
 }
 

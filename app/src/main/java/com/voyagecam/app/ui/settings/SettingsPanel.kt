@@ -28,6 +28,7 @@ import com.voyagecam.app.core.model.CollisionSensitivity
 import com.voyagecam.app.core.model.DualCameraCapability
 import com.voyagecam.app.core.model.DualCameraSwitchState
 import com.voyagecam.app.core.model.PersistedDualCameraDiagnostic
+import com.voyagecam.app.core.model.PersistedDualCameraSessionTelemetry
 import com.voyagecam.app.core.model.RecordingStorageOverview
 import com.voyagecam.app.core.model.TrustedBluetoothDevice
 import com.voyagecam.app.data.settings.StorageCapacityLimit
@@ -70,8 +71,10 @@ fun SettingsPanel(
     onRequestResetSettings: () -> Unit,
     autoStartDiagnostic: AutoStartDiagnostic?,
     dualCameraDiagnostic: PersistedDualCameraDiagnostic?,
+    dualCameraSessionTelemetry: PersistedDualCameraSessionTelemetry?,
     onRefreshAutoStartDiagnostic: () -> Unit,
     onRefreshDualCameraDiagnostic: () -> Unit,
+    onRefreshDualCameraSessionTelemetry: () -> Unit,
     bluetoothDevicePickerState: BluetoothDevicePickerState,
 ) {
     val visibleStorageCapacityGb = pendingStorageCapacityGb ?: settings.storageCapacityGb
@@ -272,6 +275,9 @@ fun SettingsPanel(
         Spacer(modifier = Modifier.height(16.dp))
         DualCameraDiagnosticPanel(dualCameraDiagnostic, onRefreshDualCameraDiagnostic)
 
+        Spacer(modifier = Modifier.height(16.dp))
+        DualCameraSessionTelemetryPanel(dualCameraSessionTelemetry, onRefreshDualCameraSessionTelemetry)
+
         Spacer(modifier = Modifier.height(12.dp))
         OutlinedButton(
             onClick = onRequestResetSettings,
@@ -462,6 +468,57 @@ private fun DualCameraDiagnosticPanel(
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),
         )
+    }
+}
+
+@Composable
+private fun DualCameraSessionTelemetryPanel(
+    telemetry: PersistedDualCameraSessionTelemetry?,
+    onRefresh: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = "双摄会话状态",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF163036),
+        )
+        OutlinedButton(onClick = onRefresh) {
+            Text("刷新")
+        }
+    }
+    Spacer(modifier = Modifier.height(8.dp))
+    if (telemetry == null) {
+        Text(
+            text = "暂无双摄会话记录。",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF64777B),
+        )
+    } else {
+        Text(
+            text = "${telemetry.summary} · ${telemetry.recordedAtMillis.asTime()}",
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = if (telemetry.diagnostic == null) Color(0xFF1F6F78) else Color(0xFF9B2C2C),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = telemetry.detail,
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF4D6267),
+        )
+        telemetry.diagnostic?.let { diagnostic ->
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = diagnostic,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF9B2C2C),
+            )
+        }
     }
 }
 

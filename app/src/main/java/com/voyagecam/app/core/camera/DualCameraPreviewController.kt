@@ -13,6 +13,7 @@ class DualCameraPreviewController(
     private var frontSurfaceProvider: androidx.camera.core.Preview.SurfaceProvider? = null
 
     fun start(
+        sessionToken: Int,
         rearPreviewView: PreviewView,
         frontPreviewView: PreviewView,
         onError: (DualCameraDiagnostic) -> Unit,
@@ -23,6 +24,7 @@ class DualCameraPreviewController(
         frontSurfaceProvider = frontProvider
         DualCameraSessionCoordinator.setPreviewSurfaceProviders(
             context = context,
+            sessionToken = sessionToken,
             rearProvider = rearProvider,
             frontProvider = frontProvider,
             onError = onError,

@@ -29,28 +29,30 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import com.voyagecam.app.core.camera.DualCameraPreviewController
+import com.voyagecam.app.core.camera.DualCameraSessionCoordinator
 import com.voyagecam.app.core.camera.RearCameraPreviewController
 import com.voyagecam.app.core.model.DualCameraDiagnostic
+import androidx.compose.runtime.collectAsState
 
 @Composable
 fun RearCameraPreview(
     enabled: Boolean,
     frontInsetEnabled: Boolean = false,
+    dualCameraSessionToken: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    var dualPreviewUnavailable by remember { mutableStateOf(false) }
-
-    LaunchedEffect(frontInsetEnabled) {
-        if (!frontInsetEnabled) {
-            dualPreviewUnavailable = false
-        }
-    }
+    val dualCameraSessionStatus by DualCameraSessionCoordinator.sessionStatus.collectAsState()
+    val dualPreviewUnavailable = shouldFallbackToRearPreview(
+        frontInsetEnabled = frontInsetEnabled,
+        sessionToken = dualCameraSessionToken,
+        sessionStatus = dualCameraSessionStatus,
+    )
 
     if (enabled && frontInsetEnabled && !dualPreviewUnavailable) {
         DualCameraPreview(
             modifier = modifier,
-            onUnavailable = { dualPreviewUnavailable = true },
+            sessionToken = dualCameraSessionToken,
         )
         return
     }
@@ -99,7 +101,10 @@ fun RearCameraPreview(
                     PreviewMessage(message)
                 }
                 if (frontInsetEnabled && dualPreviewUnavailable) {
-                    PreviewMessage("前摄小窗暂不可用，已回落到后摄预览")
+                    PreviewMessage(
+                        dualCameraSessionStatus.lastDiagnostic?.summary()
+                            ?: "前摄小窗暂不可用，已回落到后摄预览",
+                    )
                 }
             }
         }
@@ -109,7 +114,7 @@ fun RearCameraPreview(
 @Composable
 private fun DualCameraPreview(
     modifier: Modifier = Modifier,
-    onUnavailable: () -> Unit,
+    sessionToken: Int,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = context as? LifecycleOwner
@@ -117,15 +122,15 @@ private fun DualCameraPreview(
         PreviewMessage("双摄预览需要 Activity 生命周期")
         return
     }
-    val controller = remember(context, lifecycleOwner) {
+    val controller = remember(context, lifecycleOwner, sessionToken) {
         DualCameraPreviewController(
             context = context,
             lifecycleOwner = lifecycleOwner,
         )
     }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var errorMessage by remember(sessionToken) { mutableStateOf<String?>(null) }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(controller) {
         onDispose {
             controller.destroy()
         }
@@ -138,8 +143,8 @@ private fun DualCameraPreview(
             .background(Color(0xFF10282E)),
         contentAlignment = Alignment.Center,
     ) {
-        var rearPreviewView by remember { mutableStateOf<PreviewView?>(null) }
-        var frontPreviewView by remember { mutableStateOf<PreviewView?>(null) }
+        var rearPreviewView by remember(sessionToken) { mutableStateOf<PreviewView?>(null) }
+        var frontPreviewView by remember(sessionToken) { mutableStateOf<PreviewView?>(null) }
 
         AndroidView(
             factory = { viewContext ->
@@ -175,16 +180,16 @@ private fun DualCameraPreview(
             )
         }
 
-        LaunchedEffect(rearPreviewView, frontPreviewView) {
+        LaunchedEffect(rearPreviewView, frontPreviewView, sessionToken) {
             val rear = rearPreviewView
             val front = frontPreviewView
             if (rear != null && front != null) {
                 controller.start(
+                    sessionToken = sessionToken,
                     rearPreviewView = rear,
                     frontPreviewView = front,
                 ) { diagnostic ->
                     errorMessage = diagnostic.summary()
-                    onUnavailable()
                 }
             }
         }
