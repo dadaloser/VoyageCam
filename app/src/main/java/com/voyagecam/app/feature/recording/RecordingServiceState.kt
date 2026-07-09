@@ -22,6 +22,7 @@ class RecordingServiceState {
     var lockedSegmentCount: Int = 0
     var segmentTransitionSummary: String? = null
     var dualCameraDiagnostic: String? = null
+    var performanceGuardSummary: String? = null
 
     fun resetForStart(
         startedAtMillis: Long,
@@ -49,6 +50,7 @@ class RecordingServiceState {
         lockedSegmentCount = 0
         segmentTransitionSummary = null
         dualCameraDiagnostic = null
+        performanceGuardSummary = null
     }
 
     fun clearAfterStop() {
@@ -67,6 +69,7 @@ class RecordingServiceState {
             currentFileName = currentFileName,
             segmentTransitionSummary = segmentTransitionSummary,
             dualCameraDiagnostic = dualCameraDiagnostic,
+            performanceGuardSummary = performanceGuardSummary,
         )
     }
 }

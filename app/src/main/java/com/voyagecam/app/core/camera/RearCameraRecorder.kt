@@ -10,6 +10,10 @@ import androidx.camera.video.Recording
 import androidx.camera.video.VideoRecordEvent
 import androidx.core.content.ContextCompat
 import com.voyagecam.app.core.model.DualCameraDiagnostic
+import com.voyagecam.app.data.settings.RecordingBitratePreset
+import com.voyagecam.app.data.settings.RecordingFrameRatePreset
+import com.voyagecam.app.data.settings.RecordingResolutionPreset
+import com.voyagecam.app.data.settings.RecordingVideoProfile
 import com.voyagecam.app.data.storage.RecordingStorageManager
 import java.io.File
 
@@ -46,6 +50,11 @@ class RearCameraRecorder(
     private var audioEnabled = false
     private var segmentDurationMillis = DEFAULT_SEGMENT_DURATION_MINUTES * 60_000L
     private var segmentIndex = 0
+    private var recordingVideoProfile = RecordingVideoProfile(
+        resolution = RecordingResolutionPreset.FHD_1080P,
+        frameRate = RecordingFrameRatePreset.FPS_30,
+        bitrate = RecordingBitratePreset.MBPS_12,
+    )
     private var pendingStopReason: StopReason? = null
     private var rotationStopRequestedAtElapsed: Long? = null
     private var rotationSegmentIndex: Int? = null
@@ -55,7 +64,12 @@ class RearCameraRecorder(
         rotateSegment()
     }
 
-    fun start(ambientAudioRequested: Boolean, segmentDurationMinutes: Int, dualCameraRequested: Boolean = false) {
+    fun start(
+        ambientAudioRequested: Boolean,
+        segmentDurationMinutes: Int,
+        dualCameraRequested: Boolean = false,
+        videoProfile: RecordingVideoProfile,
+    ) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) !=
             PackageManager.PERMISSION_GRANTED
         ) {
@@ -70,6 +84,7 @@ class RearCameraRecorder(
             .coerceIn(MIN_SEGMENT_DURATION_MINUTES, MAX_SEGMENT_DURATION_MINUTES) * 60_000L
         shouldContinueRecording = true
         dualRecordingMode = dualCameraRequested
+        recordingVideoProfile = videoProfile
         segmentIndex = 0
         pendingStopReason = null
         rotationStopRequestedAtElapsed = null
@@ -128,6 +143,31 @@ class RearCameraRecorder(
         }
     }
 
+    fun downgradeToRearOnly(reason: String) {
+        cameraHandler.post {
+            if (!dualRecordingMode) return@post
+            dualRecordingMode = false
+            val dualRecording = currentDualRecording
+            if (dualRecording == null) {
+                outputFrontFile?.delete()
+                outputFrontFile = null
+                callbacks.onRecordingError(reason)
+                return@post
+            }
+
+            cameraHandler.removeCallbacks(rotateSegmentTask)
+            pendingStopReason = StopReason.Rotate
+            rotationStopRequestedAtElapsed = SystemClock.elapsedRealtime()
+            rotationSegmentIndex = segmentIndex
+            runCatching {
+                dualRecording.stop()
+            }.onFailure { error ->
+                pendingStopReason = null
+                callbacks.onRecordingError(error.message ?: "双摄降级失败")
+            }
+        }
+    }
+
     private fun startNextSegment() {
         if (!shouldContinueRecording) return
 
@@ -155,6 +195,7 @@ class RearCameraRecorder(
             context = context,
             file = file,
             audioEnabled = audioEnabled,
+            videoProfile = recordingVideoProfile,
             onReady = { recording ->
                 cameraHandler.post {
                     currentRecording = recording
@@ -182,6 +223,7 @@ class RearCameraRecorder(
             rearFile = rearFile,
             frontFile = frontFile,
             audioEnabled = audioEnabled,
+            videoProfile = recordingVideoProfile,
             onReady = { recording ->
                 cameraHandler.post {
                     currentDualRecording = recording

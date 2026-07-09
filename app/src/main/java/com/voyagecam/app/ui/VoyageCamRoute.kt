@@ -165,7 +165,12 @@ fun VoyageCamRoute(
     )
 
     fun beginRecordingService() {
-        viewModel.setStatus("正在启动后摄录制...")
+        val startingMode = when {
+            settings.dualCameraEnabled && capability.isAvailable -> "自动双摄录制"
+            settings.dualCameraEnabled -> "自动模式录制（当前以后摄运行）"
+            else -> "后摄录制"
+        }
+        viewModel.setStatus("正在启动$startingMode...")
         recordingServiceController.start(
             context = context,
             dualCamera = settings.dualCameraEnabled && capability.isAvailable,
@@ -374,12 +379,46 @@ internal fun VoyageCamRouteContent(
                     onRequestLocationPermission = permissionCoordinator.requestLocationPermission,
                     onRequestBluetoothPermission = permissionCoordinator.requestBluetoothPermission,
                     onRedetect = onRedetect,
-                    onDualCameraChanged = { enabled ->
-                        if (!isRecording) {
-                            onPersistSettings(settings.copy(dualCameraEnabled = enabled))
-                            onRedetect()
+                    onRecordingModeAutoChanged = { enabled ->
+                        if (isRecording) {
+                            onSetStatus("录制中不可切换录制模式；停止后修改会在下一次录制生效。")
+                            return@SettingsPanel
+                        }
+
+                        onPersistSettings(settings.copy(dualCameraEnabled = enabled))
+                        onSetStatus(
+                            when {
+                                enabled && capability.isAvailable ->
+                                    "已切换到自动模式；支持时会启用双摄，失败时自动回落到后摄。"
+                                enabled ->
+                                    "已切换到自动模式；当前设备未报告双摄并发能力，本次仍会以后摄录制。"
+                                else ->
+                                    "已切换到仅后摄模式；后续录制只使用后摄。"
+                            },
+                        )
+                    },
+                    onRecordingResolutionChanged = { resolution ->
+                        if (isRecording) {
+                            onSetStatus("录制中不可修改分辨率；停止后修改会在下一次录制生效。")
                         } else {
-                            onSetStatus("录制中不可切换双摄；停止后修改会在下一次录制生效。")
+                            onPersistSettings(settings.copy(recordingResolution = resolution))
+                            onSetStatus("已将录制分辨率设置为 ${resolution.label}。")
+                        }
+                    },
+                    onRecordingFrameRateChanged = { frameRate ->
+                        if (isRecording) {
+                            onSetStatus("录制中不可修改帧率；停止后修改会在下一次录制生效。")
+                        } else {
+                            onPersistSettings(settings.copy(recordingFrameRate = frameRate))
+                            onSetStatus("已将录制帧率设置为 ${frameRate.label}。")
+                        }
+                    },
+                    onRecordingBitrateChanged = { bitrate ->
+                        if (isRecording) {
+                            onSetStatus("录制中不可修改码率；停止后修改会在下一次录制生效。")
+                        } else {
+                            onPersistSettings(settings.copy(recordingBitrate = bitrate))
+                            onSetStatus("已将录制码率设置为 ${bitrate.label}。")
                         }
                     },
                     onStorageChanged = onRequestStorageCapacityChange,
@@ -416,6 +455,45 @@ internal fun VoyageCamRouteContent(
                         } else {
                             permissionCoordinator.requestAudioPermission()
                         }
+                    },
+                    onThermalGuardChanged = { enabled ->
+                        onPersistSettings(settings.copy(thermalGuardEnabled = enabled))
+                        if (isRecording) {
+                            RecordingForegroundService.refreshPerformanceGuard(context)
+                        }
+                        onSetStatus(
+                            if (enabled) {
+                                "已开启过热性能保护；设备严重过热时会自动关闭前摄，优先保持后摄录制。"
+                            } else {
+                                "已关闭过热性能保护；设备过热时不会自动关闭前摄。"
+                            },
+                        )
+                    },
+                    onLowBatteryGuardChanged = { enabled ->
+                        onPersistSettings(settings.copy(lowBatteryGuardEnabled = enabled))
+                        if (isRecording) {
+                            RecordingForegroundService.refreshPerformanceGuard(context)
+                        }
+                        onSetStatus(
+                            if (enabled) {
+                                "已开启低电量性能保护；未充电且电量过低时会自动关闭前摄。"
+                            } else {
+                                "已关闭低电量性能保护；低电量时不会自动关闭前摄。"
+                            },
+                        )
+                    },
+                    onSlowSegmentGuardChanged = { enabled ->
+                        onPersistSettings(settings.copy(slowSegmentGuardEnabled = enabled))
+                        if (isRecording) {
+                            RecordingForegroundService.refreshPerformanceGuard(context)
+                        }
+                        onSetStatus(
+                            if (enabled) {
+                                "已开启分段切换性能保护；分段间隙过长时会自动关闭前摄。"
+                            } else {
+                                "已关闭分段切换性能保护；分段压力较高时不会自动关闭前摄。"
+                            },
+                        )
                     },
                     onGpsMetadataChanged = { enabled ->
                         if (!enabled) {
@@ -696,7 +774,19 @@ internal fun RecordingPanel(
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = buildString {
-                append(if (settings.dualCameraEnabled && capability.isAvailable) "前后双摄" else "后摄单录")
+                append(
+                    when {
+                        settings.dualCameraEnabled && capability.isAvailable -> "自动双摄"
+                        settings.dualCameraEnabled -> "自动后摄"
+                        else -> "仅后摄"
+                    },
+                )
+                append(" · ")
+                append(settings.recordingResolution.label)
+                append(" / ")
+                append(settings.recordingFrameRate.label)
+                append(" / ")
+                append(settings.recordingBitrate.label)
                 append(" · ")
                 append("${settings.segmentDurationMinutes}分钟分段")
                 append(" · ")
@@ -773,7 +863,7 @@ private fun SettingsResetConfirmationPanel(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "将恢复默认录制、存储、音频、GPS、水印导出和自动启动设置。录像片段、锁定事件和已导出的证据包不会被删除。",
+            text = "将恢复默认录制模式、分辨率、帧率、码率、存储、音频、性能保护、GPS、水印导出和自动启动设置。录像片段、锁定事件和已导出的证据包不会被删除。",
             style = MaterialTheme.typography.bodyMedium,
             color = Color(0xFF4D6267),
         )

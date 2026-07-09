@@ -27,11 +27,13 @@ import com.voyagecam.app.core.model.AutoStartDiagnostic
 import com.voyagecam.app.core.model.AutoStartResult
 import com.voyagecam.app.core.model.CollisionSensitivity
 import com.voyagecam.app.core.model.DualCameraCapability
-import com.voyagecam.app.core.model.DualCameraSwitchState
 import com.voyagecam.app.core.model.PersistedDualCameraDiagnostic
 import com.voyagecam.app.core.model.PersistedDualCameraSessionTelemetry
 import com.voyagecam.app.core.model.RecordingStorageOverview
 import com.voyagecam.app.core.model.TrustedBluetoothDevice
+import com.voyagecam.app.data.settings.RecordingBitratePreset
+import com.voyagecam.app.data.settings.RecordingFrameRatePreset
+import com.voyagecam.app.data.settings.RecordingResolutionPreset
 import com.voyagecam.app.data.settings.StorageCapacityLimit
 import com.voyagecam.app.data.settings.VoyageCamSettings
 import com.voyagecam.app.data.settings.VoyageCamSettingsStore
@@ -58,12 +60,18 @@ fun SettingsPanel(
     onRequestLocationPermission: () -> Unit,
     onRequestBluetoothPermission: () -> Unit,
     onRedetect: () -> Unit,
-    onDualCameraChanged: (Boolean) -> Unit,
+    onRecordingModeAutoChanged: (Boolean) -> Unit,
     onStorageChanged: (Int) -> Unit,
     onCleanupStorage: () -> Unit,
+    onRecordingResolutionChanged: (RecordingResolutionPreset) -> Unit,
+    onRecordingFrameRateChanged: (RecordingFrameRatePreset) -> Unit,
+    onRecordingBitrateChanged: (RecordingBitratePreset) -> Unit,
     onSegmentDurationChanged: (Int) -> Unit,
     onCollisionSensitivityChanged: (CollisionSensitivity) -> Unit,
     onAmbientAudioChanged: (Boolean) -> Unit,
+    onThermalGuardChanged: (Boolean) -> Unit,
+    onLowBatteryGuardChanged: (Boolean) -> Unit,
+    onSlowSegmentGuardChanged: (Boolean) -> Unit,
     onGpsMetadataChanged: (Boolean) -> Unit,
     onExportWatermarkSubtitlesChanged: (Boolean) -> Unit,
     onExportBurnedWatermarkVideoChanged: (Boolean) -> Unit,
@@ -117,17 +125,41 @@ fun SettingsPanel(
         )
         Spacer(modifier = Modifier.height(14.dp))
 
-        SettingSwitchRow(
-            title = "同时开启前后摄像头",
-            subtitle = when {
-                isRecording -> "录制中不可切换，停止后修改"
-                capability.isAvailable -> capability.reason
-                capability.state == DualCameraSwitchState.Checking -> "检测中，完成后自动刷新"
-                else -> capability.reason
+        Text(
+            text = "录制模式",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF163036),
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        SelectionButtonRow(
+            options = listOf(
+                SelectionOption(
+                    label = "仅后摄",
+                    selected = !settings.dualCameraEnabled,
+                    onClick = { onRecordingModeAutoChanged(false) },
+                ),
+                SelectionOption(
+                    label = "自动模式",
+                    selected = settings.dualCameraEnabled,
+                    onClick = { onRecordingModeAutoChanged(true) },
+                ),
+            ),
+            enabled = !isRecording,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = when {
+                isRecording -> "录制中不可切换模式，停止后修改"
+                settings.dualCameraEnabled && capability.isAvailable ->
+                    "自动模式：支持时启用前后双摄；双摄启动失败或性能保护触发时会自动回落后摄"
+                settings.dualCameraEnabled ->
+                    "自动模式：当前设备未报告双摄并发能力，本次仍会以后摄录制"
+                else ->
+                    "仅后摄：始终只使用后摄录制，更省电也更稳定"
             },
-            checked = settings.dualCameraEnabled && capability.isAvailable,
-            enabled = capability.isAvailable && !isRecording,
-            onCheckedChange = onDualCameraChanged,
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF64777B),
         )
 
         Spacer(modifier = Modifier.height(10.dp))
@@ -138,6 +170,81 @@ fun SettingsPanel(
         ) {
             Text("重新检测双摄能力")
         }
+
+        Spacer(modifier = Modifier.height(18.dp))
+        Text(
+            text = "分辨率",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF163036),
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        SelectionButtonRow(
+            options = RecordingResolutionPreset.entries.map { preset ->
+                SelectionOption(
+                    label = preset.label,
+                    selected = settings.recordingResolution == preset,
+                    onClick = { onRecordingResolutionChanged(preset) },
+                )
+            },
+            enabled = !isRecording,
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = "目标分辨率；设备或双摄组合不支持时会自动降级到更低规格。",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF64777B),
+        )
+
+        Spacer(modifier = Modifier.height(18.dp))
+        Text(
+            text = "帧率",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF163036),
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        SelectionButtonRow(
+            options = RecordingFrameRatePreset.entries.map { preset ->
+                SelectionOption(
+                    label = preset.label,
+                    selected = settings.recordingFrameRate == preset,
+                    onClick = { onRecordingFrameRateChanged(preset) },
+                )
+            },
+            enabled = !isRecording,
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = "目标帧率；CameraX 会尽量贴近该值，但最终仍取决于设备和并发录制能力。",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF64777B),
+        )
+
+        Spacer(modifier = Modifier.height(18.dp))
+        Text(
+            text = "码率",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF163036),
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        SelectionButtonRow(
+            options = RecordingBitratePreset.entries.map { preset ->
+                SelectionOption(
+                    label = preset.label,
+                    selected = settings.recordingBitrate == preset,
+                    onClick = { onRecordingBitrateChanged(preset) },
+                )
+            },
+            enabled = !isRecording,
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = "目标视频码率越高，画质通常越好，但发热、耗电和存储占用也会增加。",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF64777B),
+        )
 
         Spacer(modifier = Modifier.height(18.dp))
         Text(
@@ -208,6 +315,55 @@ fun SettingsPanel(
             checked = settings.ambientAudioEnabled,
             enabled = !isRecording,
             onCheckedChange = onAmbientAudioChanged,
+        )
+
+        Spacer(modifier = Modifier.height(18.dp))
+        Text(
+            text = "性能保护",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF163036),
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        SettingSwitchRow(
+            title = "过热时自动关闭前摄",
+            subtitle = if (settings.thermalGuardEnabled) {
+                "默认开启；检测到设备严重过热时会自动降级为后摄单录"
+            } else {
+                "已强制关闭；设备过热时不会因为温度自动关闭前摄"
+            },
+            checked = settings.thermalGuardEnabled,
+            enabled = true,
+            onCheckedChange = onThermalGuardChanged,
+            switchModifier = Modifier.testTag("thermal_guard_switch"),
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+        SettingSwitchRow(
+            title = "低电量时自动关闭前摄",
+            subtitle = if (settings.lowBatteryGuardEnabled) {
+                "默认开启；未充电且电量过低时会自动降级为后摄单录"
+            } else {
+                "已强制关闭；低电量时不会因为电量自动关闭前摄"
+            },
+            checked = settings.lowBatteryGuardEnabled,
+            enabled = true,
+            onCheckedChange = onLowBatteryGuardChanged,
+            switchModifier = Modifier.testTag("low_battery_guard_switch"),
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+        SettingSwitchRow(
+            title = "分段切换过慢时自动关闭前摄",
+            subtitle = if (settings.slowSegmentGuardEnabled) {
+                "默认开启；分段切换间隙过长时会自动降级，优先保证后摄连续录制"
+            } else {
+                "已强制关闭；即使分段切换压力较高也不会自动关闭前摄"
+            },
+            checked = settings.slowSegmentGuardEnabled,
+            enabled = true,
+            onCheckedChange = onSlowSegmentGuardChanged,
+            switchModifier = Modifier.testTag("slow_segment_guard_switch"),
         )
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -752,6 +908,43 @@ private fun SettingSwitchRow(
             onCheckedChange = onCheckedChange,
             modifier = switchModifier,
         )
+    }
+}
+
+private data class SelectionOption(
+    val label: String,
+    val selected: Boolean,
+    val onClick: () -> Unit,
+)
+
+@Composable
+private fun SelectionButtonRow(
+    options: List<SelectionOption>,
+    enabled: Boolean,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        options.forEach { option ->
+            if (option.selected) {
+                Button(
+                    onClick = option.onClick,
+                    enabled = enabled,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(option.label)
+                }
+            } else {
+                OutlinedButton(
+                    onClick = option.onClick,
+                    enabled = enabled,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(option.label)
+                }
+            }
+        }
     }
 }
 

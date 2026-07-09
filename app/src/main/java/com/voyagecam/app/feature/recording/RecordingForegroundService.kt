@@ -4,12 +4,15 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import androidx.core.content.ContextCompat
 import com.voyagecam.app.core.camera.RearCameraRecorder
 import com.voyagecam.app.core.camera.RecordingSegmentFileSet
@@ -23,6 +26,7 @@ import com.voyagecam.app.data.emergency.EmergencyEventStore
 import com.voyagecam.app.data.location.EmergencyLocationProvider
 import com.voyagecam.app.data.location.hasAnyLocationPermission
 import com.voyagecam.app.data.settings.VoyageCamSettingsStore
+import com.voyagecam.app.data.settings.recordingVideoProfile
 import com.voyagecam.app.data.storage.RecordingStorageManager
 import com.voyagecam.app.feature.collision.CollisionDetector
 import java.io.File
@@ -68,6 +72,15 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         }
     }
 
+    private val performanceGuardTask = object : Runnable {
+        override fun run() {
+            evaluatePerformanceGuard()
+            if (state.startedAtMillis > 0L) {
+                mainHandler.postDelayed(this, PERFORMANCE_GUARD_INTERVAL_MS)
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         cameraThread = HandlerThread("VoyageCamRearRecorder").apply { start() }
@@ -93,6 +106,15 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         if (intent?.action == ACTION_SET_GPS_METADATA) {
             setGpsMetadataEnabled(intent.getBooleanExtra(EXTRA_GPS_METADATA_ENABLED, true))
             return if (state.startedAtMillis > 0L) START_STICKY else START_NOT_STICKY
+        }
+        if (intent?.action == ACTION_REFRESH_PERFORMANCE_GUARD) {
+            return if (state.startedAtMillis > 0L) {
+                evaluatePerformanceGuard()
+                notifyRecordingState()
+                START_STICKY
+            } else {
+                START_NOT_STICKY
+            }
         }
         if (state.startedAtMillis > 0L && recorder != null) {
             notifyRecordingState()
@@ -139,6 +161,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
                 ambientAudioRequested = state.ambientAudio,
                 segmentDurationMinutes = state.segmentDurationMinutes,
                 dualCameraRequested = state.dualCamera,
+                videoProfile = settings.recordingVideoProfile(),
             )
         }
         startCollisionDetection()
@@ -146,12 +169,15 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
 
         mainHandler.removeCallbacks(updateNotificationTask)
         mainHandler.post(updateNotificationTask)
+        mainHandler.removeCallbacks(performanceGuardTask)
+        mainHandler.postDelayed(performanceGuardTask, PERFORMANCE_GUARD_INTERVAL_MS)
         return START_STICKY
     }
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(updateNotificationTask)
         mainHandler.removeCallbacks(gpsTrackSampleTask)
+        mainHandler.removeCallbacks(performanceGuardTask)
         emergencyLocationProvider.stopUpdates()
         collisionDetector?.stop()
         collisionDetector = null
@@ -431,7 +457,74 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         val stopText = stats.stopToFinalizeMillis?.let { "${it}ms" } ?: "未知"
         state.segmentTransitionSummary = "上次分段间隙 finalize→start ${stats.finalizeToNextStartMillis}ms，stop→finalize $stopText"
         state.status = "第 ${stats.completedSegmentIndex} 段切换完成，${state.segmentTransitionSummary}"
+        evaluatePerformanceGuard(stats)
         notifyRecordingState()
+    }
+
+    private fun evaluatePerformanceGuard(transitionStats: RecordingSegmentTransitionStats? = null) {
+        if (state.startedAtMillis <= 0L) return
+        val settings = settingsStore.load()
+        val previousSummary = state.performanceGuardSummary
+        val decision = RecordingPerformanceGuard.evaluate(
+            sample = performanceSample(transitionStats),
+            dualCameraActive = state.dualCamera,
+            policy = RecordingPerformancePolicy(
+                thermalGuardEnabled = settings.thermalGuardEnabled,
+                lowBatteryGuardEnabled = settings.lowBatteryGuardEnabled,
+                slowSegmentGuardEnabled = settings.slowSegmentGuardEnabled,
+            ),
+        )
+        state.performanceGuardSummary = decision.summary
+        if (decision.shouldDowngradeDualCamera && decision.summary != null) {
+            downgradeDualCameraForPerformance(decision.summary)
+        } else if (decision.summary != null || previousSummary != decision.summary) {
+            notifyRecordingState()
+        }
+    }
+
+    private fun downgradeDualCameraForPerformance(reason: String) {
+        if (!state.dualCamera) return
+        state.dualCamera = false
+        state.dualCameraDiagnostic = "性能保护：$reason"
+        state.status = "性能保护已触发：已关闭前摄，后摄继续录制（$reason）"
+        recorder?.downgradeToRearOnly(state.status)
+        notifyRecordingState()
+    }
+
+    private fun performanceSample(transitionStats: RecordingSegmentTransitionStats?): RecordingPerformanceSample {
+        val batteryIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = batteryIntent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        val batteryPercent = if (level >= 0 && scale > 0) {
+            ((level * 100f) / scale).toInt()
+        } else {
+            null
+        }
+        val status = batteryIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val plugged = batteryIntent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
+        val charging = plugged != 0 ||
+            status == BatteryManager.BATTERY_STATUS_CHARGING ||
+            status == BatteryManager.BATTERY_STATUS_FULL
+
+        return RecordingPerformanceSample(
+            batteryPercent = batteryPercent,
+            charging = charging,
+            thermalSeverity = currentThermalSeverity(),
+            transitionStats = transitionStats,
+        )
+    }
+
+    private fun currentThermalSeverity(): ThermalSeverity {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return ThermalSeverity.None
+        val status = getSystemService(PowerManager::class.java)?.currentThermalStatus
+            ?: return ThermalSeverity.None
+        return when {
+            status >= PowerManager.THERMAL_STATUS_CRITICAL -> ThermalSeverity.Critical
+            status >= PowerManager.THERMAL_STATUS_SEVERE -> ThermalSeverity.Severe
+            status >= PowerManager.THERMAL_STATUS_MODERATE -> ThermalSeverity.Moderate
+            status >= PowerManager.THERMAL_STATUS_LIGHT -> ThermalSeverity.Light
+            else -> ThermalSeverity.None
+        }
     }
 
     private fun notifyRecordingState() {
@@ -489,11 +582,13 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
     companion object {
         private const val NOTIFICATION_UPDATE_INTERVAL_MS = 1_000L
         private const val GPS_TRACK_SAMPLE_INTERVAL_MS = 10_000L
+        private const val PERFORMANCE_GUARD_INTERVAL_MS = 30_000L
         private const val GPS_TRACK_RETENTION_MS = 5 * 60 * 1000L
         private const val MAX_GPS_TRACK_POINTS = 60
         const val ACTION_STOP = "com.voyagecam.app.action.STOP_RECORDING"
         const val ACTION_LOCK_CURRENT = "com.voyagecam.app.action.LOCK_CURRENT"
         private const val ACTION_SET_GPS_METADATA = "com.voyagecam.app.action.SET_GPS_METADATA"
+        private const val ACTION_REFRESH_PERFORMANCE_GUARD = "com.voyagecam.app.action.REFRESH_PERFORMANCE_GUARD"
         private const val EXTRA_DUAL_CAMERA = "extra_dual_camera"
         private const val EXTRA_AMBIENT_AUDIO = "extra_ambient_audio"
         private const val EXTRA_GPS_METADATA_ENABLED = "extra_gps_metadata_enabled"
@@ -547,6 +642,12 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
             val intent = Intent(context, RecordingForegroundService::class.java)
                 .setAction(ACTION_SET_GPS_METADATA)
                 .putExtra(EXTRA_GPS_METADATA_ENABLED, enabled)
+            context.startService(intent)
+        }
+
+        fun refreshPerformanceGuard(context: Context) {
+            val intent = Intent(context, RecordingForegroundService::class.java)
+                .setAction(ACTION_REFRESH_PERFORMANCE_GUARD)
             context.startService(intent)
         }
     }

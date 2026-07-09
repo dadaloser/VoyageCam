@@ -6,6 +6,7 @@ import com.voyagecam.app.core.model.RecordingSegment
 import com.voyagecam.app.core.model.RecordingStorageOverview
 import com.voyagecam.app.core.model.SegmentFileNames
 import com.voyagecam.app.core.model.toStorageBytes
+import com.voyagecam.app.data.settings.estimatedManagedBytesPerMinute
 import com.voyagecam.app.data.settings.VoyageCamSettings
 import com.voyagecam.app.data.settings.VoyageCamSettingsStore
 import java.io.File
@@ -82,10 +83,7 @@ class RecordingStorageManager(private val context: Context) {
             normalClipCount = snapshot.normalClipCount,
             lockedClipCount = snapshot.lockedClipCount,
             maxStorageBytes = settings.storageCapacityGb.coerceAtLeast(VoyageCamSettingsStore.MIN_STORAGE_GB).toStorageBytes(),
-            estimatedBytesPerMinute = estimateBytesPerMinute(
-                dualCameraActive = dualCameraActive,
-                ambientAudioEnabled = settings.ambientAudioEnabled,
-            ),
+            estimatedBytesPerMinute = settings.estimatedManagedBytesPerMinute(dualCameraActive),
         )
     }
 
@@ -222,19 +220,7 @@ class RecordingStorageManager(private val context: Context) {
         private const val DASHCAM_DIRECTORY = "Dashcam"
         private const val NORMAL_DIRECTORY = "normal"
         private const val LOCKED_DIRECTORY = "locked"
-        private const val REAR_VIDEO_BYTES_PER_MINUTE = 90L * 1024L * 1024L
-        private const val FRONT_VIDEO_BYTES_PER_MINUTE = 55L * 1024L * 1024L
-        private const val AUDIO_BYTES_PER_MINUTE = 1L * 1024L * 1024L
         private const val DEFAULT_SEGMENT_LIST_LIMIT = 30
-
-        private fun estimateBytesPerMinute(
-            dualCameraActive: Boolean,
-            ambientAudioEnabled: Boolean,
-        ): Long {
-            return REAR_VIDEO_BYTES_PER_MINUTE +
-                if (dualCameraActive) FRONT_VIDEO_BYTES_PER_MINUTE else 0L +
-                if (ambientAudioEnabled) AUDIO_BYTES_PER_MINUTE else 0L
-        }
 
         private fun File.withLockedName(): File {
             if (nameWithoutExtension.endsWith("_locked")) return this

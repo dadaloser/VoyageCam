@@ -12,10 +12,7 @@ import androidx.camera.core.Preview
 import androidx.camera.core.UseCase
 import androidx.camera.core.UseCaseGroup
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.video.FallbackStrategy
 import androidx.camera.video.FileOutputOptions
-import androidx.camera.video.Quality
-import androidx.camera.video.QualitySelector
 import androidx.camera.video.Recorder
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
@@ -26,6 +23,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import com.voyagecam.app.core.model.DualCameraDiagnostic
 import com.voyagecam.app.core.model.DualCameraDiagnosticStage
+import com.voyagecam.app.data.settings.RecordingVideoProfile
 import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -90,6 +88,7 @@ object DualCameraSessionCoordinator : LifecycleOwner {
         rearFile: File,
         frontFile: File,
         audioEnabled: Boolean,
+        videoProfile: RecordingVideoProfile,
         onReady: (DualCameraRecordingSession) -> Unit,
         onEvent: (DualCameraRecordEvent) -> Unit,
         onError: (DualCameraDiagnostic) -> Unit,
@@ -107,8 +106,8 @@ object DualCameraSessionCoordinator : LifecycleOwner {
             }
 
             runCatching {
-                val rearVideoCapture = VideoCapture.withOutput(recorder(Quality.HD))
-                val frontVideoCapture = VideoCapture.withOutput(recorder(Quality.HD))
+                val rearVideoCapture = videoCapture(videoProfile)
+                val frontVideoCapture = videoCapture(videoProfile)
                 bind(
                     context = context.applicationContext,
                     rearVideoCapture = rearVideoCapture,
@@ -269,14 +268,13 @@ object DualCameraSessionCoordinator : LifecycleOwner {
         }
     }
 
-    private fun recorder(preferredQuality: Quality): Recorder {
-        return Recorder.Builder()
-            .setQualitySelector(
-                QualitySelector.fromOrderedList(
-                    listOf(preferredQuality, Quality.SD),
-                    FallbackStrategy.lowerQualityOrHigherThan(Quality.SD),
-                ),
-            )
+    private fun videoCapture(videoProfile: RecordingVideoProfile): VideoCapture<Recorder> {
+        val recorder = Recorder.Builder()
+            .setQualitySelector(videoProfile.qualitySelector())
+            .setTargetVideoEncodingBitRate(videoProfile.bitrate.bitsPerSecond)
+            .build()
+        return VideoCapture.Builder(recorder)
+            .setTargetFrameRate(videoProfile.targetFrameRateRange())
             .build()
     }
 

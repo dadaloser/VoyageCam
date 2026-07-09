@@ -7,15 +7,49 @@ import com.voyagecam.app.core.model.DeviceCapabilityGrade
 import com.voyagecam.app.core.model.DualCameraCapability
 import com.voyagecam.app.core.model.DualCameraSwitchState
 
+enum class RecordingResolutionPreset(val label: String) {
+    HD_720P("720p"),
+    FHD_1080P("1080p"),
+    UHD_2160P("4K"),
+}
+
+enum class RecordingFrameRatePreset(val label: String, val fps: Int) {
+    FPS_24("24fps", 24),
+    FPS_30("30fps", 30),
+    FPS_60("60fps", 60),
+}
+
+enum class RecordingBitratePreset(val label: String, val megabitsPerSecond: Int) {
+    MBPS_8("8Mbps", 8),
+    MBPS_12("12Mbps", 12),
+    MBPS_16("16Mbps", 16),
+    MBPS_24("24Mbps", 24);
+
+    val bitsPerSecond: Int
+        get() = megabitsPerSecond * 1_000_000
+}
+
+data class RecordingVideoProfile(
+    val resolution: RecordingResolutionPreset,
+    val frameRate: RecordingFrameRatePreset,
+    val bitrate: RecordingBitratePreset,
+)
+
 data class VoyageCamSettings(
     val dualCameraEnabled: Boolean = false,
     val storageCapacityGb: Int = 10,
     val segmentDurationMinutes: Int = 3,
+    val recordingResolution: RecordingResolutionPreset = RecordingResolutionPreset.FHD_1080P,
+    val recordingFrameRate: RecordingFrameRatePreset = RecordingFrameRatePreset.FPS_30,
+    val recordingBitrate: RecordingBitratePreset = RecordingBitratePreset.MBPS_12,
     val collisionSensitivity: CollisionSensitivity = CollisionSensitivity.Medium,
     val ambientAudioEnabled: Boolean = false,
     val gpsMetadataEnabled: Boolean = false,
     val exportWatermarkSubtitlesEnabled: Boolean = false,
     val exportBurnedWatermarkVideoEnabled: Boolean = false,
+    val thermalGuardEnabled: Boolean = true,
+    val lowBatteryGuardEnabled: Boolean = true,
+    val slowSegmentGuardEnabled: Boolean = true,
     val autoStartOnPowerConnected: Boolean = false,
     val autoStartOnTrustedBluetooth: Boolean = false,
     val trustedBluetoothDevice: String = "",
@@ -30,6 +64,18 @@ class VoyageCamSettingsStore(context: Context) {
             storageCapacityGb = prefs.getInt(KEY_STORAGE_CAPACITY_GB, DEFAULT_STORAGE_GB),
             segmentDurationMinutes = prefs.getInt(KEY_SEGMENT_DURATION_MINUTES, DEFAULT_SEGMENT_DURATION_MINUTES)
                 .coerceToAllowedSegmentDuration(),
+            recordingResolution = prefs.getString(
+                KEY_RECORDING_RESOLUTION,
+                RecordingResolutionPreset.FHD_1080P.name,
+            ).toRecordingResolutionPreset(),
+            recordingFrameRate = prefs.getString(
+                KEY_RECORDING_FRAME_RATE,
+                RecordingFrameRatePreset.FPS_30.name,
+            ).toRecordingFrameRatePreset(),
+            recordingBitrate = prefs.getString(
+                KEY_RECORDING_BITRATE,
+                RecordingBitratePreset.MBPS_12.name,
+            ).toRecordingBitratePreset(),
             collisionSensitivity = prefs.getString(
                 KEY_COLLISION_SENSITIVITY,
                 CollisionSensitivity.Medium.name,
@@ -38,6 +84,9 @@ class VoyageCamSettingsStore(context: Context) {
             gpsMetadataEnabled = prefs.getBoolean(KEY_GPS_METADATA_ENABLED, false),
             exportWatermarkSubtitlesEnabled = prefs.getBoolean(KEY_EXPORT_WATERMARK_SUBTITLES_ENABLED, false),
             exportBurnedWatermarkVideoEnabled = prefs.getBoolean(KEY_EXPORT_BURNED_WATERMARK_VIDEO_ENABLED, false),
+            thermalGuardEnabled = prefs.getBoolean(KEY_THERMAL_GUARD_ENABLED, true),
+            lowBatteryGuardEnabled = prefs.getBoolean(KEY_LOW_BATTERY_GUARD_ENABLED, true),
+            slowSegmentGuardEnabled = prefs.getBoolean(KEY_SLOW_SEGMENT_GUARD_ENABLED, true),
             autoStartOnPowerConnected = prefs.getBoolean(KEY_AUTO_START_ON_POWER_CONNECTED, false),
             autoStartOnTrustedBluetooth = prefs.getBoolean(KEY_AUTO_START_ON_TRUSTED_BLUETOOTH, false),
             trustedBluetoothDevice = prefs.getString(KEY_TRUSTED_BLUETOOTH_DEVICE, null).orEmpty(),
@@ -49,11 +98,17 @@ class VoyageCamSettingsStore(context: Context) {
             .putBoolean(KEY_DUAL_CAMERA_ENABLED, settings.dualCameraEnabled)
             .putInt(KEY_STORAGE_CAPACITY_GB, settings.storageCapacityGb)
             .putInt(KEY_SEGMENT_DURATION_MINUTES, settings.segmentDurationMinutes.coerceToAllowedSegmentDuration())
+            .putString(KEY_RECORDING_RESOLUTION, settings.recordingResolution.name)
+            .putString(KEY_RECORDING_FRAME_RATE, settings.recordingFrameRate.name)
+            .putString(KEY_RECORDING_BITRATE, settings.recordingBitrate.name)
             .putString(KEY_COLLISION_SENSITIVITY, settings.collisionSensitivity.name)
             .putBoolean(KEY_AMBIENT_AUDIO_ENABLED, settings.ambientAudioEnabled)
             .putBoolean(KEY_GPS_METADATA_ENABLED, settings.gpsMetadataEnabled)
             .putBoolean(KEY_EXPORT_WATERMARK_SUBTITLES_ENABLED, settings.exportWatermarkSubtitlesEnabled)
             .putBoolean(KEY_EXPORT_BURNED_WATERMARK_VIDEO_ENABLED, settings.exportBurnedWatermarkVideoEnabled)
+            .putBoolean(KEY_THERMAL_GUARD_ENABLED, settings.thermalGuardEnabled)
+            .putBoolean(KEY_LOW_BATTERY_GUARD_ENABLED, settings.lowBatteryGuardEnabled)
+            .putBoolean(KEY_SLOW_SEGMENT_GUARD_ENABLED, settings.slowSegmentGuardEnabled)
             .putBoolean(KEY_AUTO_START_ON_POWER_CONNECTED, settings.autoStartOnPowerConnected)
             .putBoolean(KEY_AUTO_START_ON_TRUSTED_BLUETOOTH, settings.autoStartOnTrustedBluetooth)
             .putString(KEY_TRUSTED_BLUETOOTH_DEVICE, settings.trustedBluetoothDevice.trim())
@@ -104,11 +159,17 @@ class VoyageCamSettingsStore(context: Context) {
         private const val KEY_DUAL_CAMERA_ENABLED = "dual_camera_enabled"
         private const val KEY_STORAGE_CAPACITY_GB = "storage_capacity_gb"
         private const val KEY_SEGMENT_DURATION_MINUTES = "segment_duration_minutes"
+        private const val KEY_RECORDING_RESOLUTION = "recording_resolution"
+        private const val KEY_RECORDING_FRAME_RATE = "recording_frame_rate"
+        private const val KEY_RECORDING_BITRATE = "recording_bitrate"
         private const val KEY_COLLISION_SENSITIVITY = "collision_sensitivity"
         private const val KEY_AMBIENT_AUDIO_ENABLED = "ambient_audio_enabled"
         private const val KEY_GPS_METADATA_ENABLED = "gps_metadata_enabled"
         private const val KEY_EXPORT_WATERMARK_SUBTITLES_ENABLED = "export_watermark_subtitles_enabled"
         private const val KEY_EXPORT_BURNED_WATERMARK_VIDEO_ENABLED = "export_burned_watermark_video_enabled"
+        private const val KEY_THERMAL_GUARD_ENABLED = "thermal_guard_enabled"
+        private const val KEY_LOW_BATTERY_GUARD_ENABLED = "low_battery_guard_enabled"
+        private const val KEY_SLOW_SEGMENT_GUARD_ENABLED = "slow_segment_guard_enabled"
         private const val KEY_AUTO_START_ON_POWER_CONNECTED = "auto_start_on_power_connected"
         private const val KEY_AUTO_START_ON_TRUSTED_BLUETOOTH = "auto_start_on_trusted_bluetooth"
         private const val KEY_TRUSTED_BLUETOOTH_DEVICE = "trusted_bluetooth_device"
@@ -134,6 +195,24 @@ class VoyageCamSettingsStore(context: Context) {
             return runCatching {
                 CollisionSensitivity.valueOf(this ?: CollisionSensitivity.Medium.name)
             }.getOrDefault(CollisionSensitivity.Medium)
+        }
+
+        private fun String?.toRecordingResolutionPreset(): RecordingResolutionPreset {
+            return runCatching {
+                RecordingResolutionPreset.valueOf(this ?: RecordingResolutionPreset.FHD_1080P.name)
+            }.getOrDefault(RecordingResolutionPreset.FHD_1080P)
+        }
+
+        private fun String?.toRecordingFrameRatePreset(): RecordingFrameRatePreset {
+            return runCatching {
+                RecordingFrameRatePreset.valueOf(this ?: RecordingFrameRatePreset.FPS_30.name)
+            }.getOrDefault(RecordingFrameRatePreset.FPS_30)
+        }
+
+        private fun String?.toRecordingBitratePreset(): RecordingBitratePreset {
+            return runCatching {
+                RecordingBitratePreset.valueOf(this ?: RecordingBitratePreset.MBPS_12.name)
+            }.getOrDefault(RecordingBitratePreset.MBPS_12)
         }
     }
 }
@@ -166,3 +245,20 @@ fun VoyageCamSettings.coerceTo(limit: StorageCapacityLimit): VoyageCamSettings {
         },
     )
 }
+
+fun VoyageCamSettings.recordingVideoProfile(): RecordingVideoProfile {
+    return RecordingVideoProfile(
+        resolution = recordingResolution,
+        frameRate = recordingFrameRate,
+        bitrate = recordingBitrate,
+    )
+}
+
+fun VoyageCamSettings.estimatedManagedBytesPerMinute(dualCameraActive: Boolean): Long {
+    val videoStreamBytesPerMinute = recordingBitrate.bitsPerSecond.toLong() * 60L / 8L
+    val streamCount = if (dualCameraActive) 2L else 1L
+    return videoStreamBytesPerMinute * streamCount +
+        if (ambientAudioEnabled) AUDIO_BYTES_PER_MINUTE else 0L
+}
+
+private const val AUDIO_BYTES_PER_MINUTE = 1L * 1024L * 1024L

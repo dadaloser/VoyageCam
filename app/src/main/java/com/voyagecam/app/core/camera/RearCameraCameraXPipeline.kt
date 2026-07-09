@@ -10,9 +10,6 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.FileOutputOptions
-import androidx.camera.video.FallbackStrategy
-import androidx.camera.video.Quality
-import androidx.camera.video.QualitySelector
 import androidx.camera.video.Recorder
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
@@ -21,6 +18,10 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import com.voyagecam.app.data.settings.RecordingBitratePreset
+import com.voyagecam.app.data.settings.RecordingFrameRatePreset
+import com.voyagecam.app.data.settings.RecordingResolutionPreset
+import com.voyagecam.app.data.settings.RecordingVideoProfile
 import java.io.File
 
 object RearCameraCameraXPipeline : LifecycleOwner {
@@ -31,6 +32,11 @@ object RearCameraCameraXPipeline : LifecycleOwner {
     private var videoCapture: VideoCapture<Recorder>? = null
     private var previewSurfaceProvider: Preview.SurfaceProvider? = null
     private var activeRecording = false
+    private var currentVideoProfile = RecordingVideoProfile(
+        resolution = RecordingResolutionPreset.FHD_1080P,
+        frameRate = RecordingFrameRatePreset.FPS_30,
+        bitrate = RecordingBitratePreset.MBPS_12,
+    )
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
@@ -43,7 +49,7 @@ object RearCameraCameraXPipeline : LifecycleOwner {
         runOnMain {
             previewSurfaceProvider = provider
             ensureLifecycleStarted()
-            bindUseCases(context.applicationContext, onError)
+            bindUseCases(context.applicationContext, currentVideoProfile, onError)
         }
     }
 
@@ -62,10 +68,11 @@ object RearCameraCameraXPipeline : LifecycleOwner {
         context: Context,
         file: File,
         audioEnabled: Boolean,
+        videoProfile: RecordingVideoProfile,
         onReady: (Recording) -> Unit,
         onEvent: (VideoRecordEvent) -> Unit,
         onError: (String) -> Unit,
-        ) {
+    ) {
         runOnMain {
             ensureLifecycleStarted()
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) !=
@@ -75,7 +82,11 @@ object RearCameraCameraXPipeline : LifecycleOwner {
                 return@runOnMain
             }
 
-            val boundVideoCapture = bindUseCases(context.applicationContext, onError) ?: return@runOnMain
+            val boundVideoCapture = bindUseCases(
+                context = context.applicationContext,
+                videoProfile = videoProfile,
+                onError = onError,
+            ) ?: return@runOnMain
             val outputOptions = FileOutputOptions.Builder(file).build()
             val pendingRecording = boundVideoCapture.output
                 .prepareRecording(context.applicationContext, outputOptions)
@@ -105,26 +116,24 @@ object RearCameraCameraXPipeline : LifecycleOwner {
 
     private fun bindUseCases(
         context: Context,
+        videoProfile: RecordingVideoProfile,
         onError: (String) -> Unit,
     ): VideoCapture<Recorder>? {
         return runCatching {
             val provider = cameraProvider ?: ProcessCameraProvider.getInstance(context).get().also {
                 cameraProvider = it
             }
-            if (videoCapture == null || preview == null) {
+            if (videoCapture == null || preview == null || currentVideoProfile != videoProfile) {
                 val nextPreview = Preview.Builder().build().apply {
                     previewSurfaceProvider?.let(::setSurfaceProvider)
                 }
-                val nextVideoCapture = VideoCapture.withOutput(
-                    Recorder.Builder()
-                        .setQualitySelector(
-                            QualitySelector.fromOrderedList(
-                                listOf(Quality.FHD, Quality.HD, Quality.SD),
-                                FallbackStrategy.lowerQualityOrHigherThan(Quality.SD),
-                            ),
-                        )
-                        .build(),
-                )
+                val recorder = Recorder.Builder()
+                    .setQualitySelector(videoProfile.qualitySelector())
+                    .setTargetVideoEncodingBitRate(videoProfile.bitrate.bitsPerSecond)
+                    .build()
+                val nextVideoCapture = VideoCapture.Builder(recorder)
+                    .setTargetFrameRate(videoProfile.targetFrameRateRange())
+                    .build()
 
                 provider.unbindAll()
                 provider.bindToLifecycle(
@@ -135,6 +144,7 @@ object RearCameraCameraXPipeline : LifecycleOwner {
                 )
                 preview = nextPreview
                 videoCapture = nextVideoCapture
+                currentVideoProfile = videoProfile
             } else {
                 previewSurfaceProvider?.let { surfaceProvider ->
                     preview?.setSurfaceProvider(surfaceProvider)
@@ -162,6 +172,11 @@ object RearCameraCameraXPipeline : LifecycleOwner {
         cameraProvider?.unbindAll()
         preview = null
         videoCapture = null
+        currentVideoProfile = RecordingVideoProfile(
+            resolution = RecordingResolutionPreset.FHD_1080P,
+            frameRate = RecordingFrameRatePreset.FPS_30,
+            bitrate = RecordingBitratePreset.MBPS_12,
+        )
     }
 
     private fun runOnMain(action: () -> Unit) {

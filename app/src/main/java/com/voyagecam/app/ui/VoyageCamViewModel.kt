@@ -24,6 +24,7 @@ import com.voyagecam.app.data.settings.StorageCapacityLimit
 import com.voyagecam.app.data.settings.VoyageCamSettings
 import com.voyagecam.app.data.settings.VoyageCamSettingsStore
 import com.voyagecam.app.data.settings.coerceTo
+import com.voyagecam.app.data.settings.estimatedManagedBytesPerMinute
 import com.voyagecam.app.feature.evidence.EvidenceExportCancelledException
 import com.voyagecam.app.ui.events.EvidenceExportState
 import com.voyagecam.app.ui.history.SegmentCameraFilter
@@ -664,9 +665,9 @@ private fun estimatedBytesPerMinute(
     settings: VoyageCamSettings,
     capability: DualCameraCapability,
 ): Long {
-    return REAR_VIDEO_BYTES_PER_MINUTE +
-        if (settings.dualCameraEnabled && capability.isAvailable) FRONT_VIDEO_BYTES_PER_MINUTE else 0L +
-        if (settings.ambientAudioEnabled) AUDIO_BYTES_PER_MINUTE else 0L
+    return settings.estimatedManagedBytesPerMinute(
+        dualCameraActive = settings.dualCameraEnabled && capability.isAvailable,
+    )
 }
 
 data class VoyageCamUiState(
@@ -732,7 +733,3 @@ private fun String.cameraDirectionLabel(): String {
 private fun String.cameraDirectionSortOrder(): Int {
     return if (contains("_rear", ignoreCase = true)) 0 else 1
 }
-
-private const val REAR_VIDEO_BYTES_PER_MINUTE = 90L * 1024L * 1024L
-private const val FRONT_VIDEO_BYTES_PER_MINUTE = 55L * 1024L * 1024L
-private const val AUDIO_BYTES_PER_MINUTE = 1L * 1024L * 1024L
