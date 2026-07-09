@@ -44,6 +44,7 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 38. Attempt concurrent front/rear CameraX recording in dual-camera mode, writing paired `_rear` and `_front` MP4 files and falling back to rear-only recording if startup fails.
 39. Group front/rear clips in history and open paired clips in a two-pane in-app playback view when both files are available.
 40. Provide shared in-app controls for paired playback, including play/pause, restart, and manual front/rear resync.
+41. Monitor paired playback drift and automatically realign the muted secondary view when the offset exceeds the sync threshold.
 
 ## Current Status
 
@@ -84,6 +85,7 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 - Settings now persist and display both the latest dual-camera fallback diagnostic and the latest dual-camera session telemetry snapshot, with clear actions for fresh device repro runs.
 - Recording history now identifies front/rear clips from the same segment group, and in-app playback can load both files together for a basic synchronized review surface.
 - Paired playback now uses shared controls so the front/rear views can pause, restart, and manually realign without relying on separate native video controls.
+- Paired playback now polls front/rear player positions, reports the current offset, and auto-corrects the secondary muted view when drift exceeds the configured threshold.
 
 ## Build
 
@@ -110,7 +112,7 @@ Use this flow on a real device when checking whether the front-camera inset stay
 ## Next Development Steps
 
 1. Add `androidTest` coverage for the dual-camera flow: preview visible before recording, inset retained during recording, and persisted telemetry available after stop.
-2. Add automatic drift monitoring/correction for front/rear synchronized review, plus clearer dual-camera fallback diagnostics.
+2. Add clearer dual-camera fallback diagnostics and collect real-device playback drift notes for long paired clips.
 3. Run the burned-watermark export path on target devices and collect performance/codec compatibility notes for longer dual-camera evidence packages.
 4. Extract `core`, `data`, `feature`, and `ui` into Gradle modules once the package boundaries stabilize.
 5. Add a richer map-backed route viewer when map dependencies are introduced.

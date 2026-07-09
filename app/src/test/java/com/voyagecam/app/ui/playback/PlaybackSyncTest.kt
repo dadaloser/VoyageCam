@@ -29,4 +29,34 @@ class PlaybackSyncTest {
         assertEquals(-800, status.offsetMs)
         assertTrue(status.requiresCorrection)
     }
+
+    @Test
+    fun autoCorrectionTargetsPrimaryPositionWhilePlaying() {
+        val correction = playbackSyncCorrection(
+            primaryPositionMs = 42_000,
+            secondaryPositionMs = 42_900,
+            isPlaying = true,
+            driftThresholdMs = 500,
+        )
+
+        assertEquals(900, correction.status.offsetMs)
+        assertTrue(correction.status.requiresCorrection)
+        assertTrue(correction.shouldCorrect)
+        assertEquals(42_000, correction.targetSecondaryPositionMs)
+    }
+
+    @Test
+    fun autoCorrectionDoesNotSeekWhilePaused() {
+        val correction = playbackSyncCorrection(
+            primaryPositionMs = 42_000,
+            secondaryPositionMs = 42_900,
+            isPlaying = false,
+            driftThresholdMs = 500,
+        )
+
+        assertEquals(900, correction.status.offsetMs)
+        assertTrue(correction.status.requiresCorrection)
+        assertFalse(correction.shouldCorrect)
+        assertEquals(42_000, correction.targetSecondaryPositionMs)
+    }
 }

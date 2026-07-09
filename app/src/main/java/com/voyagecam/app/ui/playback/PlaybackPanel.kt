@@ -69,6 +69,9 @@ fun PlaybackPanel(
     var syncStatus by remember(item.primaryFile.absolutePath, item.secondaryFile?.absolutePath) {
         mutableStateOf<PlaybackSyncStatus?>(null)
     }
+    var lastAutoCorrectionOffsetMs by remember(item.primaryFile.absolutePath, item.secondaryFile?.absolutePath) {
+        mutableStateOf<Long?>(null)
+    }
     val hasSecondary = item.secondaryFile != null
 
     DisposableEffect(primaryPlayer, secondaryPlayer, hasSecondary) {
@@ -98,13 +101,18 @@ fun PlaybackPanel(
             return@LaunchedEffect
         }
         while (secondaryPlayer != null) {
-            val status = playbackSyncStatus(
+            val correction = playbackSyncCorrection(
                 primaryPositionMs = primaryPlayer.currentPosition,
                 secondaryPositionMs = secondaryPlayer.currentPosition,
+                isPlaying = isPlaying,
             )
-            syncStatus = status
-            if (isPlaying && status.requiresCorrection) {
-                secondaryPlayer.seekTo(primaryPlayer.currentPosition)
+            syncStatus = correction.status
+            if (correction.shouldCorrect) {
+                lastAutoCorrectionOffsetMs = correction.status.offsetMs
+                secondaryPlayer.seekTo(correction.targetSecondaryPositionMs)
+                if (isPlaying) {
+                    secondaryPlayer.play()
+                }
             }
             delay(500L)
         }
@@ -179,6 +187,7 @@ fun PlaybackPanel(
                 },
                 onResync = {
                     secondaryPlayer?.seekTo(primaryPlayer.currentPosition)
+                    lastAutoCorrectionOffsetMs = null
                     syncStatus = syncStatus?.copy(offsetMs = 0, requiresCorrection = false)
                     if (isPlaying) {
                         secondaryPlayer?.play()
@@ -189,9 +198,11 @@ fun PlaybackPanel(
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = if (status.requiresCorrection) {
-                        "双画面偏移 ${status.offsetMs}ms，已自动尝试纠偏"
+                        "自动同步：检测到偏移 ${status.offsetMs}ms，正在纠偏"
+                    } else if (lastAutoCorrectionOffsetMs != null) {
+                        "自动同步：已校正上次偏移 ${lastAutoCorrectionOffsetMs}ms，当前偏移 ${status.offsetMs}ms"
                     } else {
-                        "双画面偏移 ${status.offsetMs}ms"
+                        "自动同步：当前偏移 ${status.offsetMs}ms"
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = if (status.requiresCorrection || abs(status.offsetMs) >= 250) {
