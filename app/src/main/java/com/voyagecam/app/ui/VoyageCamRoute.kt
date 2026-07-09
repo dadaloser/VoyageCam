@@ -285,7 +285,15 @@ fun VoyageCamRoute() {
                     dualCameraSessionTelemetry = uiState.dualCameraSessionTelemetry,
                     onRefreshAutoStartDiagnostic = viewModel::refreshAutoStartDiagnostic,
                     onRefreshDualCameraDiagnostic = viewModel::refreshDualCameraDiagnostic,
+                    onClearDualCameraDiagnostic = {
+                        viewModel.clearDualCameraDiagnostic()
+                        viewModel.setStatus("已清空双摄降级诊断记录。")
+                    },
                     onRefreshDualCameraSessionTelemetry = viewModel::refreshDualCameraSessionTelemetry,
+                    onClearDualCameraSessionTelemetry = {
+                        viewModel.clearDualCameraSessionTelemetry()
+                        viewModel.setStatus("已清空双摄会话状态记录。")
+                    },
                     bluetoothDevicePickerState = bluetoothDevicePickerState,
                 )
 

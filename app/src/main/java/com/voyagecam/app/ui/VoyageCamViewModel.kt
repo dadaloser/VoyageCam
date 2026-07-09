@@ -171,8 +171,18 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.update { it.copy(dualCameraDiagnostic = dualCameraDiagnosticsStore.load()) }
     }
 
+    fun clearDualCameraDiagnostic() {
+        dualCameraDiagnosticsStore.clear()
+        refreshDualCameraDiagnostic()
+    }
+
     fun refreshDualCameraSessionTelemetry() {
         _uiState.update { it.copy(dualCameraSessionTelemetry = dualCameraSessionTelemetryStore.load()) }
+    }
+
+    fun clearDualCameraSessionTelemetry() {
+        dualCameraSessionTelemetryStore.clear()
+        refreshDualCameraSessionTelemetry()
     }
 
     fun recordDualCameraSessionTelemetry(telemetry: DualCameraTelemetryPresentation) {

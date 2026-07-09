@@ -28,6 +28,15 @@ class DualCameraSessionTelemetryStore(context: Context) {
             .apply()
     }
 
+    fun clear() {
+        prefs.edit()
+            .remove(KEY_SUMMARY)
+            .remove(KEY_DETAIL)
+            .remove(KEY_DIAGNOSTIC)
+            .remove(KEY_RECORDED_AT)
+            .apply()
+    }
+
     companion object {
         private const val KEY_SUMMARY = "summary"
         private const val KEY_DETAIL = "detail"

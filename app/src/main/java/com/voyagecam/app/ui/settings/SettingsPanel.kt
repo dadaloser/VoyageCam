@@ -74,7 +74,9 @@ fun SettingsPanel(
     dualCameraSessionTelemetry: PersistedDualCameraSessionTelemetry?,
     onRefreshAutoStartDiagnostic: () -> Unit,
     onRefreshDualCameraDiagnostic: () -> Unit,
+    onClearDualCameraDiagnostic: () -> Unit,
     onRefreshDualCameraSessionTelemetry: () -> Unit,
+    onClearDualCameraSessionTelemetry: () -> Unit,
     bluetoothDevicePickerState: BluetoothDevicePickerState,
 ) {
     val visibleStorageCapacityGb = pendingStorageCapacityGb ?: settings.storageCapacityGb
@@ -273,10 +275,18 @@ fun SettingsPanel(
         AutoStartDiagnosticPanel(autoStartDiagnostic, onRefreshAutoStartDiagnostic)
 
         Spacer(modifier = Modifier.height(16.dp))
-        DualCameraDiagnosticPanel(dualCameraDiagnostic, onRefreshDualCameraDiagnostic)
+        DualCameraDiagnosticPanel(
+            diagnostic = dualCameraDiagnostic,
+            onRefresh = onRefreshDualCameraDiagnostic,
+            onClear = onClearDualCameraDiagnostic,
+        )
 
         Spacer(modifier = Modifier.height(16.dp))
-        DualCameraSessionTelemetryPanel(dualCameraSessionTelemetry, onRefreshDualCameraSessionTelemetry)
+        DualCameraSessionTelemetryPanel(
+            telemetry = dualCameraSessionTelemetry,
+            onRefresh = onRefreshDualCameraSessionTelemetry,
+            onClear = onClearDualCameraSessionTelemetry,
+        )
 
         Spacer(modifier = Modifier.height(12.dp))
         OutlinedButton(
@@ -426,6 +436,7 @@ private fun AutoStartDiagnosticPanel(
 private fun DualCameraDiagnosticPanel(
     diagnostic: PersistedDualCameraDiagnostic?,
     onRefresh: () -> Unit,
+    onClear: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -438,8 +449,13 @@ private fun DualCameraDiagnosticPanel(
             fontWeight = FontWeight.SemiBold,
             color = Color(0xFF163036),
         )
-        OutlinedButton(onClick = onRefresh) {
-            Text("刷新")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = onRefresh) {
+                Text("刷新")
+            }
+            OutlinedButton(onClick = onClear) {
+                Text("清空")
+            }
         }
     }
     Spacer(modifier = Modifier.height(8.dp))
@@ -475,6 +491,7 @@ private fun DualCameraDiagnosticPanel(
 private fun DualCameraSessionTelemetryPanel(
     telemetry: PersistedDualCameraSessionTelemetry?,
     onRefresh: () -> Unit,
+    onClear: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -487,8 +504,13 @@ private fun DualCameraSessionTelemetryPanel(
             fontWeight = FontWeight.SemiBold,
             color = Color(0xFF163036),
         )
-        OutlinedButton(onClick = onRefresh) {
-            Text("刷新")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = onRefresh) {
+                Text("刷新")
+            }
+            OutlinedButton(onClick = onClear) {
+                Text("清空")
+            }
         }
     }
     Spacer(modifier = Modifier.height(8.dp))
