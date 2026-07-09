@@ -15,6 +15,7 @@ import com.voyagecam.app.core.model.DualCameraDiagnosticStage
 import com.voyagecam.app.data.camera.DualCameraDiagnosticsStore
 import com.voyagecam.app.data.camera.DualCameraSessionTelemetryStore
 import com.voyagecam.app.ui.preview.DualCameraTelemetryPresentation
+import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
 
@@ -29,21 +30,23 @@ class VoyageCamRouteDualCameraTelemetryTest {
         val telemetryStore = DualCameraSessionTelemetryStore(context)
 
         try {
-            diagnosticStore.clear()
-            telemetryStore.clear()
-            diagnosticStore.record(
-                DualCameraDiagnostic(
-                    stage = DualCameraDiagnosticStage.Session,
-                    detail = "bind failed",
-                ),
-            )
-            telemetryStore.record(
-                DualCameraTelemetryPresentation(
-                    summary = "双摄 Session 2 · 已回落到后摄预览",
-                    detail = "后摄预览已连接 · 前摄预览已连接",
-                    diagnostic = "双摄会话：bind failed",
-                ),
-            )
+            runBlocking {
+                diagnosticStore.clear()
+                telemetryStore.clear()
+                diagnosticStore.record(
+                    DualCameraDiagnostic(
+                        stage = DualCameraDiagnosticStage.Session,
+                        detail = "bind failed",
+                    ),
+                )
+                telemetryStore.record(
+                    DualCameraTelemetryPresentation(
+                        summary = "双摄 Session 2 · 已回落到后摄预览",
+                        detail = "后摄预览已连接 · 前摄预览已连接",
+                        diagnostic = "双摄会话：bind failed",
+                    ),
+                )
+            }
 
             composeRule.setContent {
                 VoyageCamRoute()
@@ -74,8 +77,10 @@ class VoyageCamRouteDualCameraTelemetryTest {
             composeRule.onNodeWithText("暂无双摄降级记录。").assertIsDisplayed()
             composeRule.onNodeWithText("暂无双摄会话记录。").assertIsDisplayed()
         } finally {
-            diagnosticStore.clear()
-            telemetryStore.clear()
+            runBlocking {
+                diagnosticStore.clear()
+                telemetryStore.clear()
+            }
         }
     }
 }

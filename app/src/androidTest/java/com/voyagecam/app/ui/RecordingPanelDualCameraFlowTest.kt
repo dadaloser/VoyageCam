@@ -19,11 +19,12 @@ import com.voyagecam.app.core.model.DualCameraCapability
 import com.voyagecam.app.core.model.DualCameraSwitchState
 import com.voyagecam.app.data.camera.DualCameraSessionTelemetryStore
 import com.voyagecam.app.data.settings.VoyageCamSettings
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Rule
 import org.junit.Test
-import kotlinx.coroutines.flow.MutableStateFlow
 
 class RecordingPanelDualCameraFlowTest {
     @get:Rule
@@ -35,7 +36,9 @@ class RecordingPanelDualCameraFlowTest {
         val telemetryStore = DualCameraSessionTelemetryStore(context)
         val sessionStatusFlow = MutableStateFlow(previewSessionStatus(sessionToken = 1, recordingActive = false))
 
-        telemetryStore.clear()
+        runBlocking {
+            telemetryStore.clear()
+        }
         try {
             composeRule.setContent {
                 var isRecording = androidx.compose.runtime.remember {
@@ -64,7 +67,11 @@ class RecordingPanelDualCameraFlowTest {
                         }
                     },
                     onEmergencyLock = {},
-                    onDualCameraTelemetry = telemetryStore::record,
+                    onDualCameraTelemetry = { telemetry ->
+                        runBlocking {
+                            telemetryStore.record(telemetry)
+                        }
+                    },
                     dualCameraSessionStatusFlow = sessionStatusFlow,
                     previewContent = { frontInsetEnabled, _ ->
                         Box(
@@ -99,19 +106,23 @@ class RecordingPanelDualCameraFlowTest {
             composeRule.onNodeWithTag("recording_toggle_button").performClick()
 
             composeRule.waitUntil(timeoutMillis = 5_000) {
-                telemetryStore.load()?.summary == "双摄 Session 1 · 并发预览已绑定"
+                runBlocking {
+                    telemetryStore.load()?.summary == "双摄 Session 1 · 并发预览已绑定"
+                }
             }
 
             composeRule.onNodeWithTag("front_inset_preview").assertIsDisplayed()
             composeRule.onNodeWithTag("dual_camera_telemetry_summary")
                 .assertTextContains("双摄 Session 1 · 并发预览已绑定")
 
-            val persisted = telemetryStore.load()
+            val persisted = runBlocking { telemetryStore.load() }
             assertNotNull(persisted)
             assertEquals("双摄 Session 1 · 并发预览已绑定", persisted?.summary)
             assertEquals("后摄预览已连接 · 前摄预览已连接", persisted?.detail)
         } finally {
-            telemetryStore.clear()
+            runBlocking {
+                telemetryStore.clear()
+            }
         }
     }
 }

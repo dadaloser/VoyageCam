@@ -173,7 +173,9 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
             state.dualCameraDiagnostic = null
         } else if (files.front != null) {
             state.dualCameraDiagnostic = "双摄并发录制正常"
-            dualCameraDiagnosticsStore.clear()
+            serviceScope.launch(Dispatchers.IO) {
+                dualCameraDiagnosticsStore.clear()
+            }
         }
         state.status = if (state.dualCamera) {
             if (files.front != null) {
@@ -272,7 +274,9 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
     override fun onDualCameraFallback(diagnostic: DualCameraDiagnostic) {
         state.dualCamera = false
         state.dualCameraDiagnostic = diagnostic.summary()
-        dualCameraDiagnosticsStore.record(diagnostic)
+        serviceScope.launch(Dispatchers.IO) {
+            dualCameraDiagnosticsStore.record(diagnostic)
+        }
         state.status = "双摄录制启动失败，已回落后摄单录：${diagnostic.summary()}"
         notifyRecordingState()
     }

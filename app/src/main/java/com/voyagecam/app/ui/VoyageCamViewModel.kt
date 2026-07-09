@@ -168,21 +168,39 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun refreshDualCameraDiagnostic() {
-        _uiState.update { it.copy(dualCameraDiagnostic = dualCameraDiagnosticsStore.load()) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val diagnostic = dualCameraDiagnosticsStore.load()
+            withContext(Dispatchers.Main) {
+                _uiState.update { it.copy(dualCameraDiagnostic = diagnostic) }
+            }
+        }
     }
 
     fun clearDualCameraDiagnostic() {
-        dualCameraDiagnosticsStore.clear()
-        refreshDualCameraDiagnostic()
+        viewModelScope.launch(Dispatchers.IO) {
+            dualCameraDiagnosticsStore.clear()
+            withContext(Dispatchers.Main) {
+                _uiState.update { it.copy(dualCameraDiagnostic = null) }
+            }
+        }
     }
 
     fun refreshDualCameraSessionTelemetry() {
-        _uiState.update { it.copy(dualCameraSessionTelemetry = dualCameraSessionTelemetryStore.load()) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val telemetry = dualCameraSessionTelemetryStore.load()
+            withContext(Dispatchers.Main) {
+                _uiState.update { it.copy(dualCameraSessionTelemetry = telemetry) }
+            }
+        }
     }
 
     fun clearDualCameraSessionTelemetry() {
-        dualCameraSessionTelemetryStore.clear()
-        refreshDualCameraSessionTelemetry()
+        viewModelScope.launch(Dispatchers.IO) {
+            dualCameraSessionTelemetryStore.clear()
+            withContext(Dispatchers.Main) {
+                _uiState.update { it.copy(dualCameraSessionTelemetry = null) }
+            }
+        }
     }
 
     fun recordDualCameraSessionTelemetry(telemetry: DualCameraTelemetryPresentation) {
@@ -194,8 +212,13 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
         ) {
             return
         }
-        dualCameraSessionTelemetryStore.record(telemetry)
-        refreshDualCameraSessionTelemetry()
+        viewModelScope.launch(Dispatchers.IO) {
+            dualCameraSessionTelemetryStore.record(telemetry)
+            val persistedTelemetry = dualCameraSessionTelemetryStore.load()
+            withContext(Dispatchers.Main) {
+                _uiState.update { it.copy(dualCameraSessionTelemetry = persistedTelemetry) }
+            }
+        }
     }
 
     fun requestStorageCapacityChange(capacityGb: Int) {
