@@ -65,6 +65,7 @@ fun SettingsPanel(
     onAmbientAudioChanged: (Boolean) -> Unit,
     onGpsMetadataChanged: (Boolean) -> Unit,
     onExportWatermarkSubtitlesChanged: (Boolean) -> Unit,
+    onExportBurnedWatermarkVideoChanged: (Boolean) -> Unit,
     onAutoStartOnPowerChanged: (Boolean) -> Unit,
     onTrustedBluetoothDeviceChanged: (String) -> Unit,
     onAutoStartOnTrustedBluetoothChanged: (Boolean) -> Unit,
@@ -224,10 +225,19 @@ fun SettingsPanel(
         Spacer(modifier = Modifier.height(12.dp))
         SettingSwitchRow(
             title = "导出时间/速度水印字幕",
-            subtitle = "默认关闭；开启后仅在证据包导出时生成SRT侧车字幕，原始视频不转码、不改写",
+            subtitle = "默认关闭；开启后在证据包导出时生成SRT侧车字幕，便于外部播放器预览水印",
             checked = settings.exportWatermarkSubtitlesEnabled,
             enabled = true,
             onCheckedChange = onExportWatermarkSubtitlesChanged,
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+        SettingSwitchRow(
+            title = "导出烧录时间/速度/位置水印视频",
+            subtitle = "默认关闭；开启后证据包会额外转码生成带烧录水印的视频副本，原始视频不改写",
+            checked = settings.exportBurnedWatermarkVideoEnabled,
+            enabled = true,
+            onCheckedChange = onExportBurnedWatermarkVideoChanged,
         )
 
         Spacer(modifier = Modifier.height(12.dp))

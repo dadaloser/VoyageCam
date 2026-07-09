@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -76,7 +77,8 @@ fun RearCameraPreview(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(16f / 9f)
-            .background(Color(0xFF10282E)),
+            .background(Color(0xFF10282E))
+            .testTag("rear_camera_preview"),
         contentAlignment = Alignment.Center,
     ) {
         when {
@@ -140,7 +142,8 @@ private fun DualCameraPreview(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(16f / 9f)
-            .background(Color(0xFF10282E)),
+            .background(Color(0xFF10282E))
+            .testTag("dual_camera_preview"),
         contentAlignment = Alignment.Center,
     ) {
         var rearPreviewView by remember(sessionToken) { mutableStateOf<PreviewView?>(null) }
@@ -162,9 +165,10 @@ private fun DualCameraPreview(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(10.dp)
-            .width(126.dp)
-            .height(72.dp)
-            .background(Color(0xCC10282E)),
+                .width(126.dp)
+                .height(72.dp)
+                .background(Color(0xCC10282E))
+                .testTag("front_inset_preview"),
             contentAlignment = Alignment.Center,
         ) {
             AndroidView(

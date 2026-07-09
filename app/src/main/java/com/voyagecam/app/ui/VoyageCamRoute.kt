@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -32,6 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.voyagecam.app.core.camera.DualCameraSessionStatus
 import com.voyagecam.app.core.camera.DualCameraSessionCoordinator
 import com.voyagecam.app.core.model.DeviceCapabilityGrade
 import com.voyagecam.app.core.model.DualCameraCapability
@@ -53,10 +55,42 @@ import com.voyagecam.app.ui.theme.VoyageCamTheme
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.flow.StateFlow
+
+interface RecordingServiceController {
+    fun start(context: Context, dualCamera: Boolean, ambientAudio: Boolean)
+    fun stop(context: Context)
+    fun lockCurrent(context: Context)
+    fun setGpsMetadataEnabled(context: Context, enabled: Boolean)
+}
+
+private object ForegroundRecordingServiceController : RecordingServiceController {
+    override fun start(context: Context, dualCamera: Boolean, ambientAudio: Boolean) {
+        RecordingForegroundService.start(
+            context = context,
+            dualCamera = dualCamera,
+            ambientAudio = ambientAudio,
+        )
+    }
+
+    override fun stop(context: Context) {
+        RecordingForegroundService.stop(context)
+    }
+
+    override fun lockCurrent(context: Context) {
+        RecordingForegroundService.lockCurrent(context)
+    }
+
+    override fun setGpsMetadataEnabled(context: Context, enabled: Boolean) {
+        RecordingForegroundService.setGpsMetadataEnabled(context, enabled)
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VoyageCamRoute() {
+fun VoyageCamRoute(
+    recordingServiceController: RecordingServiceController = ForegroundRecordingServiceController,
+) {
     val context = LocalContext.current
     val viewModel: VoyageCamViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsState()
@@ -79,7 +113,7 @@ fun VoyageCamRoute() {
 
     fun beginRecordingService() {
         viewModel.setStatus("正在启动后摄录制...")
-        RecordingForegroundService.start(
+        recordingServiceController.start(
             context = context,
             dualCamera = settings.dualCameraEnabled && capability.isAvailable,
             ambientAudio = settings.ambientAudioEnabled,
@@ -90,7 +124,7 @@ fun VoyageCamRoute() {
     fun applyGpsMetadataSetting(enabled: Boolean) {
         viewModel.applyGpsMetadataSetting(enabled)
         if (isRecording) {
-            RecordingForegroundService.setGpsMetadataEnabled(context, enabled)
+            recordingServiceController.setGpsMetadataEnabled(context, enabled)
         }
     }
 
@@ -109,7 +143,7 @@ fun VoyageCamRoute() {
     )
 
     fun stopRecording() {
-        RecordingForegroundService.stop(context)
+        recordingServiceController.stop(context)
         viewModel.setRecordingStopped()
     }
 
@@ -146,19 +180,16 @@ fun VoyageCamRoute() {
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                RecordingPanel(
+                RecordingRoutePanel(
                     settings = settings,
                     capability = capability,
                     isRecording = isRecording,
                     statusMessage = statusMessage,
-                    onToggleRecording = {
-                        if (isRecording) stopRecording() else permissionCoordinator.requestStartRecording()
-                    },
-                    onEmergencyLock = {
-                        RecordingForegroundService.lockCurrent(context)
-                        viewModel.setStatus("紧急锁定已发送：当前片段、上一片段和下一片段会被保护。")
-                        viewModel.refreshRecordingData()
-                    },
+                    onStartRecordingRequested = permissionCoordinator.requestStartRecording,
+                    recordingServiceController = recordingServiceController,
+                    onRecordingStopped = viewModel::setRecordingStopped,
+                    onStatus = viewModel::setStatus,
+                    onRefreshRecordingData = viewModel::refreshRecordingData,
                     onDualCameraTelemetry = viewModel::recordDualCameraSessionTelemetry,
                 )
 
@@ -239,9 +270,19 @@ fun VoyageCamRoute() {
                         viewModel.persistSettings(settings.copy(exportWatermarkSubtitlesEnabled = enabled))
                         viewModel.setStatus(
                             if (enabled) {
-                                "证据包导出会附带时间/速度水印字幕；原始视频保持不变。"
+                                "证据包导出会附带时间/速度水印字幕，方便在外部播放器预览。"
                             } else {
-                                "已关闭导出水印字幕；证据包只包含元数据、轨迹和原始片段。"
+                                "已关闭导出水印字幕。"
+                            },
+                        )
+                    },
+                    onExportBurnedWatermarkVideoChanged = { enabled ->
+                        viewModel.persistSettings(settings.copy(exportBurnedWatermarkVideoEnabled = enabled))
+                        viewModel.setStatus(
+                            if (enabled) {
+                                "证据包导出会额外生成带烧录时间/速度/位置水印的视频副本；原始视频保持不变。"
+                            } else {
+                                "已关闭导出烧录水印视频副本；证据包会继续保留原始片段。"
                             },
                         )
                     },
@@ -396,7 +437,56 @@ fun VoyageCamRoute() {
 }
 
 @Composable
-private fun RecordingPanel(
+internal fun RecordingRoutePanel(
+    settings: VoyageCamSettings,
+    capability: DualCameraCapability,
+    isRecording: Boolean,
+    statusMessage: String,
+    onStartRecordingRequested: () -> Unit,
+    recordingServiceController: RecordingServiceController,
+    onRecordingStopped: () -> Unit,
+    onStatus: (String) -> Unit,
+    onRefreshRecordingData: () -> Unit,
+    onDualCameraTelemetry: (com.voyagecam.app.ui.preview.DualCameraTelemetryPresentation) -> Unit,
+    dualCameraSessionStatusFlow: StateFlow<DualCameraSessionStatus> = DualCameraSessionCoordinator.sessionStatus,
+    previewContent: @Composable (frontInsetEnabled: Boolean, dualCameraSessionToken: Int) -> Unit = { frontInsetEnabled, dualCameraSessionToken ->
+        RearCameraPreview(
+            enabled = true,
+            frontInsetEnabled = frontInsetEnabled,
+            dualCameraSessionToken = dualCameraSessionToken,
+        )
+    },
+) {
+    val context = LocalContext.current
+
+    fun stopRecording() {
+        recordingServiceController.stop(context)
+        onRecordingStopped()
+    }
+
+    fun requestEmergencyLock() {
+        recordingServiceController.lockCurrent(context)
+        onStatus("紧急锁定已发送：当前片段、上一片段和下一片段会被保护。")
+        onRefreshRecordingData()
+    }
+
+    RecordingPanel(
+        settings = settings,
+        capability = capability,
+        isRecording = isRecording,
+        statusMessage = statusMessage,
+        onToggleRecording = {
+            if (isRecording) stopRecording() else onStartRecordingRequested()
+        },
+        onEmergencyLock = ::requestEmergencyLock,
+        onDualCameraTelemetry = onDualCameraTelemetry,
+        dualCameraSessionStatusFlow = dualCameraSessionStatusFlow,
+        previewContent = previewContent,
+    )
+}
+
+@Composable
+internal fun RecordingPanel(
     settings: VoyageCamSettings,
     capability: DualCameraCapability,
     isRecording: Boolean,
@@ -404,13 +494,21 @@ private fun RecordingPanel(
     onToggleRecording: () -> Unit,
     onEmergencyLock: () -> Unit,
     onDualCameraTelemetry: (com.voyagecam.app.ui.preview.DualCameraTelemetryPresentation) -> Unit,
+    dualCameraSessionStatusFlow: StateFlow<DualCameraSessionStatus> = DualCameraSessionCoordinator.sessionStatus,
+    previewContent: @Composable (frontInsetEnabled: Boolean, dualCameraSessionToken: Int) -> Unit = { frontInsetEnabled, dualCameraSessionToken ->
+        RearCameraPreview(
+            enabled = true,
+            frontInsetEnabled = frontInsetEnabled,
+            dualCameraSessionToken = dualCameraSessionToken,
+        )
+    },
 ) {
     val dualPreviewPresentation = dualCameraPreviewPresentation(
         dualCameraEnabled = settings.dualCameraEnabled,
         capability = capability,
         isRecording = isRecording,
     )
-    val dualCameraSessionStatus by DualCameraSessionCoordinator.sessionStatus.collectAsState()
+    val dualCameraSessionStatus by dualCameraSessionStatusFlow.collectAsState()
     val dualCameraTelemetry = dualCameraTelemetryPresentation(
         frontInsetEnabled = dualPreviewPresentation.showFrontInset,
         sessionToken = dualPreviewPresentation.sessionToken,
@@ -420,10 +518,9 @@ private fun RecordingPanel(
         dualCameraTelemetry?.let(onDualCameraTelemetry)
     }
     SectionCard {
-        RearCameraPreview(
-            enabled = true,
-            frontInsetEnabled = dualPreviewPresentation.showFrontInset,
-            dualCameraSessionToken = dualPreviewPresentation.sessionToken,
+        previewContent(
+            dualPreviewPresentation.showFrontInset,
+            dualPreviewPresentation.sessionToken,
         )
         Spacer(modifier = Modifier.height(14.dp))
         Text(
@@ -450,7 +547,9 @@ private fun RecordingPanel(
         Spacer(modifier = Modifier.height(18.dp))
         Button(
             onClick = onToggleRecording,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("recording_toggle_button"),
         ) {
             Text(if (isRecording) "停止录制" else "开始录制")
         }
@@ -475,12 +574,14 @@ private fun RecordingPanel(
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.SemiBold,
                 color = if (telemetry.diagnostic == null) Color(0xFF1F6F78) else Color(0xFF9B2C2C),
+                modifier = Modifier.testTag("dual_camera_telemetry_summary"),
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = telemetry.detail,
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFF64777B),
+                modifier = Modifier.testTag("dual_camera_telemetry_detail"),
             )
             telemetry.diagnostic?.let { diagnostic ->
                 Spacer(modifier = Modifier.height(2.dp))
@@ -508,7 +609,7 @@ private fun SettingsResetConfirmationPanel(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "将恢复默认录制、存储、音频、GPS、水印字幕和自动启动设置。录像片段、锁定事件和已导出的证据包不会被删除。",
+            text = "将恢复默认录制、存储、音频、GPS、水印导出和自动启动设置。录像片段、锁定事件和已导出的证据包不会被删除。",
             style = MaterialTheme.typography.bodyMedium,
             color = Color(0xFF4D6267),
         )

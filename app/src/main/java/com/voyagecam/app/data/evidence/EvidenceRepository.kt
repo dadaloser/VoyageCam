@@ -21,6 +21,7 @@ class EvidenceRepository(context: Context) {
         return exporter.export(
             event = event,
             includeWatermarkSubtitles = settings.exportWatermarkSubtitlesEnabled,
+            includeBurnedWatermarkVideos = settings.exportBurnedWatermarkVideoEnabled,
             segmentDurationMinutes = settings.segmentDurationMinutes,
             onProgress = onProgress,
             isCancelled = isCancelled,

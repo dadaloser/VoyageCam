@@ -10,5 +10,6 @@ class VoyageCamSettingsDefaultsTest {
 
         assertFalse(settings.gpsMetadataEnabled)
         assertFalse(settings.exportWatermarkSubtitlesEnabled)
+        assertFalse(settings.exportBurnedWatermarkVideoEnabled)
     }
 }

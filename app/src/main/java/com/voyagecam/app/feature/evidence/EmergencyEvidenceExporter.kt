@@ -18,9 +18,13 @@ class EmergencyEvidenceExporter(
     private val context: Context,
     private val storageManager: RecordingStorageManager,
 ) {
+    @androidx.media3.common.util.UnstableApi
+    private val watermarkVideoTranscoder = EvidenceWatermarkVideoTranscoder(context)
+
     fun export(
         event: EmergencyEvent,
         includeWatermarkSubtitles: Boolean = false,
+        includeBurnedWatermarkVideos: Boolean = false,
         segmentDurationMinutes: Int = DEFAULT_SEGMENT_DURATION_MINUTES,
         onProgress: (ExportProgress) -> Unit = {},
         isCancelled: () -> Boolean = { false },
@@ -37,8 +41,8 @@ class EmergencyEvidenceExporter(
         } else {
             emptyList()
         }
+        val shouldBurnWatermarkVideos = includeBurnedWatermarkVideos && files.isNotEmpty()
         val totalSteps = files.size + 1 + (if (hasGpsTrack) 1 else 0) + watermarkSubtitles.size
-
         try {
             checkNotCancelled(isCancelled)
             onProgress(
@@ -56,6 +60,7 @@ class EmergencyEvidenceExporter(
                     event.evidenceMetadata(
                         files = files,
                         watermarkSubtitleCount = watermarkSubtitles.size,
+                        burnedWatermarkClipCount = if (shouldBurnWatermarkVideos) files.size else 0,
                     ).toByteArray(StandardCharsets.UTF_8),
                 )
                 zip.closeEntry()
@@ -100,11 +105,34 @@ class EmergencyEvidenceExporter(
 
                 files.forEachIndexed { index, file ->
                     checkNotCancelled(isCancelled)
-                    zip.putNextEntry(ZipEntry("clips/${file.name}"))
-                    file.inputStream().use { input ->
-                        input.copyToInterruptibly(zip, isCancelled)
+                    val clipSource = if (shouldBurnWatermarkVideos) {
+                        val watermark = event.buildClipWatermark(
+                            fileNameWithoutExtension = file.nameWithoutExtension,
+                            segmentDurationMinutes = segmentDurationMinutes,
+                        ) ?: error("无法解析片段时间戳：${file.name}")
+                        transcodeWatermarkedClip(
+                            sourceFile = file,
+                            watermark = watermark,
+                            exportDir = exportDir,
+                            completedSteps = completedSteps + index,
+                            totalSteps = totalSteps,
+                            onProgress = onProgress,
+                            isCancelled = isCancelled,
+                        )
+                    } else {
+                        file
                     }
-                    zip.closeEntry()
+                    try {
+                        zip.putNextEntry(ZipEntry("clips/${file.name}"))
+                        clipSource.inputStream().use { input ->
+                            input.copyToInterruptibly(zip, isCancelled)
+                        }
+                        zip.closeEntry()
+                    } finally {
+                        if (clipSource != file) {
+                            clipSource.delete()
+                        }
+                    }
                     onProgress(
                         ExportProgress(
                             completedSteps = completedSteps + index + 1,
@@ -161,7 +189,49 @@ class EmergencyEvidenceExporter(
         return candidate
     }
 
-    private fun EmergencyEvent.evidenceMetadata(files: List<File>, watermarkSubtitleCount: Int): String {
+    @androidx.media3.common.util.UnstableApi
+    private fun transcodeWatermarkedClip(
+        sourceFile: File,
+        watermark: EvidenceClipWatermark,
+        exportDir: File,
+        completedSteps: Int,
+        totalSteps: Int,
+        onProgress: (ExportProgress) -> Unit,
+        isCancelled: () -> Boolean,
+    ): File {
+        val outputFile = File.createTempFile(sourceFile.nameWithoutExtension, ".mp4", exportDir)
+        try {
+            watermarkVideoTranscoder.transcode(
+                inputFile = sourceFile,
+                outputFile = outputFile,
+                watermark = watermark,
+                onProgress = { percent ->
+                    val overallPercent = (((completedSteps + percent / 100.0) / totalSteps) * 100)
+                        .toInt()
+                        .coerceIn(0, 99)
+                    onProgress(
+                        ExportProgress(
+                            completedSteps = completedSteps,
+                            totalSteps = totalSteps,
+                            currentItem = "转码 ${sourceFile.name} ($percent%)",
+                            progressPercentOverride = overallPercent,
+                        ),
+                    )
+                },
+                isCancelled = isCancelled,
+            )
+            return outputFile
+        } catch (error: Throwable) {
+            outputFile.delete()
+            throw error
+        }
+    }
+
+    private fun EmergencyEvent.evidenceMetadata(
+        files: List<File>,
+        watermarkSubtitleCount: Int,
+        burnedWatermarkClipCount: Int,
+    ): String {
         return buildString {
             appendLine("VoyageCam Emergency Evidence Package")
             appendLine()
@@ -178,6 +248,10 @@ class EmergencyEvidenceExporter(
             if (watermarkSubtitleCount > 0) {
                 appendLine("Watermark Subtitle Files: $watermarkSubtitleCount")
                 appendLine("Watermark Directory: watermark/")
+            }
+            if (burnedWatermarkClipCount > 0) {
+                appendLine("Burned Watermark Clips: $burnedWatermarkClipCount")
+                appendLine("Clips Directory: clips/ (transcoded export copies)")
             }
             appendLine()
             appendLine("Linked Clips")
@@ -397,9 +471,10 @@ data class ExportProgress(
     val completedSteps: Int,
     val totalSteps: Int,
     val currentItem: String,
+    val progressPercentOverride: Int? = null,
 ) {
     val percent: Int
-        get() = if (totalSteps <= 0) 0 else (completedSteps * 100 / totalSteps).coerceIn(0, 100)
+        get() = progressPercentOverride ?: if (totalSteps <= 0) 0 else (completedSteps * 100 / totalSteps).coerceIn(0, 100)
 }
 
 class EvidenceExportCancelledException : RuntimeException("导出已取消")

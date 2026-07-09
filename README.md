@@ -74,11 +74,14 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 - Emergency events can store recent GPS track points when location permission is available, and exported evidence ZIP files include a route-ready `gps_track.csv`.
 - Emergency rows summarize GPS routes directly in-app, with calculated distance, duration, average speed, max speed, and start/end coordinates.
 - Settings include a GPS metadata privacy switch; disabling it stops route sampling, clears the in-memory GPS buffer, and keeps future emergency events free of location and track metadata.
-- Evidence export can include `watermark/*.srt` sidecar subtitles derived from event GPS data, so time/speed/location overlays can be previewed without transcoding or modifying source clips.
+- Evidence export can include `watermark/*.srt` sidecar subtitles derived from event GPS data, so time/speed/location overlays can be previewed without modifying source clips.
+- Evidence export can also generate transcoded clip copies with burned-in time/speed/location overlays while keeping original recordings untouched.
 - GPS metadata now preserves device-provided bearing when available, while old event records without bearing remain readable.
 - Settings can be restored to defaults from an in-app confirmation panel; this resets configuration only and leaves recorded/evidence data intact.
 - Dual-camera mode now keeps the front-camera inset visible before and during recording on capable devices by sharing CameraX concurrent preview/recording coordination.
 - Dual-camera recording now has a first CameraX concurrent-recording path: successful sessions create paired rear/front clips in the same segment group, and emergency locking protects both when available.
+- Dual-camera preview/recording now surfaces live session telemetry in the recording panel, including the active session token, concurrent-binding state, preview attachment state, and latest fallback diagnostic.
+- Settings now persist and display both the latest dual-camera fallback diagnostic and the latest dual-camera session telemetry snapshot, with clear actions for fresh device repro runs.
 - Recording history now identifies front/rear clips from the same segment group, and in-app playback can load both files together for a basic synchronized review surface.
 - Paired playback now uses shared controls so the front/rear views can pause, restart, and manually realign without relying on separate native video controls.
 
@@ -89,10 +92,26 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 ./gradlew :app:assembleDebug
 ```
 
+## Dual-Camera Device Checklist
+
+Use this flow on a real device when checking whether the front-camera inset stays visible during recording:
+
+1. Open Settings, turn on dual-camera mode, then tap `清空` in both `双摄诊断` and `双摄会话状态`.
+2. Return to the main recording panel and confirm the front-camera inset appears before recording starts.
+3. Start recording and watch the live telemetry under the status text:
+   - `并发预览已绑定` or `并发预览/录制已绑定` means the concurrent CameraX session is alive.
+   - `已回落到后摄预览` means the app has already dropped to rear-only preview for the current session token.
+4. If the front inset disappears, note the live telemetry summary and any diagnostic line shown in red.
+5. Stop recording, open Settings again, and compare:
+   - `双摄诊断` for the latest persisted fallback reason.
+   - `双摄会话状态` for the latest persisted session summary, preview attachment state, and diagnostic.
+6. Before the next repro attempt, clear both panels again so the next run is not mixed with stale telemetry.
+
 ## Next Development Steps
 
-1. Add automatic drift monitoring/correction for front/rear synchronized review, plus clearer dual-camera fallback diagnostics.
-2. Add a transcoding pipeline to burn configured time/speed/location watermarks directly into exported video copies.
-3. Extract `core`, `data`, `feature`, and `ui` into Gradle modules once the package boundaries stabilize.
-4. Add a richer map-backed route viewer when map dependencies are introduced.
-5. Evaluate a lower-level continuous recording path if measured segment gaps remain unacceptable on target devices.
+1. Add `androidTest` coverage for the dual-camera flow: preview visible before recording, inset retained during recording, and persisted telemetry available after stop.
+2. Add automatic drift monitoring/correction for front/rear synchronized review, plus clearer dual-camera fallback diagnostics.
+3. Run the burned-watermark export path on target devices and collect performance/codec compatibility notes for longer dual-camera evidence packages.
+4. Extract `core`, `data`, `feature`, and `ui` into Gradle modules once the package boundaries stabilize.
+5. Add a richer map-backed route viewer when map dependencies are introduced.
+6. Evaluate a lower-level continuous recording path if measured segment gaps remain unacceptable on target devices.
