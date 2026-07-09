@@ -8,12 +8,12 @@ data class AutoStartDiagnostic(
     val recordedAtMillis: Long,
 )
 
-enum class AutoStartSource(val label: String) {
-    Power("充电器"),
-    Bluetooth("蓝牙"),
+enum class AutoStartSource {
+    Power,
+    Bluetooth,
 }
 
-enum class AutoStartResult(val label: String) {
-    Started("已启动"),
-    Ignored("已忽略"),
+enum class AutoStartResult {
+    Started,
+    Ignored,
 }

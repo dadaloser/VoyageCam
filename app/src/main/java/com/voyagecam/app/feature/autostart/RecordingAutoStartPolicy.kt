@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
+import com.voyagecam.app.R
 import com.voyagecam.app.core.model.AutoStartSource
 import com.voyagecam.app.data.settings.VoyageCamSettings
 import com.voyagecam.app.data.settings.VoyageCamSettingsStore
@@ -34,7 +35,7 @@ class RecordingAutoStartPolicy(private val context: Context) {
                 ambientAudio = ambientAudio,
                 detail = detail,
             )
-            return "Android 14+ 限制后台直接启动相机录制，已显示启动通知"
+            return context.getString(R.string.autostart_android14_prompt)
         }
 
         return runCatching {
@@ -54,8 +55,8 @@ class RecordingAutoStartPolicy(private val context: Context) {
             PackageManager.PERMISSION_GRANTED
 
         return when {
-            !hasCamera -> "相机权限未授权"
-            !hasNotifications -> "通知权限未授权"
+            !hasCamera -> context.getString(R.string.autostart_block_camera_permission)
+            !hasNotifications -> context.getString(R.string.autostart_block_notification_permission)
             else -> null
         }
     }
@@ -74,10 +75,13 @@ class RecordingAutoStartPolicy(private val context: Context) {
         return when {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                 this is ForegroundServiceStartNotAllowedException ->
-                "系统限制后台启动前台录制服务"
+                context.getString(R.string.autostart_block_foreground_service)
             this is SecurityException ->
-                "系统限制后台使用相机/麦克风/定位权限启动录制"
-            else -> "启动录制失败：${message ?: javaClass.simpleName}"
+                context.getString(R.string.autostart_block_sensitive_permissions)
+            else -> context.getString(
+                R.string.autostart_block_failed,
+                message ?: javaClass.simpleName,
+            )
         }
     }
 }

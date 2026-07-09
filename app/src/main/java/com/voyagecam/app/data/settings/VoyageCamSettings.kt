@@ -2,6 +2,7 @@ package com.voyagecam.app.data.settings
 
 import android.content.Context
 import android.os.StatFs
+import com.voyagecam.app.R
 import com.voyagecam.app.core.model.CollisionSensitivity
 import com.voyagecam.app.core.model.DeviceCapabilityGrade
 import com.voyagecam.app.core.model.DualCameraCapability
@@ -55,7 +56,9 @@ data class VoyageCamSettings(
     val trustedBluetoothDevice: String = "",
 )
 
-class VoyageCamSettingsStore(context: Context) {
+class VoyageCamSettingsStore(
+    private val context: Context,
+) {
     private val prefs = context.getSharedPreferences("voyage_cam_settings", Context.MODE_PRIVATE)
 
     fun load(): VoyageCamSettings {
@@ -127,10 +130,14 @@ class VoyageCamSettingsStore(context: Context) {
             grade = grade,
             rearCameraId = prefs.getString(KEY_CAPABILITY_REAR_ID, null),
             frontCameraId = prefs.getString(KEY_CAPABILITY_FRONT_ID, null),
-            reason = prefs.getString(KEY_CAPABILITY_REASON, null) ?: "未保存检测原因",
-            rearSummary = prefs.getString(KEY_CAPABILITY_REAR_SUMMARY, null) ?: "未检测",
-            frontSummary = prefs.getString(KEY_CAPABILITY_FRONT_SUMMARY, null) ?: "未检测",
-            systemSummary = prefs.getString(KEY_CAPABILITY_SYSTEM_SUMMARY, null) ?: "未知系统",
+            reason = prefs.getString(KEY_CAPABILITY_REASON, null)
+                ?: context.getString(R.string.settings_capability_default_reason),
+            rearSummary = prefs.getString(KEY_CAPABILITY_REAR_SUMMARY, null)
+                ?: context.getString(R.string.settings_capability_not_checked),
+            frontSummary = prefs.getString(KEY_CAPABILITY_FRONT_SUMMARY, null)
+                ?: context.getString(R.string.settings_capability_not_checked),
+            systemSummary = prefs.getString(KEY_CAPABILITY_SYSTEM_SUMMARY, null)
+                ?: context.getString(R.string.settings_capability_unknown_system),
             checkedAtMillis = prefs.getLong(KEY_CAPABILITY_CHECKED_AT, System.currentTimeMillis()),
         )
     }

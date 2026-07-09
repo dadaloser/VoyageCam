@@ -1,26 +1,40 @@
 package com.voyagecam.app.data.settings
 
-fun recordingModeLabel(
+import android.content.Context
+import com.voyagecam.app.R
+
+fun recordingModeLabelRes(
     recordingModeAuto: Boolean,
     dualCameraActive: Boolean,
-): String {
+): Int {
     return when {
-        recordingModeAuto && dualCameraActive -> "自动模式 · 双摄"
-        recordingModeAuto -> "自动模式 · 后摄"
-        else -> "仅后摄"
+        recordingModeAuto && dualCameraActive -> R.string.recording_mode_auto_dual_active
+        recordingModeAuto -> R.string.recording_mode_auto_rear_active
+        else -> R.string.recording_mode_rear_only
     }
 }
 
-fun recordingModeDescription(
+fun Context.recordingModeLabel(
+    recordingModeAuto: Boolean,
+    dualCameraActive: Boolean,
+): String {
+    return getString(recordingModeLabelRes(recordingModeAuto, dualCameraActive))
+}
+
+fun recordingModeDescriptionRes(
+    recordingModeAuto: Boolean,
+    dualCameraSupported: Boolean,
+): Int {
+    return when {
+        recordingModeAuto && dualCameraSupported -> R.string.recording_mode_auto_supported_description
+        recordingModeAuto -> R.string.recording_mode_auto_rear_only_description
+        else -> R.string.recording_mode_rear_only_description
+    }
+}
+
+fun Context.recordingModeDescription(
     recordingModeAuto: Boolean,
     dualCameraSupported: Boolean,
 ): String {
-    return when {
-        recordingModeAuto && dualCameraSupported ->
-            "支持时使用双摄；不支持或降级时自动切回后摄。"
-        recordingModeAuto ->
-            "当前设备仅支持后摄录制。"
-        else ->
-            "始终使用后摄，功耗更低也更稳定。"
-    }
+    return getString(recordingModeDescriptionRes(recordingModeAuto, dualCameraSupported))
 }

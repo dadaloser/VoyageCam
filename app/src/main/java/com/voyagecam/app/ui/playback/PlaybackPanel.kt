@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -30,6 +31,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.voyagecam.app.R
 import com.voyagecam.app.core.common.toContentUri
 import com.voyagecam.app.ui.theme.SectionCard
 import java.io.File
@@ -126,7 +128,7 @@ fun PlaybackPanel(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "应用内播放",
+                    text = stringResource(R.string.playback_title),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF163036),
@@ -145,7 +147,7 @@ fun PlaybackPanel(
             }
             Spacer(modifier = Modifier.width(12.dp))
             OutlinedButton(onClick = onClose) {
-                Text("关闭")
+                Text(stringResource(R.string.playback_close))
             }
         }
         Spacer(modifier = Modifier.height(12.dp))
@@ -157,7 +159,7 @@ fun PlaybackPanel(
         item.secondaryFile?.let {
             Spacer(modifier = Modifier.height(10.dp))
             VideoPane(
-                label = item.secondaryLabel ?: "副画面",
+                label = item.secondaryLabel ?: stringResource(R.string.playback_secondary_default),
                 player = secondaryPlayer ?: return@let,
                 showNativeControls = false,
             )
@@ -198,11 +200,15 @@ fun PlaybackPanel(
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = if (status.requiresCorrection) {
-                        "自动同步：检测到偏移 ${status.offsetMs}ms，正在纠偏"
+                        stringResource(R.string.playback_auto_sync_correcting, status.offsetMs)
                     } else if (lastAutoCorrectionOffsetMs != null) {
-                        "自动同步：已校正上次偏移 ${lastAutoCorrectionOffsetMs}ms，当前偏移 ${status.offsetMs}ms"
+                        stringResource(
+                            R.string.playback_auto_sync_corrected,
+                            lastAutoCorrectionOffsetMs ?: 0L,
+                            status.offsetMs,
+                        )
                     } else {
-                        "自动同步：当前偏移 ${status.offsetMs}ms"
+                        stringResource(R.string.playback_auto_sync_current, status.offsetMs)
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = if (status.requiresCorrection || abs(status.offsetMs) >= 250) {
@@ -218,7 +224,7 @@ fun PlaybackPanel(
             onClick = onOpenInSystem,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("系统播放器打开")
+            Text(stringResource(R.string.playback_open_in_system))
         }
     }
 }
@@ -256,19 +262,27 @@ private fun SharedPlaybackControls(
                 onClick = onTogglePlayback,
                 modifier = Modifier.weight(1f),
             ) {
-                Text(if (isPlaying) "暂停" else "播放")
+                Text(
+                    stringResource(
+                        if (isPlaying) {
+                            R.string.playback_pause
+                        } else {
+                            R.string.playback_play
+                        },
+                    ),
+                )
             }
             OutlinedButton(
                 onClick = onRestart,
                 modifier = Modifier.weight(1f),
             ) {
-                Text("归零")
+                Text(stringResource(R.string.playback_restart))
             }
             OutlinedButton(
                 onClick = onResync,
                 modifier = Modifier.weight(1f),
             ) {
-                Text("对齐")
+                Text(stringResource(R.string.playback_align))
             }
         }
     }

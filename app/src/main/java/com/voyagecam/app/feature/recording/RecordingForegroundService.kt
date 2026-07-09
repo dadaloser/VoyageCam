@@ -14,6 +14,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import androidx.core.content.ContextCompat
+import com.voyagecam.app.R
 import com.voyagecam.app.core.camera.RearCameraRecorder
 import com.voyagecam.app.core.camera.RecordingSegmentFileSet
 import com.voyagecam.app.core.camera.RecordingSegmentTransitionStats
@@ -29,6 +30,7 @@ import com.voyagecam.app.data.settings.VoyageCamSettingsStore
 import com.voyagecam.app.data.settings.recordingVideoProfile
 import com.voyagecam.app.data.storage.RecordingStorageManager
 import com.voyagecam.app.feature.collision.CollisionDetector
+import com.voyagecam.app.ui.dualCameraDiagnosticSummary
 import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
@@ -125,6 +127,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         val ambientAudio = intent?.getBooleanExtra(EXTRA_AMBIENT_AUDIO, false) == true
         val settings = settingsStore.load()
         state.resetForStart(
+            context = this,
             startedAtMillis = System.currentTimeMillis(),
             recordingModeAuto = settings.dualCameraEnabled,
             dualCamera = dualCamera,
@@ -202,19 +205,19 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         if (!state.dualCamera) {
             state.dualCameraDiagnostic = null
         } else if (files.front != null) {
-            state.dualCameraDiagnostic = "双摄并发录制正常"
+            state.dualCameraDiagnostic = getString(R.string.recording_service_dual_ok)
             serviceScope.launch(Dispatchers.IO) {
                 dualCameraDiagnosticsStore.clear()
             }
         }
         state.status = if (state.dualCamera) {
             if (files.front != null) {
-                "第 $segmentIndex 段前后双摄正在写入"
+                getString(R.string.recording_service_segment_dual_writing, segmentIndex)
             } else {
-                "第 $segmentIndex 段正在写入；本次已降级为后摄单录"
+                getString(R.string.recording_service_segment_rear_fallback, segmentIndex)
             }
         } else {
-            "第 $segmentIndex 段后摄单录正在写入"
+            getString(R.string.recording_service_segment_rear_writing, segmentIndex)
         }
         notifyRecordingState()
     }
@@ -246,9 +249,17 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         state.currentSegmentFiles = RecordingSegmentFileSet(rear = null)
         state.currentFileName = finalizedFiles.primary?.name ?: state.currentFileName
         state.status = buildString {
-            append(if (finalizedFiles.files.any { it.name.contains("_locked") }) "相邻片段已锁定" else "片段已完成")
+            append(
+                getString(
+                    if (finalizedFiles.files.any { it.name.contains("_locked") }) {
+                        R.string.recording_service_adjacent_locked
+                    } else {
+                        R.string.recording_service_segment_done
+                    },
+                ),
+            )
             if (cleanup != null && cleanup.deletedFiles > 0) {
-                append("，已清理 ${cleanup.deletedFiles} 个旧普通片段")
+                append(getString(R.string.recording_service_cleanup_old_normal, cleanup.deletedFiles))
             }
         }
         notifyRecordingState()
@@ -264,7 +275,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
                 state.currentSegmentFiles = RecordingSegmentFileSet(rear = null)
                 state.currentFileName = lockedCurrent.primary?.name ?: lockedPrevious.primary?.name ?: state.currentFileName
                 state.pendingLockNextSegment = true
-                state.status = "紧急锁定已触发，当前/上一片段已保护，下一片段完成后也会锁定"
+                state.status = getString(R.string.recording_service_lock_triggered)
                 notifyRecordingState()
             }
         }
@@ -292,7 +303,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         state.previousSegmentFiles = finalFiles.takeIf { it.primary != null } ?: state.previousSegmentFiles
         state.currentSegmentFiles = RecordingSegmentFileSet(rear = null)
         state.currentFileName = finalFiles.primary?.name ?: state.currentFileName
-        state.status = "录制已停止"
+        state.status = getString(R.string.recording_service_stopped)
         notifyRecordingState()
     }
 
@@ -303,26 +314,26 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
 
     override fun onDualCameraFallback(diagnostic: DualCameraDiagnostic) {
         state.dualCamera = false
-        state.dualCameraDiagnostic = diagnostic.summary()
+        state.dualCameraDiagnostic = dualCameraDiagnosticSummary(diagnostic)
         serviceScope.launch(Dispatchers.IO) {
             dualCameraDiagnosticsStore.record(diagnostic)
         }
-        state.status = "双摄录制启动失败，已回落后摄单录：${diagnostic.summary()}"
+        state.status = getString(R.string.recording_service_dual_fallback, dualCameraDiagnosticSummary(diagnostic))
         notifyRecordingState()
     }
 
     private fun requestEmergencyLock(collisionEvent: CollisionDetector.CollisionEvent? = null) {
         val activeRecorder = recorder
         if (activeRecorder == null || state.startedAtMillis <= 0L) {
-            state.status = "当前没有正在录制的片段可锁定"
+            state.status = getString(R.string.recording_service_no_active_segment)
             notifyRecordingState()
             return
         }
 
         state.status = collisionEvent?.let {
             val acceleration = String.format(Locale.getDefault(), "%.1f", it.accelerationG)
-            "检测到疑似碰撞 ${acceleration}g，正在创建紧急事件"
-        } ?: "正在创建紧急事件"
+            getString(R.string.recording_service_collision_creating, acceleration)
+        } ?: getString(R.string.recording_service_creating_event)
         notifyRecordingState()
 
         val triggeredAtMillis = collisionEvent?.triggeredAtMillis ?: System.currentTimeMillis()
@@ -350,14 +361,17 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
                     state.pendingLockNextEventId = event.id
                     state.status = collisionEvent?.let {
                         val acceleration = String.format(Locale.getDefault(), "%.1f", it.accelerationG)
-                        "检测到疑似碰撞 ${acceleration}g，正在执行紧急锁定"
-                    } ?: "正在执行紧急锁定"
+                        getString(R.string.recording_service_collision_locking, acceleration)
+                    } ?: getString(R.string.recording_service_locking_event)
                     notifyRecordingState()
                     activeRecorder.lockCurrentSegment()
                 }
                 .onFailure { error ->
                     state.pendingLockNextEventId = null
-                    state.status = "紧急事件创建失败：${error.message ?: "未知错误"}"
+                    state.status = getString(
+                        R.string.recording_service_event_failed,
+                        error.message ?: getString(R.string.common_unknown_error),
+                    )
                     notifyRecordingState()
                 }
         }
@@ -377,7 +391,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         val started = collisionDetector?.start() == true
         if (!started) {
             collisionDetector = null
-            state.status = "设备未提供可用加速度传感器，自动碰撞锁定不可用"
+            state.status = getString(R.string.recording_service_collision_unavailable)
             notifyRecordingState()
         }
     }
@@ -445,12 +459,12 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         state.gpsMetadataEnabled = enabled
         if (enabled) {
             startGpsTrackSampling()
-            state.status = "GPS位置与轨迹记录已开启"
+            state.status = getString(R.string.recording_service_gps_on)
         } else {
             mainHandler.removeCallbacks(gpsTrackSampleTask)
             emergencyLocationProvider.stopUpdates()
             gpsTrackBuffer.clear()
-            state.status = "GPS位置与轨迹记录已关闭"
+            state.status = getString(R.string.recording_service_gps_off)
         }
         if (state.startedAtMillis > 0L) {
             notifyRecordingState()
@@ -458,9 +472,17 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
     }
 
     override fun onSegmentTransitionMeasured(stats: RecordingSegmentTransitionStats) {
-        val stopText = stats.stopToFinalizeMillis?.let { "${it}ms" } ?: "未知"
-        state.segmentTransitionSummary = "上次分段间隙 finalize→start ${stats.finalizeToNextStartMillis}ms，stop→finalize $stopText"
-        state.status = "第 ${stats.completedSegmentIndex} 段切换完成，${state.segmentTransitionSummary}"
+        val stopText = stats.stopToFinalizeMillis?.let { getString(R.string.common_ms, it) } ?: getString(R.string.common_unknown)
+        state.segmentTransitionSummary = getString(
+            R.string.recording_service_transition_summary,
+            stats.finalizeToNextStartMillis,
+            stopText,
+        )
+        state.status = getString(
+            R.string.recording_service_transition_done,
+            stats.completedSegmentIndex,
+            state.segmentTransitionSummary,
+        )
         evaluatePerformanceGuard(stats)
         notifyRecordingState()
     }
@@ -478,10 +500,11 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
                 slowSegmentGuardEnabled = settings.slowSegmentGuardEnabled,
             ),
         )
-        state.performanceGuardSummary = decision.summary
-        if (decision.shouldDowngradeDualCamera && decision.summary != null) {
-            downgradeDualCameraForPerformance(decision.summary)
-        } else if (decision.summary != null || previousSummary != decision.summary) {
+        val summary = RecordingPerformanceGuard.summary(this, decision)
+        state.performanceGuardSummary = summary
+        if (decision.shouldDowngradeDualCamera && summary != null) {
+            downgradeDualCameraForPerformance(summary)
+        } else if (summary != null || previousSummary != summary) {
             notifyRecordingState()
         }
     }
@@ -489,8 +512,8 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
     private fun downgradeDualCameraForPerformance(reason: String) {
         if (!state.dualCamera) return
         state.dualCamera = false
-        state.dualCameraDiagnostic = "性能保护：$reason"
-        state.status = "性能保护已触发：已关闭前摄，后摄继续录制（$reason）"
+        state.dualCameraDiagnostic = getString(R.string.recording_service_guard_prefix, reason)
+        state.status = getString(R.string.recording_service_guard_triggered, reason)
         recorder?.downgradeToRearOnly(state.status)
         notifyRecordingState()
     }

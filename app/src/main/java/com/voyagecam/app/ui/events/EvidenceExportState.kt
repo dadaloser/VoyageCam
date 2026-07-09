@@ -1,5 +1,4 @@
 package com.voyagecam.app.ui.events
-
 import java.io.File
 
 sealed class EvidenceExportState {
@@ -25,6 +24,6 @@ sealed class EvidenceExportState {
 
     data class Cancelled(
         override val eventId: String,
-        val message: String = "证据包导出已取消",
+        val message: String = "",
     ) : EvidenceExportState()
 }

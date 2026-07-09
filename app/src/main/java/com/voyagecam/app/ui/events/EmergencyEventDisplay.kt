@@ -1,31 +1,33 @@
 package com.voyagecam.app.ui.events
 
+import android.content.Context
+import com.voyagecam.app.R
 import com.voyagecam.app.core.model.EmergencyEvent
 import com.voyagecam.app.core.model.EmergencyTrigger
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-fun EmergencyEvent.collisionSummary(): String? {
+fun EmergencyEvent.collisionSummary(context: Context): String? {
     if (trigger != EmergencyTrigger.Collision) return null
     val acceleration = accelerationG ?: return null
     val threshold = thresholdG
     return if (threshold == null) {
-        String.format(Locale.getDefault(), "峰值 %.1fg", acceleration)
+        context.getString(R.string.events_collision_peak, acceleration)
     } else {
-        String.format(Locale.getDefault(), "峰值 %.1fg · 阈值 %.1fg", acceleration, threshold)
+        context.getString(R.string.events_collision_peak_threshold, acceleration, threshold)
     }
 }
 
-fun EmergencyEvent.locationSummary(): String? {
+fun EmergencyEvent.locationSummary(context: Context): String? {
     val lat = latitude ?: return null
     val lon = longitude ?: return null
-    val coordinate = String.format(Locale.getDefault(), "位置 %.5f, %.5f", lat, lon)
+    val coordinate = context.getString(R.string.events_location, lat, lon)
     val speedText = speedMetersPerSecond?.let {
-        String.format(Locale.getDefault(), " · %.0fkm/h", it * METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR)
+        " · ${String.format(Locale.getDefault(), context.getString(R.string.events_speed_kmh), it * METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR)}"
     }.orEmpty()
     val bearingText = bearingDegrees?.let {
-        String.format(Locale.getDefault(), " · 航向 %.0f°", it)
+        context.getString(R.string.events_bearing, it)
     }.orEmpty()
     val timeText = locationCapturedAtMillis?.let { " · ${it.asTime()}" }.orEmpty()
     return "$coordinate$speedText$bearingText$timeText"

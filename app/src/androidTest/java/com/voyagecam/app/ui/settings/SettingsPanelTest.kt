@@ -7,6 +7,8 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.test.platform.app.InstrumentationRegistry
+import com.voyagecam.app.R
 import com.voyagecam.app.core.model.AutoStartDiagnostic
 import com.voyagecam.app.core.model.AutoStartResult
 import com.voyagecam.app.core.model.AutoStartSource
@@ -34,6 +36,7 @@ class SettingsPanelTest {
 
     @Test
     fun displaysDualCameraTelemetryAndInvokesClearActions() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
         var clearDiagnosticCount = 0
         var clearTelemetryCount = 0
         var thermalGuardEnabled = true
@@ -42,6 +45,29 @@ class SettingsPanelTest {
         var recordingResolution = RecordingResolutionPreset.FHD_1080P
         var recordingFrameRate = RecordingFrameRatePreset.FPS_30
         var recordingBitrate = RecordingBitratePreset.MBPS_12
+        val telemetrySummary = context.getString(
+            R.string.preview_telemetry_summary,
+            2,
+            context.getString(R.string.preview_telemetry_state_rear_fallback),
+        )
+        val telemetryDetail = context.getString(
+            R.string.preview_telemetry_detail,
+            context.getString(R.string.preview_telemetry_detail_rear),
+            context.getString(R.string.preview_telemetry_connected),
+            context.getString(R.string.preview_telemetry_detail_front),
+            context.getString(R.string.preview_telemetry_connected),
+        )
+        val telemetryDiagnostic = context.getString(
+            R.string.preview_dual_camera_diagnostic_summary,
+            context.getString(R.string.label_dual_camera_stage_session),
+            "bind failed",
+        )
+        val dualDiagnosticTitle = context.getString(R.string.settings_dual_camera_diagnostic_title)
+        val dualSessionTitle = context.getString(R.string.settings_dual_camera_session_title)
+        val exportBurnedTitle = context.getString(R.string.settings_export_burned_title)
+        val thermalGuardTitle = context.getString(R.string.settings_thermal_guard_title)
+        val recordingModeTitle = context.getString(R.string.settings_recording_mode_title)
+        val clearLabel = context.getString(R.string.settings_clear)
 
         composeRule.setContent {
             SettingsPanel(
@@ -117,9 +143,9 @@ class SettingsPanelTest {
                     recordedAtMillis = 1_720_000_100_000L,
                 ),
                 dualCameraSessionTelemetry = PersistedDualCameraSessionTelemetry(
-                    summary = "双摄 Session 2 · 已回落到后摄预览",
-                    detail = "后摄预览已连接 · 前摄预览已连接",
-                    diagnostic = "双摄会话：bind failed",
+                    summary = telemetrySummary,
+                    detail = telemetryDetail,
+                    diagnostic = telemetryDiagnostic,
                     recordedAtMillis = 1_720_000_200_000L,
                 ),
                 onRefreshAutoStartDiagnostic = {},
@@ -134,19 +160,19 @@ class SettingsPanelTest {
             )
         }
 
-        composeRule.onNodeWithText("双摄诊断").assertIsDisplayed()
-        composeRule.onNodeWithText("双摄会话状态").assertIsDisplayed()
-        composeRule.onNodeWithText("双摄 Session 2 · 已回落到后摄预览").assertIsDisplayed()
-        composeRule.onNodeWithText("双摄会话：bind failed").assertIsDisplayed()
-        composeRule.onNodeWithText("导出烧录时间/速度/位置水印视频").assertIsDisplayed()
-        composeRule.onNodeWithText("过热时自动关闭前摄").assertIsDisplayed()
-        composeRule.onNodeWithText("录制模式").assertIsDisplayed()
+        composeRule.onNodeWithText(dualDiagnosticTitle).assertIsDisplayed()
+        composeRule.onNodeWithText(dualSessionTitle).assertIsDisplayed()
+        composeRule.onNodeWithText(telemetrySummary).assertIsDisplayed()
+        composeRule.onNodeWithText(telemetryDiagnostic).assertIsDisplayed()
+        composeRule.onNodeWithText(exportBurnedTitle).assertIsDisplayed()
+        composeRule.onNodeWithText(thermalGuardTitle).assertIsDisplayed()
+        composeRule.onNodeWithText(recordingModeTitle).assertIsDisplayed()
         composeRule.onNodeWithText("1080p").assertIsDisplayed()
         composeRule.onNodeWithText("30fps").assertIsDisplayed()
         composeRule.onNodeWithText("12Mbps").assertIsDisplayed()
 
-        composeRule.onAllNodesWithText("清空")[0].performClick()
-        composeRule.onAllNodesWithText("清空")[1].performClick()
+        composeRule.onAllNodesWithText(clearLabel)[0].performClick()
+        composeRule.onAllNodesWithText(clearLabel)[1].performClick()
         composeRule.onNodeWithText("720p").performClick()
         composeRule.onNodeWithText("60fps").performClick()
         composeRule.onNodeWithText("24Mbps").performClick()

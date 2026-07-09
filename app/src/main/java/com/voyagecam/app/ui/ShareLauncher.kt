@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import com.voyagecam.app.R
 import com.voyagecam.app.core.common.toContentUri
 import com.voyagecam.app.core.model.EmergencyEvent
 import com.voyagecam.app.core.model.RecordingSegment
@@ -26,19 +27,19 @@ class ShareLauncher(
                 .setType(VIDEO_MIME_TYPE)
                 .putExtra(Intent.EXTRA_STREAM, uri)
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            context.startActivity(Intent.createChooser(intent, "分享录像片段"))
+            context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_segment_chooser)))
         }.onFailure { error ->
-            onStatus("无法分享片段：${error.message ?: segment.name}")
+            onStatus(context.getString(R.string.share_segment_failed, error.message ?: segment.name))
         }
     }
 
     fun shareEmergencyEventFiles(event: EmergencyEvent, files: List<File>) {
         shareFiles(
             files = files,
-            chooserTitle = "分享紧急事件片段",
+            chooserTitle = context.getString(R.string.share_event_chooser),
             mimeType = VIDEO_MIME_TYPE,
-            failurePrefix = "无法分享紧急事件",
-            fallbackLabel = event.trigger.label,
+            failureResId = R.string.share_event_failed,
+            fallbackLabel = context.getString(event.trigger.labelRes()),
         )
     }
 
@@ -49,23 +50,26 @@ class ShareLauncher(
                 .setType(ZIP_MIME_TYPE)
                 .putExtra(Intent.EXTRA_STREAM, uri)
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            context.startActivity(Intent.createChooser(intent, "分享证据包"))
+            context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_package_chooser)))
         }.onFailure { error ->
-            onStatus("无法分享证据包：${error.message ?: file.name}")
+            onStatus(context.getString(R.string.share_package_failed, error.message ?: file.name))
         }
     }
 
     fun openEmergencyEventMap(event: EmergencyEvent) {
         runCatching {
-            val uri = event.toGeoUri() ?: error("该事件没有可用坐标")
+            val uri = event.toGeoUri(context) ?: error(context.getString(R.string.share_event_no_location))
             val intent = Intent(Intent.ACTION_VIEW, uri)
             context.startActivity(intent)
         }.onFailure { error ->
             onStatus(
                 if (error is ActivityNotFoundException) {
-                    "未找到可打开坐标的地图应用。"
+                    context.getString(R.string.share_event_map_not_found)
                 } else {
-                    "无法打开事件位置：${error.message ?: event.trigger.label}"
+                    context.getString(
+                        R.string.share_event_map_failed,
+                        error.message ?: context.getString(event.trigger.labelRes()),
+                    )
                 },
             )
         }
@@ -80,9 +84,9 @@ class ShareLauncher(
             context.startActivity(intent)
         }.onFailure { error ->
             val message = if (error is ActivityNotFoundException) {
-                "未找到可播放 MP4 的应用。"
+                context.getString(R.string.share_video_app_not_found)
             } else {
-                "无法打开片段：${error.message ?: file.name}"
+                context.getString(R.string.share_video_open_failed, error.message ?: file.name)
             }
             onStatus(message)
         }
@@ -92,7 +96,7 @@ class ShareLauncher(
         files: List<File>,
         chooserTitle: String,
         mimeType: String,
-        failurePrefix: String,
+        failureResId: Int,
         fallbackLabel: String,
     ) {
         runCatching {
@@ -109,7 +113,7 @@ class ShareLauncher(
 
             context.startActivity(Intent.createChooser(intent, chooserTitle))
         }.onFailure { error ->
-            onStatus("$failurePrefix：${error.message ?: fallbackLabel}")
+            onStatus(context.getString(failureResId, error.message ?: fallbackLabel))
         }
     }
 }
@@ -124,10 +128,16 @@ fun rememberShareLauncher(
     }
 }
 
-private fun EmergencyEvent.toGeoUri(): Uri? {
+private fun EmergencyEvent.toGeoUri(context: Context): Uri? {
     val lat = latitude ?: return null
     val lon = longitude ?: return null
-    val label = Uri.encode("VoyageCam ${trigger.label} ${triggeredAtMillis.asTime()}")
+    val label = Uri.encode(
+        context.getString(
+            R.string.share_geo_label,
+            context.getString(trigger.labelRes()),
+            triggeredAtMillis.asTime(),
+        ),
+    )
     return Uri.parse("geo:$lat,$lon?q=$lat,$lon($label)")
 }
 

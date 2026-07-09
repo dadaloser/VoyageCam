@@ -1,6 +1,7 @@
 package com.voyagecam.app.data.recording
 
 import android.content.Context
+import com.voyagecam.app.R
 import com.voyagecam.app.core.model.DualCameraCapability
 import com.voyagecam.app.core.model.EmergencyEvent
 import com.voyagecam.app.core.model.EmergencyEventRepairResult
@@ -12,6 +13,7 @@ import com.voyagecam.app.data.storage.RecordingStorageManager
 import java.io.File
 
 class RecordingRepository(context: Context) {
+    private val appContext = context.applicationContext
     private val storageManager = RecordingStorageManager(context)
     private val emergencyEventStore = EmergencyEventStore(context)
 
@@ -32,7 +34,8 @@ class RecordingRepository(context: Context) {
 
     suspend fun unlockSegment(segment: RecordingSegment): File {
         val lockedDashcamPath = storageManager.dashcamRelativePath(File(segment.absolutePath))
-        val unlockedFile = storageManager.unlockSegment(segment) ?: error("锁定片段不存在")
+        val unlockedFile = storageManager.unlockSegment(segment)
+            ?: error(appContext.getString(R.string.recording_repository_locked_missing))
         emergencyEventStore.removeSegment(lockedDashcamPath)
         return unlockedFile
     }

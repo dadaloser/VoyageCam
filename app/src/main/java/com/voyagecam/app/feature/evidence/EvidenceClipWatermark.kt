@@ -1,5 +1,7 @@
 package com.voyagecam.app.feature.evidence
 
+import android.content.Context
+import com.voyagecam.app.R
 import com.voyagecam.app.core.model.EmergencyEvent
 import com.voyagecam.app.core.model.GpsTrackPoint
 import java.text.SimpleDateFormat
@@ -10,6 +12,10 @@ internal data class EvidenceClipWatermark(
     val clipStartMillis: Long,
     val clipEndMillis: Long,
     val samples: List<EvidenceWatermarkSample>,
+    val timeTemplate: String = "Time %1\$s",
+    val speedTemplate: String = "Speed %.0fkm/h",
+    val bearingTemplate: String = "Heading %.0f°",
+    val locationTemplate: String = "Location %.5f, %.5f",
 ) {
     fun linesAt(presentationTimeUs: Long): List<String> {
         val absoluteMillis = (clipStartMillis + presentationTimeUs / 1_000L)
@@ -17,18 +23,18 @@ internal data class EvidenceClipWatermark(
         val sample = samples.lastOrNull { it.capturedAtMillis <= absoluteMillis }
 
         return buildList {
-            add("时间 ${absoluteMillis.asWatermarkTime()}")
+            add(String.format(Locale.getDefault(), timeTemplate, absoluteMillis.asWatermarkTime()))
             sample?.speedMetersPerSecond?.let {
-                add(String.format(Locale.getDefault(), "速度 %.0fkm/h", it * METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR))
+                add(String.format(Locale.getDefault(), speedTemplate, it * METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR))
             }
             sample?.bearingDegrees?.let {
-                add(String.format(Locale.getDefault(), "航向 %.0f°", it))
+                add(String.format(Locale.getDefault(), bearingTemplate, it))
             }
             if (sample?.latitude != null && sample.longitude != null) {
                 add(
                     String.format(
                         Locale.getDefault(),
-                        "位置 %.5f, %.5f",
+                        locationTemplate,
                         sample.latitude,
                         sample.longitude,
                     ),
@@ -45,6 +51,19 @@ internal data class EvidenceWatermarkSample(
     val speedMetersPerSecond: Float?,
     val bearingDegrees: Float?,
 )
+
+internal fun EmergencyEvent.buildClipWatermark(
+    context: Context,
+    fileNameWithoutExtension: String,
+    segmentDurationMinutes: Int,
+): EvidenceClipWatermark? {
+    return buildClipWatermark(fileNameWithoutExtension, segmentDurationMinutes)?.copy(
+        timeTemplate = context.getString(R.string.evidence_clip_time),
+        speedTemplate = context.getString(R.string.evidence_clip_speed),
+        bearingTemplate = context.getString(R.string.evidence_clip_bearing),
+        locationTemplate = context.getString(R.string.evidence_clip_location),
+    )
+}
 
 internal fun EmergencyEvent.buildClipWatermark(
     fileNameWithoutExtension: String,

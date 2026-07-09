@@ -1,10 +1,13 @@
 package com.voyagecam.app.feature.evidence
 
 import android.content.Context
+import com.voyagecam.app.R
 import com.voyagecam.app.core.model.EmergencyEvent
-import com.voyagecam.app.core.model.EmergencyTrigger
 import com.voyagecam.app.core.model.GpsTrackPoint
 import com.voyagecam.app.data.storage.RecordingStorageManager
+import com.voyagecam.app.ui.events.collisionSummary
+import com.voyagecam.app.ui.events.locationSummary
+import com.voyagecam.app.ui.labelRes
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.charset.StandardCharsets
@@ -30,7 +33,7 @@ class EmergencyEvidenceExporter(
         isCancelled: () -> Boolean = { false },
     ): EvidencePackageFile {
         val files = event.existingSegmentFiles(storageManager)
-        if (files.isEmpty()) error("关联片段文件不存在")
+        if (files.isEmpty()) error(context.getString(R.string.evidence_export_files_missing))
 
         val exportDir = File(context.filesDir, EVIDENCE_EXPORT_DIR_NAME).apply { mkdirs() }
         val packageFile = event.availableEvidencePackageFile(exportDir)
@@ -107,9 +110,10 @@ class EmergencyEvidenceExporter(
                     checkNotCancelled(isCancelled)
                     val clipSource = if (shouldBurnWatermarkVideos) {
                         val watermark = event.buildClipWatermark(
+                            context = context,
                             fileNameWithoutExtension = file.nameWithoutExtension,
                             segmentDurationMinutes = segmentDurationMinutes,
-                        ) ?: error("无法解析片段时间戳：${file.name}")
+                        ) ?: error(context.getString(R.string.evidence_export_timestamp_parse_failed, file.name))
                         transcodeWatermarkedClip(
                             sourceFile = file,
                             watermark = watermark,
@@ -143,7 +147,7 @@ class EmergencyEvidenceExporter(
                 }
             }
             if (!temporaryPackageFile.renameTo(packageFile)) {
-                error("无法保存证据包")
+                error(context.getString(R.string.evidence_export_save_failed))
             }
         } catch (cancelled: EvidenceExportCancelledException) {
             temporaryPackageFile.delete()
@@ -213,7 +217,11 @@ class EmergencyEvidenceExporter(
                         ExportProgress(
                             completedSteps = completedSteps,
                             totalSteps = totalSteps,
-                            currentItem = "转码 ${sourceFile.name} ($percent%)",
+                            currentItem = context.getString(
+                                R.string.evidence_export_transcoding,
+                                sourceFile.name,
+                                percent,
+                            ),
                             progressPercentOverride = overallPercent,
                         ),
                     )
@@ -233,35 +241,45 @@ class EmergencyEvidenceExporter(
         burnedWatermarkClipCount: Int,
     ): String {
         return buildString {
-            appendLine("VoyageCam Emergency Evidence Package")
+            appendLine(context.getString(R.string.evidence_metadata_title, context.getString(R.string.app_name)))
             appendLine()
-            appendLine("Event")
-            appendLine("ID: $id")
-            appendLine("Trigger: ${trigger.label}")
-            appendLine("Triggered At: ${triggeredAtMillis.asTime()}")
-            collisionSummary()?.let { appendLine("Collision: $it") }
-            locationSummary()?.let { appendLine("Location: $it") }
+            appendLine(context.getString(R.string.evidence_metadata_section_event))
+            appendLine(context.getString(R.string.evidence_metadata_id, id))
+            appendLine(context.getString(R.string.evidence_trigger_prefix, context.getString(trigger.labelRes())))
+            appendLine(context.getString(R.string.evidence_metadata_triggered_at, triggeredAtMillis.asTime()))
+            collisionSummary(context)?.let { appendLine(context.getString(R.string.evidence_metadata_collision, it)) }
+            locationSummary(context)?.let { appendLine(context.getString(R.string.evidence_metadata_location, it)) }
             if (gpsTrackPoints.isNotEmpty()) {
-                appendLine("GPS Track Points: ${gpsTrackPoints.size}")
-                appendLine("GPS Track File: gps_track.csv")
+                appendLine(context.getString(R.string.evidence_metadata_gps_track_points, gpsTrackPoints.size))
+                appendLine(context.getString(R.string.evidence_metadata_gps_track_file, GPS_TRACK_ENTRY_NAME))
             }
             if (watermarkSubtitleCount > 0) {
-                appendLine("Watermark Subtitle Files: $watermarkSubtitleCount")
-                appendLine("Watermark Directory: watermark/")
+                appendLine(context.getString(R.string.evidence_metadata_watermark_subtitle_files, watermarkSubtitleCount))
+                appendLine(context.getString(R.string.evidence_metadata_watermark_directory, WATERMARK_DIRECTORY_NAME))
             }
             if (burnedWatermarkClipCount > 0) {
-                appendLine("Burned Watermark Clips: $burnedWatermarkClipCount")
-                appendLine("Clips Directory: clips/ (transcoded export copies)")
+                appendLine(context.getString(R.string.evidence_metadata_burned_watermark_clips, burnedWatermarkClipCount))
+                appendLine(
+                    context.getString(
+                        R.string.evidence_metadata_clips_directory,
+                        CLIPS_DIRECTORY_NAME,
+                    ),
+                )
             }
             appendLine()
-            appendLine("Linked Clips")
+            appendLine(context.getString(R.string.evidence_metadata_section_linked_clips))
             files.forEachIndexed { index, file ->
-                appendLine("${index + 1}. ${file.name}")
-                appendLine("   Size: ${file.length().asFileSize()}")
-                appendLine("   Last Modified: ${file.lastModified().asTime()}")
+                appendLine(context.getString(R.string.evidence_metadata_clip_item, index + 1, file.name))
+                appendLine(context.getString(R.string.evidence_metadata_clip_size, file.length().asFileSize()))
+                appendLine(
+                    context.getString(
+                        R.string.evidence_metadata_clip_last_modified,
+                        file.lastModified().asTime(),
+                    ),
+                )
             }
             appendLine()
-            appendLine("Original Relative Paths")
+            appendLine(context.getString(R.string.evidence_metadata_section_original_relative_paths))
             segmentPaths.forEach { path -> appendLine(path) }
         }
     }
@@ -285,7 +303,7 @@ class EmergencyEvidenceExporter(
                 }
             val content = cues.toWatermarkSrt(clipStartMillis).takeIf { it.isNotBlank() } ?: return@mapNotNull null
             WatermarkSubtitle(
-                entryName = "watermark/${file.nameWithoutExtension}.srt",
+                entryName = "$WATERMARK_DIRECTORY_NAME${file.nameWithoutExtension}.srt",
                 content = content,
             )
         }
@@ -293,7 +311,7 @@ class EmergencyEvidenceExporter(
 
     private fun EmergencyEvent.gpsTrackCsv(): String {
         return buildString {
-            appendLine("captured_at,latitude,longitude,speed_kmh,bearing_degrees")
+            appendLine(GPS_TRACK_CSV_HEADER)
             gpsTrackPoints
                 .sortedBy { it.capturedAtMillis }
                 .forEach { point ->
@@ -367,43 +385,24 @@ class EmergencyEvidenceExporter(
 
     private fun WatermarkCue.toWatermarkText(): String {
         return buildList {
-            add("VoyageCam")
+            add(context.getString(R.string.app_name))
             add(capturedAtMillis.asTime())
             speedMetersPerSecond?.let {
-                add(String.format(Locale.getDefault(), "%.0fkm/h", it * METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR))
+                add(
+                    String.format(
+                        Locale.getDefault(),
+                        context.getString(R.string.events_speed_kmh),
+                        it * METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR,
+                    ),
+                )
             }
             bearingDegrees?.let {
-                add(String.format(Locale.getDefault(), "航向 %.0f°", it))
+                add(context.getString(R.string.evidence_clip_bearing, it))
             }
             if (latitude != null && longitude != null) {
                 add(String.format(Locale.getDefault(), "%.5f, %.5f", latitude, longitude))
             }
         }.joinToString(separator = " · ")
-    }
-
-    private fun EmergencyEvent.collisionSummary(): String? {
-        if (trigger != EmergencyTrigger.Collision) return null
-        val acceleration = accelerationG ?: return null
-        val threshold = thresholdG
-        return if (threshold == null) {
-            String.format(Locale.getDefault(), "峰值 %.1fg", acceleration)
-        } else {
-            String.format(Locale.getDefault(), "峰值 %.1fg · 阈值 %.1fg", acceleration, threshold)
-        }
-    }
-
-    private fun EmergencyEvent.locationSummary(): String? {
-        val lat = latitude ?: return null
-        val lon = longitude ?: return null
-        val coordinate = String.format(Locale.getDefault(), "位置 %.5f, %.5f", lat, lon)
-        val speedText = speedMetersPerSecond?.let {
-            String.format(Locale.getDefault(), " · %.0fkm/h", it * METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR)
-        }.orEmpty()
-        val bearingText = bearingDegrees?.let {
-            String.format(Locale.getDefault(), " · 航向 %.0f°", it)
-        }.orEmpty()
-        val timeText = locationCapturedAtMillis?.let { " · ${it.asTime()}" }.orEmpty()
-        return "$coordinate$speedText$bearingText$timeText"
     }
 
     private fun EmergencyEvent.existingSegmentFiles(storageManager: RecordingStorageManager): List<File> {
@@ -440,6 +439,10 @@ class EmergencyEvidenceExporter(
     private companion object {
         const val EVIDENCE_EXPORT_DIR_NAME = "evidence_exports"
         const val TEMP_PACKAGE_SUFFIX = ".tmp"
+        const val GPS_TRACK_ENTRY_NAME = "gps_track.csv"
+        const val GPS_TRACK_CSV_HEADER = "captured_at,latitude,longitude,speed_kmh,bearing_degrees"
+        const val WATERMARK_DIRECTORY_NAME = "watermark/"
+        const val CLIPS_DIRECTORY_NAME = "clips/"
         const val METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR = 3.6f
         const val DEFAULT_SEGMENT_DURATION_MINUTES = 3
         const val DEFAULT_SUBTITLE_DURATION_MS = 5_000L
@@ -477,4 +480,4 @@ data class ExportProgress(
         get() = progressPercentOverride ?: if (totalSteps <= 0) 0 else (completedSteps * 100 / totalSteps).coerceIn(0, 100)
 }
 
-class EvidenceExportCancelledException : RuntimeException("导出已取消")
+class EvidenceExportCancelledException : RuntimeException()

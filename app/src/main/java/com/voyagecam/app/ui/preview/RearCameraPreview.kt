@@ -25,14 +25,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import com.voyagecam.app.R
 import com.voyagecam.app.core.camera.DualCameraPreviewController
 import com.voyagecam.app.core.camera.DualCameraSessionCoordinator
 import com.voyagecam.app.core.camera.RearCameraPreviewController
 import com.voyagecam.app.core.model.DualCameraDiagnostic
+import com.voyagecam.app.ui.dualCameraDiagnosticSummary
 import androidx.compose.runtime.collectAsState
 
 @Composable
@@ -82,9 +85,9 @@ fun RearCameraPreview(
         contentAlignment = Alignment.Center,
     ) {
         when {
-            !enabled -> PreviewMessage("后摄预览已暂停")
+            !enabled -> PreviewMessage(stringResource(R.string.preview_rear_paused))
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) !=
-                PackageManager.PERMISSION_GRANTED -> PreviewMessage("授权相机后显示后摄预览")
+                PackageManager.PERMISSION_GRANTED -> PreviewMessage(stringResource(R.string.preview_camera_permission_needed))
             else -> {
                 AndroidView(
                     factory = { viewContext ->
@@ -104,8 +107,8 @@ fun RearCameraPreview(
                 }
                 if (frontInsetEnabled && dualPreviewUnavailable) {
                     PreviewMessage(
-                        dualCameraSessionStatus.lastDiagnostic?.summary()
-                            ?: "前摄小窗暂不可用，已回落到后摄预览",
+                        dualCameraSessionStatus.lastDiagnostic?.let(context::dualCameraDiagnosticSummary)
+                            ?: stringResource(R.string.preview_front_inset_unavailable),
                     )
                 }
             }
@@ -121,7 +124,7 @@ private fun DualCameraPreview(
     val context = LocalContext.current
     val lifecycleOwner = context as? LifecycleOwner
     if (lifecycleOwner == null) {
-        PreviewMessage("双摄预览需要 Activity 生命周期")
+        PreviewMessage(stringResource(R.string.preview_dual_lifecycle_needed))
         return
     }
     val controller = remember(context, lifecycleOwner, sessionToken) {
@@ -193,7 +196,7 @@ private fun DualCameraPreview(
                     rearPreviewView = rear,
                     frontPreviewView = front,
                 ) { diagnostic ->
-                    errorMessage = diagnostic.summary()
+                    errorMessage = context.dualCameraDiagnosticSummary(diagnostic)
                 }
             }
         }

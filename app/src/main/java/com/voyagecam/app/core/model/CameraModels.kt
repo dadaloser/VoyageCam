@@ -8,8 +8,8 @@ data class DualCameraCapability(
     val rearCameraId: String? = null,
     val frontCameraId: String? = null,
     val reason: String,
-    val rearSummary: String = "未检测",
-    val frontSummary: String = "未检测",
+    val rearSummary: String = "",
+    val frontSummary: String = "",
     val systemSummary: String = "Android ${Build.VERSION.RELEASE} / API ${Build.VERSION.SDK_INT}",
     val checkedAtMillis: Long = System.currentTimeMillis(),
 ) {

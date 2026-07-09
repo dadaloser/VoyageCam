@@ -3,16 +3,16 @@ package com.voyagecam.app.ui.history
 import com.voyagecam.app.core.model.CameraDirection
 import com.voyagecam.app.core.model.RecordingSegment
 
-enum class SegmentCameraFilter(val label: String) {
-    All("全部"),
-    Rear("后摄"),
-    Front("前摄"),
+enum class SegmentCameraFilter {
+    All,
+    Rear,
+    Front,
 }
 
-enum class SegmentLockFilter(val label: String) {
-    All("全部"),
-    Normal("普通"),
-    Locked("锁定"),
+enum class SegmentLockFilter {
+    All,
+    Normal,
+    Locked,
 }
 
 fun List<RecordingSegment>.filterSegments(

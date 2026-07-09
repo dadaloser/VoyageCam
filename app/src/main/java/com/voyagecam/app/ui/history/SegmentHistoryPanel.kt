@@ -16,10 +16,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.voyagecam.app.R
 import com.voyagecam.app.core.model.CameraDirection
 import com.voyagecam.app.core.model.RecordingSegment
+import com.voyagecam.app.ui.labelRes
 import com.voyagecam.app.ui.theme.SectionCard
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -43,6 +47,7 @@ fun SegmentHistoryPanel(
     onUnlock: (RecordingSegment) -> Unit,
     onDelete: (RecordingSegment) -> Unit,
 ) {
+    val context = LocalContext.current
     val groupedDirections = allSegments
         .groupBy { it.groupKey }
         .mapValues { entry -> entry.value.map { it.cameraDirection }.toSet() }
@@ -54,13 +59,13 @@ fun SegmentHistoryPanel(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                text = "录像片段",
+                text = stringResource(R.string.history_title),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF163036),
             )
             OutlinedButton(onClick = onRefresh) {
-                Text("刷新")
+                Text(stringResource(R.string.settings_refresh))
             }
         }
         Spacer(modifier = Modifier.height(10.dp))
@@ -76,19 +81,19 @@ fun SegmentHistoryPanel(
         Spacer(modifier = Modifier.height(12.dp))
         if (totalSegmentCount == 0) {
             Text(
-                text = "暂无片段。开始录制后，这里会显示最近生成的普通和锁定视频。",
+                text = stringResource(R.string.history_empty),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFF64777B),
             )
         } else if (segments.isEmpty()) {
             Text(
-                text = "当前筛选条件下没有片段。",
+                text = stringResource(R.string.history_filtered_empty),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFF64777B),
             )
         } else {
             Text(
-                text = "显示 ${segments.size}/${totalSegmentCount} 个片段 · 锁定片段不会被循环清理",
+                text = stringResource(R.string.history_summary, segments.size, totalSegmentCount),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFF64777B),
             )
@@ -127,7 +132,7 @@ private fun SegmentFilterPanel(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
-            text = "筛选",
+            text = stringResource(R.string.history_filter_title),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = Color(0xFF163036),
@@ -154,13 +159,17 @@ private fun DayFilterRow(
     selectedDay: String?,
     onSelectedDayChanged: (String?) -> Unit,
 ) {
+    val context = LocalContext.current
     val selectedIndex = selectedDay?.let { availableDays.indexOf(it) } ?: -1
     val canMovePrevious = availableDays.isNotEmpty() && (selectedIndex == -1 || selectedIndex < availableDays.lastIndex)
     val canMoveNext = availableDays.isNotEmpty() && selectedIndex > 0
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
-            text = "日期：${selectedDay ?: "全部日期"}",
+            text = stringResource(
+                R.string.history_selected_day,
+                selectedDay ?: context.getString(R.string.history_all_days),
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),
         )
@@ -176,14 +185,14 @@ private fun DayFilterRow(
                 enabled = canMovePrevious,
                 modifier = Modifier.weight(1f),
             ) {
-                Text("上一天")
+                Text(stringResource(R.string.history_previous_day))
             }
             Button(
                 onClick = { onSelectedDayChanged(null) },
                 enabled = selectedDay != null,
                 modifier = Modifier.weight(1f),
             ) {
-                Text("全部")
+                Text(stringResource(R.string.label_segment_filter_all))
             }
             OutlinedButton(
                 onClick = {
@@ -193,7 +202,7 @@ private fun DayFilterRow(
                 enabled = canMoveNext,
                 modifier = Modifier.weight(1f),
             ) {
-                Text("下一天")
+                Text(stringResource(R.string.history_next_day))
             }
         }
     }
@@ -210,7 +219,7 @@ private fun SegmentCameraFilterRow(
     ) {
         SegmentCameraFilter.entries.forEach { option ->
             FilterButton(
-                label = option.label,
+                label = stringResource(option.labelRes()),
                 selected = selected == option,
                 onClick = { onSelected(option) },
                 modifier = Modifier.weight(1f),
@@ -230,7 +239,7 @@ private fun SegmentLockFilterRow(
     ) {
         SegmentLockFilter.entries.forEach { option ->
             FilterButton(
-                label = option.label,
+                label = stringResource(option.labelRes()),
                 selected = selected == option,
                 onClick = { onSelected(option) },
                 modifier = Modifier.weight(1f),
@@ -272,6 +281,14 @@ private fun RecordingSegmentRow(
     onUnlock: (RecordingSegment) -> Unit,
     onDelete: (RecordingSegment) -> Unit,
 ) {
+    val context = LocalContext.current
+    val stateLabel = context.getString(
+        if (segment.locked) {
+            R.string.route_segment_status_locked
+        } else {
+            R.string.route_segment_status_normal
+        },
+    )
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -284,7 +301,7 @@ private fun RecordingSegmentRow(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                text = "${segment.cameraDirection.label} · ${if (segment.locked) "已锁定" else "普通"}",
+                text = "${context.getString(segment.cameraDirection.labelRes())} · $stateLabel",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 color = if (segment.locked) Color(0xFF9B2C2C) else Color(0xFF163036),
@@ -306,7 +323,7 @@ private fun RecordingSegmentRow(
             color = Color(0xFF64777B),
         )
         Text(
-            text = "同组：${groupedDirections.asDirectionSummary()}",
+            text = stringResource(R.string.history_grouped, groupedDirections.asDirectionSummary(context)),
             style = MaterialTheme.typography.bodySmall,
             color = if (groupedDirections.containsAll(setOf(CameraDirection.Rear, CameraDirection.Front))) {
                 Color(0xFF2F6F62)
@@ -322,13 +339,13 @@ private fun RecordingSegmentRow(
                 onClick = { onOpen(segment) },
                 modifier = Modifier.weight(1f),
             ) {
-                Text("播放")
+                Text(stringResource(R.string.history_open))
             }
             OutlinedButton(
                 onClick = { onShare(segment) },
                 modifier = Modifier.weight(1f),
             ) {
-                Text("分享")
+                Text(stringResource(R.string.history_share))
             }
         }
         Row(
@@ -340,24 +357,24 @@ private fun RecordingSegmentRow(
                     onClick = { onUnlock(segment) },
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("解除锁定")
+                    Text(stringResource(R.string.history_unlock))
                 }
             }
             OutlinedButton(
                 onClick = { onDelete(segment) },
                 modifier = Modifier.weight(1f),
             ) {
-                Text("删除")
+                Text(stringResource(R.string.history_delete))
             }
         }
     }
 }
 
-private fun Set<CameraDirection>.asDirectionSummary(): String {
-    if (isEmpty()) return "未识别"
+private fun Set<CameraDirection>.asDirectionSummary(context: android.content.Context): String {
+    if (isEmpty()) return context.getString(R.string.history_group_unknown)
     return buildList {
-        if (contains(CameraDirection.Rear)) add(CameraDirection.Rear.label)
-        if (contains(CameraDirection.Front)) add(CameraDirection.Front.label)
+        if (contains(CameraDirection.Rear)) add(context.getString(CameraDirection.Rear.labelRes()))
+        if (contains(CameraDirection.Front)) add(context.getString(CameraDirection.Front.labelRes()))
     }.joinToString(" + ")
 }
 

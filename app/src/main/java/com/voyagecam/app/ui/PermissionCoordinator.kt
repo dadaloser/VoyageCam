@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import com.voyagecam.app.R
 import com.voyagecam.app.data.location.hasAnyLocationPermission
 import com.voyagecam.app.data.settings.VoyageCamSettings
 import com.voyagecam.app.feature.recording.RecordingForegroundService
@@ -80,7 +81,7 @@ fun rememberPermissionCoordinator(
             }
         } else {
             pendingStart = false
-            onSetStatus("相机权限未授权，无法开始行车记录。")
+            onSetStatus(context.getString(R.string.permission_camera_denied))
         }
     }
 
@@ -93,7 +94,7 @@ fun rememberPermissionCoordinator(
             onBeginRecording()
         } else if (!granted) {
             pendingStart = false
-            onSetStatus("通知权限未授权，后台录制状态无法可靠展示。")
+            onSetStatus(context.getString(R.string.permission_notification_denied))
         }
     }
 
@@ -104,9 +105,9 @@ fun rememberPermissionCoordinator(
         onPersistSettings(settings.copy(ambientAudioEnabled = granted))
         onSetStatus(
             if (granted) {
-                "行车环境声已开启；下一次录制会带音频。"
+                context.getString(R.string.permission_audio_enabled_next_rear)
             } else {
-                "麦克风权限未授权，已保持静音录制。"
+                context.getString(R.string.permission_audio_denied)
             },
         )
     }
@@ -122,16 +123,16 @@ fun rememberPermissionCoordinator(
         } else if (!granted && pendingGpsMetadataEnable) {
             onSetPendingGpsMetadataEnable(false)
             onPersistSettings(settings.copy(gpsMetadataEnabled = false))
-            onSetStatus("定位权限未授权；已保持关闭GPS位置与轨迹记录。")
+            onSetStatus(context.getString(R.string.permission_location_denied_keep_off))
         } else {
             onSetStatus(
                 if (granted) {
                     if (settings.gpsMetadataEnabled && isRecording) {
                         RecordingForegroundService.setGpsMetadataEnabled(context, true)
                     }
-                    "定位权限已授权；紧急事件可记录最近可用坐标。"
+                    context.getString(R.string.permission_location_granted_record_recent)
                 } else {
-                    "定位权限未授权；紧急事件仍会记录时间、触发类型和片段。"
+                    context.getString(R.string.permission_location_denied_record_core)
                 },
             )
         }
@@ -144,9 +145,9 @@ fun rememberPermissionCoordinator(
         if (granted) onBluetoothPermissionGranted()
         onSetStatus(
             if (granted) {
-                "蓝牙权限已授权；可信蓝牙连接后可自动开始录制。"
+                context.getString(R.string.permission_bluetooth_granted)
             } else {
-                "蓝牙权限未授权，可信蓝牙自动启动不可用。"
+                context.getString(R.string.permission_bluetooth_denied)
             },
         )
     }

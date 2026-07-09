@@ -1,53 +1,32 @@
 package com.voyagecam.app.feature.recording
 
+import com.voyagecam.app.R
+import com.voyagecam.app.data.settings.recordingModeLabelRes
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class RecordingNotificationStateTest {
     @Test
-    fun modeLabelShowsAutoDualWhenDualCameraActive() {
+    fun modeLabelUsesAutoDualStringWhenDualCameraActive() {
         assertEquals(
-            "自动模式 · 双摄",
-            notificationState(recordingModeAuto = true, dualCamera = true).modeLabel(),
+            R.string.recording_mode_auto_dual_active,
+            recordingModeLabelRes(recordingModeAuto = true, dualCameraActive = true),
         )
     }
 
     @Test
-    fun modeLabelShowsAutoRearWhenAutoModeFallsBackToRear() {
+    fun modeLabelUsesAutoRearStringWhenAutoModeFallsBackToRear() {
         assertEquals(
-            "自动模式 · 后摄",
-            notificationState(recordingModeAuto = true, dualCamera = false).modeLabel(),
+            R.string.recording_mode_auto_rear_active,
+            recordingModeLabelRes(recordingModeAuto = true, dualCameraActive = false),
         )
     }
 
     @Test
-    fun modeLabelShowsRearOnlyWhenManualRearModeSelected() {
+    fun modeLabelUsesRearOnlyStringWhenManualRearModeSelected() {
         assertEquals(
-            "仅后摄",
-            notificationState(recordingModeAuto = false, dualCamera = false).modeLabel(),
-        )
-    }
-
-    private fun notificationState(
-        recordingModeAuto: Boolean,
-        dualCamera: Boolean,
-    ): RecordingNotificationState {
-        return RecordingNotificationState(
-            startedAtMillis = 0L,
-            recordingModeAuto = recordingModeAuto,
-            dualCamera = dualCamera,
-            ambientAudio = false,
-            recordingResolutionLabel = "1080p",
-            recordingFrameRateLabel = "30fps",
-            recordingBitrateLabel = "12Mbps",
-            segmentDurationMinutes = 3,
-            storageCapacityGb = 10,
-            lockedSegmentCount = 0,
-            status = "",
-            currentFileName = null,
-            segmentTransitionSummary = null,
-            dualCameraDiagnostic = null,
-            performanceGuardSummary = null,
+            R.string.recording_mode_rear_only,
+            recordingModeLabelRes(recordingModeAuto = false, dualCameraActive = false),
         )
     }
 }

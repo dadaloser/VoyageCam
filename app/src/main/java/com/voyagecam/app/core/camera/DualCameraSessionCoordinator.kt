@@ -21,6 +21,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import com.voyagecam.app.R
 import com.voyagecam.app.core.model.DualCameraDiagnostic
 import com.voyagecam.app.core.model.DualCameraDiagnosticStage
 import com.voyagecam.app.data.settings.RecordingVideoProfile
@@ -98,7 +99,7 @@ object DualCameraSessionCoordinator : LifecycleOwner {
                 reportDiagnostic(
                     diagnostic = DualCameraDiagnostic(
                         stage = DualCameraDiagnosticStage.ConcurrentRecording,
-                        detail = "相机权限未授权，无法启动双摄录制",
+                        detail = context.getString(R.string.camera_error_dual_permission_recording),
                     ),
                     onError = onError,
                 )
@@ -157,7 +158,7 @@ object DualCameraSessionCoordinator : LifecycleOwner {
                 reportDiagnostic(
                     diagnostic = DualCameraDiagnostic(
                         stage = DualCameraDiagnosticStage.ConcurrentRecording,
-                        detail = error.message ?: "双摄录制初始化失败",
+                        detail = error.message ?: context.getString(R.string.camera_error_dual_init_failed),
                     ),
                     onError = onError,
                 )
@@ -191,7 +192,7 @@ object DualCameraSessionCoordinator : LifecycleOwner {
                     } else {
                         DualCameraDiagnosticStage.Session
                     },
-                    detail = "相机权限未授权，无法显示双摄画面",
+                    detail = context.getString(R.string.camera_error_dual_permission_preview),
                 ),
                 onError = onError,
             )
@@ -241,7 +242,7 @@ object DualCameraSessionCoordinator : LifecycleOwner {
                     } else {
                         DualCameraDiagnosticStage.Session
                     },
-                    detail = error.message ?: "双摄会话初始化失败",
+                    detail = error.message ?: context.getString(R.string.camera_error_dual_session_failed),
                 ),
                 onError = onError,
             )

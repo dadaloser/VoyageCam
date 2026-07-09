@@ -9,13 +9,13 @@ class PersistedDualCameraDiagnosticTest {
         val record = PersistedDualCameraDiagnostic(
             diagnostic = DualCameraDiagnostic(
                 stage = DualCameraDiagnosticStage.FrontRecording,
-                detail = "前摄编码器初始化失败",
+                detail = "Front encoder init failed",
             ),
             recordedAtMillis = 1234L,
         )
 
-        assertEquals("前摄录制：前摄编码器初始化失败", record.summary())
+        assertEquals("Front recording: Front encoder init failed", record.summary())
         assertEquals(DualCameraDiagnosticStage.FrontRecording, record.stage)
-        assertEquals("前摄编码器初始化失败", record.detail)
+        assertEquals("Front encoder init failed", record.detail)
     }
 }

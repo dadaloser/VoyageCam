@@ -53,7 +53,7 @@ VoyageCam is an Android dashcam app prototype built from the dual-camera dashcam
 - Single-module Android project.
 - Package-level architecture is split into `core`, `data`, `feature`, and `ui` areas so future Gradle module extraction can happen incrementally.
 - Kotlin + Jetpack Compose UI.
-- Local settings persisted with `SharedPreferences`.
+- Local settings persisted with `Room`.
 - Camera concurrency capability detection via CameraX `CameraManager`.
 - Runtime permission flow for camera, Android 13+ notifications, optional microphone audio, and optional event location/route metadata.
 - Foreground service backed by CameraX `Recorder` pipelines for rear-camera single recording and first-pass dual-camera recording.

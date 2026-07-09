@@ -30,9 +30,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.voyagecam.app.R
 import com.voyagecam.app.core.camera.DualCameraSessionStatus
 import com.voyagecam.app.core.camera.DualCameraSessionCoordinator
 import com.voyagecam.app.core.model.DeviceCapabilityGrade
@@ -41,7 +43,6 @@ import com.voyagecam.app.core.model.EmergencyEvent
 import com.voyagecam.app.core.model.PendingStorageCapacityChange
 import com.voyagecam.app.core.model.RecordingSegment
 import com.voyagecam.app.data.settings.VoyageCamSettings
-import com.voyagecam.app.data.settings.recordingModeDescription
 import com.voyagecam.app.data.settings.recordingModeLabel
 import com.voyagecam.app.feature.recording.RecordingForegroundService
 import com.voyagecam.app.ui.events.EmergencyEventPanel
@@ -51,7 +52,6 @@ import com.voyagecam.app.ui.playback.PlaybackItem
 import com.voyagecam.app.ui.preview.RearCameraPreview
 import com.voyagecam.app.ui.preview.DualCameraTelemetryPresentation
 import com.voyagecam.app.ui.preview.dualCameraPreviewPresentation
-import com.voyagecam.app.ui.preview.dualCameraTelemetryPresentation
 import com.voyagecam.app.ui.settings.BluetoothDevicePickerState
 import com.voyagecam.app.ui.settings.SettingsPanel
 import com.voyagecam.app.ui.settings.rememberBluetoothDevicePickerState
@@ -167,11 +167,11 @@ fun VoyageCamRoute(
     )
 
     fun beginRecordingService() {
-        val startingMode = recordingModeLabel(
+        val startingMode = context.recordingModeLabel(
             recordingModeAuto = settings.dualCameraEnabled,
             dualCameraActive = settings.dualCameraEnabled && capability.isAvailable,
         )
-        viewModel.setStatus("正在启动$startingMode...")
+        viewModel.setStatus(context.getString(R.string.route_starting_mode, startingMode))
         recordingServiceController.start(
             context = context,
             dualCamera = settings.dualCameraEnabled && capability.isAvailable,
@@ -215,7 +215,12 @@ fun VoyageCamRoute(
                     shareLauncher.shareEmergencyEventFiles(event, files)
                 }
                 .onFailure { error ->
-                    viewModel.setStatus("无法分享紧急事件：${error.message ?: event.trigger.label}")
+                    viewModel.setStatus(
+                        context.getString(
+                            R.string.route_share_emergency_failed,
+                            error.message ?: context.getString(event.trigger.labelRes()),
+                        ),
+                    )
                 }
         }
     }
@@ -333,7 +338,7 @@ internal fun VoyageCamRouteContent(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("VoyageCam") },
+                    title = { Text(stringResource(R.string.app_name)) },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = Color(0xFFF7FAF9),
                         titleContentColor = Color(0xFF163036),
@@ -382,7 +387,7 @@ internal fun VoyageCamRouteContent(
                     onRedetect = onRedetect,
                     onRecordingModeAutoChanged = { enabled ->
                         if (isRecording) {
-                            onSetStatus("录制中不可切换录制模式；停止后修改会在下一次录制生效。")
+                            onSetStatus(context.getString(R.string.route_recording_mode_change_locked))
                             return@SettingsPanel
                         }
 
@@ -390,69 +395,69 @@ internal fun VoyageCamRouteContent(
                         onSetStatus(
                             when {
                                 enabled && capability.isAvailable ->
-                                    "已切换为自动模式：支持时使用双摄；不支持或降级时自动切回后摄。"
+                                    context.getString(R.string.route_recording_mode_auto_supported)
                                 enabled ->
-                                    "已切换为自动模式：当前设备仅支持后摄录制。"
+                                    context.getString(R.string.route_recording_mode_auto_rear_only)
                                 else ->
-                                    "已切换为仅后摄：始终使用后摄录制。"
+                                    context.getString(R.string.route_recording_mode_rear_only)
                             },
                         )
                     },
                     onRecordingResolutionChanged = { resolution ->
                         if (isRecording) {
-                            onSetStatus("录制中不可修改分辨率；停止后修改会在下一次录制生效。")
+                            onSetStatus(context.getString(R.string.route_resolution_change_locked))
                         } else {
                             onPersistSettings(settings.copy(recordingResolution = resolution))
-                            onSetStatus("已将录制分辨率设置为 ${resolution.label}。")
+                            onSetStatus(context.getString(R.string.route_resolution_changed, resolution.label))
                         }
                     },
                     onRecordingFrameRateChanged = { frameRate ->
                         if (isRecording) {
-                            onSetStatus("录制中不可修改帧率；停止后修改会在下一次录制生效。")
+                            onSetStatus(context.getString(R.string.route_frame_rate_change_locked))
                         } else {
                             onPersistSettings(settings.copy(recordingFrameRate = frameRate))
-                            onSetStatus("已将录制帧率设置为 ${frameRate.label}。")
+                            onSetStatus(context.getString(R.string.route_frame_rate_changed, frameRate.label))
                         }
                     },
                     onRecordingBitrateChanged = { bitrate ->
                         if (isRecording) {
-                            onSetStatus("录制中不可修改码率；停止后修改会在下一次录制生效。")
+                            onSetStatus(context.getString(R.string.route_bitrate_change_locked))
                         } else {
                             onPersistSettings(settings.copy(recordingBitrate = bitrate))
-                            onSetStatus("已将录制码率设置为 ${bitrate.label}。")
+                            onSetStatus(context.getString(R.string.route_bitrate_changed, bitrate.label))
                         }
                     },
                     onStorageChanged = onRequestStorageCapacityChange,
                     onCleanupStorage = onCleanupStorageNow,
                     onSegmentDurationChanged = { minutes ->
                         if (isRecording) {
-                            onSetStatus("录制中不可修改分段时长；停止后修改会在下一次录制生效。")
+                            onSetStatus(context.getString(R.string.route_segment_duration_change_locked))
                         } else {
                             onPersistSettings(settings.copy(segmentDurationMinutes = minutes))
                         }
                     },
                     onCollisionSensitivityChanged = { sensitivity ->
                         if (isRecording) {
-                            onSetStatus("录制中不可修改碰撞检测灵敏度；停止后修改会在下一次录制生效。")
+                            onSetStatus(context.getString(R.string.route_collision_sensitivity_change_locked))
                         } else {
                             onPersistSettings(settings.copy(collisionSensitivity = sensitivity))
                         }
                     },
                     onAmbientAudioChanged = { enabled ->
                         if (isRecording) {
-                            onSetStatus("录制中不可切换环境声；停止后修改会在下一次录制生效。")
+                            onSetStatus(context.getString(R.string.route_ambient_audio_change_locked))
                             return@SettingsPanel
                         }
 
                         if (!enabled) {
                             onPersistSettings(settings.copy(ambientAudioEnabled = false))
-                            onSetStatus("已切换为静音录制；后续录制不写入音频轨道。")
+                            onSetStatus(context.getString(R.string.route_ambient_audio_disabled))
                             return@SettingsPanel
                         }
 
                         if (permissionCoordinator.audioPermissionGranted) {
                             onPersistSettings(settings.copy(ambientAudioEnabled = true))
-                            onSetStatus("行车环境声已开启；音频仅写入本地行车视频。")
+                            onSetStatus(context.getString(R.string.route_ambient_audio_enabled))
                         } else {
                             permissionCoordinator.requestAudioPermission()
                         }
@@ -464,9 +469,9 @@ internal fun VoyageCamRouteContent(
                         }
                         onSetStatus(
                             if (enabled) {
-                                "已开启过热性能保护；设备严重过热时会自动关闭前摄，优先保持后摄录制。"
+                                context.getString(R.string.route_thermal_guard_enabled)
                             } else {
-                                "已关闭过热性能保护；设备过热时不会自动关闭前摄。"
+                                context.getString(R.string.route_thermal_guard_disabled)
                             },
                         )
                     },
@@ -477,9 +482,9 @@ internal fun VoyageCamRouteContent(
                         }
                         onSetStatus(
                             if (enabled) {
-                                "已开启低电量性能保护；未充电且电量过低时会自动关闭前摄。"
+                                context.getString(R.string.route_low_battery_guard_enabled)
                             } else {
-                                "已关闭低电量性能保护；低电量时不会自动关闭前摄。"
+                                context.getString(R.string.route_low_battery_guard_disabled)
                             },
                         )
                     },
@@ -490,9 +495,9 @@ internal fun VoyageCamRouteContent(
                         }
                         onSetStatus(
                             if (enabled) {
-                                "已开启分段切换性能保护；分段间隙过长时会自动关闭前摄。"
+                                context.getString(R.string.route_slow_segment_guard_enabled)
                             } else {
-                                "已关闭分段切换性能保护；分段压力较高时不会自动关闭前摄。"
+                                context.getString(R.string.route_slow_segment_guard_disabled)
                             },
                         )
                     },
@@ -513,9 +518,9 @@ internal fun VoyageCamRouteContent(
                         onPersistSettings(settings.copy(exportWatermarkSubtitlesEnabled = enabled))
                         onSetStatus(
                             if (enabled) {
-                                "证据包导出会附带时间/速度水印字幕，方便在外部播放器预览。"
+                                context.getString(R.string.route_export_subtitles_enabled)
                             } else {
-                                "已关闭导出水印字幕。"
+                                context.getString(R.string.route_export_subtitles_disabled)
                             },
                         )
                     },
@@ -523,9 +528,9 @@ internal fun VoyageCamRouteContent(
                         onPersistSettings(settings.copy(exportBurnedWatermarkVideoEnabled = enabled))
                         onSetStatus(
                             if (enabled) {
-                                "证据包导出会额外生成带烧录时间/速度/位置水印的视频副本；原始视频保持不变。"
+                                context.getString(R.string.route_export_burned_enabled)
                             } else {
-                                "已关闭导出烧录水印视频副本；证据包会继续保留原始片段。"
+                                context.getString(R.string.route_export_burned_disabled)
                             },
                         )
                     },
@@ -533,9 +538,9 @@ internal fun VoyageCamRouteContent(
                         onPersistSettings(settings.copy(autoStartOnPowerConnected = enabled))
                         onSetStatus(
                             if (enabled) {
-                                "已开启连接充电器自动开始录制；需提前授权相机和通知权限。"
+                                context.getString(R.string.route_auto_start_power_enabled)
                             } else {
-                                "已关闭连接充电器自动开始录制。"
+                                context.getString(R.string.route_auto_start_power_disabled)
                             },
                         )
                     },
@@ -544,22 +549,22 @@ internal fun VoyageCamRouteContent(
                     },
                     onAutoStartOnTrustedBluetoothChanged = { enabled ->
                         if (enabled && settings.trustedBluetoothDevice.isBlank()) {
-                            onSetStatus("请先填写可信蓝牙设备名称或 MAC 地址。")
+                            onSetStatus(context.getString(R.string.route_trusted_bluetooth_required))
                             return@SettingsPanel
                         }
 
                         onPersistSettings(settings.copy(autoStartOnTrustedBluetooth = enabled))
                         onSetStatus(
                             if (enabled) {
-                                "已开启可信蓝牙连接自动开始录制；需提前授权相机、通知和蓝牙权限。"
+                                context.getString(R.string.route_auto_start_bluetooth_enabled)
                             } else {
-                                "已关闭可信蓝牙连接自动开始录制。"
+                                context.getString(R.string.route_auto_start_bluetooth_disabled)
                             },
                         )
                     },
                     onRequestResetSettings = {
                         if (isRecording) {
-                            onSetStatus("录制中不可恢复默认设置；停止后再操作。")
+                            onSetStatus(context.getString(R.string.route_reset_defaults_locked))
                         } else {
                             onSetPendingSettingsReset(true)
                         }
@@ -571,12 +576,12 @@ internal fun VoyageCamRouteContent(
                     onRefreshDualCameraDiagnostic = onRefreshDualCameraDiagnostic,
                     onClearDualCameraDiagnostic = {
                         onClearDualCameraDiagnostic()
-                        onSetStatus("已清空双摄降级诊断记录。")
+                        onSetStatus(context.getString(R.string.route_dual_camera_diagnostic_cleared))
                     },
                     onRefreshDualCameraSessionTelemetry = onRefreshDualCameraSessionTelemetry,
                     onClearDualCameraSessionTelemetry = {
                         onClearDualCameraSessionTelemetry()
-                        onSetStatus("已清空双摄会话状态记录。")
+                        onSetStatus(context.getString(R.string.route_dual_camera_session_cleared))
                     },
                     bluetoothDevicePickerState = bluetoothDevicePickerState,
                 )
@@ -586,7 +591,7 @@ internal fun VoyageCamRouteContent(
                         onConfirm = onResetSettingsToDefaults,
                         onCancel = {
                             onSetPendingSettingsReset(false)
-                            onSetStatus("已取消恢复默认设置。")
+                            onSetStatus(context.getString(R.string.route_reset_defaults_cancelled))
                         },
                     )
                 }
@@ -601,7 +606,7 @@ internal fun VoyageCamRouteContent(
                             )
                         },
                         onCancel = {
-                            onClearPendingStorageCapacityChange("已取消调整录像容量。")
+                            onClearPendingStorageCapacityChange(context.getString(R.string.route_storage_adjust_cancelled))
                         },
                     )
                 }
@@ -624,7 +629,7 @@ internal fun VoyageCamRouteContent(
                         },
                         onCancel = {
                             onSetPendingEmergencyEventDelete(null)
-                            onSetStatus("已取消删除紧急事件。")
+                            onSetStatus(context.getString(R.string.route_delete_event_cancelled))
                         },
                     )
                 }
@@ -652,7 +657,7 @@ internal fun VoyageCamRouteContent(
                         },
                         onCancel = {
                             onSetPendingSegmentDelete(null)
-                            onSetStatus("已取消删除录像片段。")
+                            onSetStatus(context.getString(R.string.route_delete_segment_cancelled))
                         },
                     )
                 }
@@ -709,7 +714,7 @@ internal fun RecordingRoutePanel(
 
     fun requestEmergencyLock() {
         recordingServiceController.lockCurrent(context)
-        onStatus("紧急锁定已发送：当前片段、上一片段和下一片段会被保护。")
+        onStatus(context.getString(R.string.route_emergency_lock_sent))
         onRefreshRecordingData()
     }
 
@@ -746,13 +751,14 @@ internal fun RecordingPanel(
         )
     },
 ) {
+    val context = LocalContext.current
     val dualPreviewPresentation = dualCameraPreviewPresentation(
         dualCameraEnabled = settings.dualCameraEnabled,
         capability = capability,
         isRecording = isRecording,
     )
     val dualCameraSessionStatus by dualCameraSessionStatusFlow.collectAsState()
-    val dualCameraTelemetry = dualCameraTelemetryPresentation(
+    val dualCameraTelemetry = context.dualCameraTelemetryPresentation(
         frontInsetEnabled = dualPreviewPresentation.showFrontInset,
         sessionToken = dualPreviewPresentation.sessionToken,
         sessionStatus = dualCameraSessionStatus,
@@ -767,7 +773,13 @@ internal fun RecordingPanel(
         )
         Spacer(modifier = Modifier.height(14.dp))
         Text(
-            text = if (isRecording) "正在录制" else "准备录制",
+            text = stringResource(
+                if (isRecording) {
+                    R.string.route_recording_state_recording
+                } else {
+                    R.string.route_recording_state_ready
+                },
+            ),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF163036),
@@ -776,7 +788,7 @@ internal fun RecordingPanel(
         Text(
             text = buildString {
                 append(
-                    recordingModeLabel(
+                    context.recordingModeLabel(
                         recordingModeAuto = settings.dualCameraEnabled,
                         dualCameraActive = settings.dualCameraEnabled && capability.isAvailable,
                     ),
@@ -788,13 +800,21 @@ internal fun RecordingPanel(
                 append(" / ")
                 append(settings.recordingBitrate.label)
                 append(" · ")
-                append("${settings.segmentDurationMinutes}分钟分段")
+                append(context.getString(R.string.route_recording_summary_segment, settings.segmentDurationMinutes))
                 append(" · ")
-                append("${settings.storageCapacityGb}GB 循环空间")
+                append(context.getString(R.string.route_recording_summary_storage, settings.storageCapacityGb))
                 append(" · ")
-                append("碰撞${settings.collisionSensitivity.label}")
+                append(context.getString(R.string.route_recording_summary_collision, context.getString(settings.collisionSensitivity.labelRes())))
                 append(" · ")
-                append(if (settings.ambientAudioEnabled) "环境声开启" else "静音录制")
+                append(
+                    context.getString(
+                        if (settings.ambientAudioEnabled) {
+                            R.string.route_recording_summary_audio_on
+                        } else {
+                            R.string.route_recording_summary_audio_off
+                        },
+                    ),
+                )
             },
             color = Color(0xFF4D6267),
         )
@@ -805,7 +825,15 @@ internal fun RecordingPanel(
                 .fillMaxWidth()
                 .testTag("recording_toggle_button"),
         ) {
-            Text(if (isRecording) "停止录制" else "开始录制")
+            Text(
+                stringResource(
+                    if (isRecording) {
+                        R.string.route_recording_button_stop
+                    } else {
+                        R.string.route_recording_button_start
+                    },
+                ),
+            )
         }
         Spacer(modifier = Modifier.height(10.dp))
         Button(
@@ -813,7 +841,7 @@ internal fun RecordingPanel(
             enabled = isRecording,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("紧急锁定")
+            Text(stringResource(R.string.route_emergency_lock_button))
         }
         Spacer(modifier = Modifier.height(8.dp))
         Text(
@@ -856,14 +884,14 @@ private fun SettingsResetConfirmationPanel(
 ) {
     SectionCard {
         Text(
-            text = "确认恢复默认设置",
+            text = stringResource(R.string.route_reset_confirm_title),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF163036),
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "将恢复默认录制模式、分辨率、帧率、码率、存储、音频、性能保护、GPS、水印导出和自动启动设置。录像片段、锁定事件和已导出的证据包不会被删除。",
+            text = stringResource(R.string.route_reset_confirm_message),
             style = MaterialTheme.typography.bodyMedium,
             color = Color(0xFF4D6267),
         )
@@ -876,13 +904,13 @@ private fun SettingsResetConfirmationPanel(
                 onClick = onCancel,
                 modifier = Modifier.weight(1f),
             ) {
-                Text("取消")
+                Text(stringResource(R.string.common_cancel))
             }
             Button(
                 onClick = onConfirm,
                 modifier = Modifier.weight(1f),
             ) {
-                Text("恢复默认")
+                Text(stringResource(R.string.route_reset_confirm_action))
             }
         }
     }
@@ -896,20 +924,24 @@ private fun StorageCapacityConfirmationPanel(
 ) {
     SectionCard {
         Text(
-            text = "确认调整录像容量",
+            text = stringResource(R.string.route_storage_confirm_title),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF163036),
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "目标容量 ${pending.nextCapacityGb}GB 低于当前普通片段占用 ${pending.currentNormalBytes.asFileSize()}。确认后会立即清理最旧的普通片段，锁定片段不会被删除。",
+            text = stringResource(
+                R.string.route_storage_confirm_message,
+                pending.nextCapacityGb,
+                pending.currentNormalBytes.asFileSize(),
+            ),
             style = MaterialTheme.typography.bodyMedium,
             color = Color(0xFF4D6267),
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = "预计至少需要释放 ${pending.overflowBytes.asFileSize()}。",
+            text = stringResource(R.string.route_storage_confirm_overflow, pending.overflowBytes.asFileSize()),
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF9B2C2C),
         )
@@ -922,13 +954,13 @@ private fun StorageCapacityConfirmationPanel(
                 onClick = onCancel,
                 modifier = Modifier.weight(1f),
             ) {
-                Text("取消")
+                Text(stringResource(R.string.common_cancel))
             }
             Button(
                 onClick = onConfirm,
                 modifier = Modifier.weight(1f),
             ) {
-                Text("确认清理")
+                Text(stringResource(R.string.route_storage_confirm_action))
             }
         }
     }
@@ -940,28 +972,34 @@ private fun EmergencyEventDeleteConfirmationPanel(
     onConfirm: () -> Unit,
     onCancel: () -> Unit,
 ) {
+    val context = LocalContext.current
     SectionCard {
         Text(
-            text = "确认删除紧急事件",
+            text = stringResource(R.string.route_delete_event_title),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF163036),
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "${event.trigger.label} · ${event.triggeredAtMillis.asTime()} · ${event.segmentPaths.size} 段关联录像",
+            text = stringResource(
+                R.string.route_delete_event_summary,
+                context.getString(event.trigger.labelRes()),
+                event.triggeredAtMillis.asTime(),
+                event.segmentPaths.size,
+            ),
             style = MaterialTheme.typography.bodyMedium,
             color = Color(0xFF4D6267),
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = "这只会删除事件记录和取证元数据，不会删除关联录像文件。",
+            text = stringResource(R.string.route_delete_event_message),
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),
         )
         Spacer(modifier = Modifier.height(12.dp))
         ConfirmationButtonRow(
-            confirmLabel = "删除事件",
+            confirmLabel = stringResource(R.string.route_delete_event_action),
             onConfirm = onConfirm,
             onCancel = onCancel,
         )
@@ -974,28 +1012,40 @@ private fun SegmentDeleteConfirmationPanel(
     onConfirm: () -> Unit,
     onCancel: () -> Unit,
 ) {
+    val context = LocalContext.current
     SectionCard {
         Text(
-            text = "确认删除录像片段",
+            text = stringResource(R.string.route_delete_segment_title),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF163036),
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "${segment.cameraDirection.label} · ${if (segment.locked) "已锁定" else "普通"} · ${segment.sizeBytes.asFileSize()}",
+            text = stringResource(
+                R.string.route_delete_segment_summary,
+                context.getString(segment.cameraDirection.labelRes()),
+                context.getString(
+                    if (segment.locked) {
+                        R.string.route_segment_status_locked
+                    } else {
+                        R.string.route_segment_status_normal
+                    },
+                ),
+                segment.sizeBytes.asFileSize(),
+            ),
             style = MaterialTheme.typography.bodyMedium,
             color = Color(0xFF4D6267),
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = "确认后会删除本地视频文件，并从紧急事件记录中移除该片段引用。",
+            text = stringResource(R.string.route_delete_segment_message),
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF9B2C2C),
         )
         Spacer(modifier = Modifier.height(12.dp))
         ConfirmationButtonRow(
-            confirmLabel = "删除片段",
+            confirmLabel = stringResource(R.string.route_delete_segment_action),
             onConfirm = onConfirm,
             onCancel = onCancel,
         )
@@ -1016,7 +1066,7 @@ private fun ConfirmationButtonRow(
             onClick = onCancel,
             modifier = Modifier.weight(1f),
         ) {
-            Text("取消")
+            Text(stringResource(R.string.common_cancel))
         }
         Button(
             onClick = onConfirm,

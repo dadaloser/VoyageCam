@@ -9,12 +9,14 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoRecordEvent
 import androidx.core.content.ContextCompat
+import com.voyagecam.app.R
 import com.voyagecam.app.core.model.DualCameraDiagnostic
 import com.voyagecam.app.data.settings.RecordingBitratePreset
 import com.voyagecam.app.data.settings.RecordingFrameRatePreset
 import com.voyagecam.app.data.settings.RecordingResolutionPreset
 import com.voyagecam.app.data.settings.RecordingVideoProfile
 import com.voyagecam.app.data.storage.RecordingStorageManager
+import com.voyagecam.app.ui.dualCameraDiagnosticSummary
 import java.io.File
 
 data class RecordingSegmentFileSet(
@@ -73,7 +75,7 @@ class RearCameraRecorder(
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) !=
             PackageManager.PERMISSION_GRANTED
         ) {
-            callbacks.onRecordingError("相机权限未授权，无法启动录制")
+            callbacks.onRecordingError(context.getString(R.string.camera_error_permission_recording))
             return
         }
 
@@ -114,7 +116,7 @@ class RearCameraRecorder(
                 dualRecording?.stop() ?: recording?.stop()
             }
                 .onFailure { error ->
-                    callbacks.onRecordingError(error.message ?: "停止录制失败")
+                    callbacks.onRecordingError(error.message ?: context.getString(R.string.camera_error_stop_failed))
                     callbacks.onRecordingStopped(currentFiles())
                 }
         }
@@ -125,7 +127,7 @@ class RearCameraRecorder(
             val recording = currentRecording
             val dualRecording = currentDualRecording
             if (!recordingStarted || (recording == null && dualRecording == null)) {
-                callbacks.onRecordingError("当前没有可锁定的录制片段")
+                callbacks.onRecordingError(context.getString(R.string.camera_error_no_lockable_segment))
                 return@post
             }
 
@@ -138,7 +140,7 @@ class RearCameraRecorder(
                 dualRecording?.stop() ?: recording?.stop()
             }
                 .onFailure { error ->
-                    callbacks.onRecordingError(error.message ?: "锁定当前片段失败")
+                    callbacks.onRecordingError(error.message ?: context.getString(R.string.camera_error_lock_failed))
                 }
         }
     }
@@ -163,7 +165,7 @@ class RearCameraRecorder(
                 dualRecording.stop()
             }.onFailure { error ->
                 pendingStopReason = null
-                callbacks.onRecordingError(error.message ?: "双摄降级失败")
+                callbacks.onRecordingError(error.message ?: context.getString(R.string.camera_error_downgrade_failed))
             }
         }
     }
@@ -240,7 +242,12 @@ class RearCameraRecorder(
                     frontFile.delete()
                     outputFrontFile = null
                     callbacks.onDualCameraFallback(diagnostic)
-                    callbacks.onRecordingError("双摄录制启动失败，已回落后摄单录：${diagnostic.summary()}")
+                    callbacks.onRecordingError(
+                        context.getString(
+                            R.string.camera_error_dual_fallback_rear,
+                            context.dualCameraDiagnosticSummary(diagnostic),
+                        ),
+                    )
                     startNextRearOnlySegment(rearFile)
                 }
             },
@@ -285,7 +292,10 @@ class RearCameraRecorder(
         pendingStopReason = null
 
         if (event.error != VideoRecordEvent.Finalize.ERROR_NONE) {
-            callbacks.onRecordingError(event.cause?.message ?: "录制片段完成异常：${event.error}")
+            callbacks.onRecordingError(
+                event.cause?.message
+                    ?: context.getString(R.string.camera_error_finalize_failed, event.error),
+            )
         }
 
         when (stopReason) {
@@ -319,7 +329,7 @@ class RearCameraRecorder(
             dualRecording?.stop() ?: recording?.stop()
         }
             .onFailure { error ->
-                callbacks.onRecordingError(error.message ?: "切换到下一录制片段失败")
+                callbacks.onRecordingError(error.message ?: context.getString(R.string.camera_error_rotate_failed))
                 pendingStopReason = null
             }
     }

@@ -1,6 +1,7 @@
 package com.voyagecam.app.feature.recording
 
 import com.voyagecam.app.core.camera.RecordingSegmentTransitionStats
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -19,7 +20,7 @@ class RecordingPerformanceGuardTest {
         )
 
         assertTrue(decision.shouldDowngradeDualCamera)
-        assertTrue(decision.summary?.contains("过热") == true)
+        assertEquals(RecordingPerformanceMessage.ThermalDowngrade, decision.message)
     }
 
     @Test
@@ -35,7 +36,7 @@ class RecordingPerformanceGuardTest {
         )
 
         assertFalse(decision.shouldDowngradeDualCamera)
-        assertNull(decision.summary)
+        assertNull(decision.message)
     }
 
     @Test
@@ -50,7 +51,7 @@ class RecordingPerformanceGuardTest {
         )
 
         assertTrue(decision.shouldDowngradeDualCamera)
-        assertTrue(decision.summary?.contains("电量") == true)
+        assertEquals(RecordingPerformanceMessage.LowBatteryDowngrade, decision.message)
     }
 
     @Test
@@ -66,7 +67,7 @@ class RecordingPerformanceGuardTest {
         )
 
         assertFalse(decision.shouldDowngradeDualCamera)
-        assertNull(decision.summary)
+        assertNull(decision.message)
     }
 
     @Test
@@ -100,7 +101,7 @@ class RecordingPerformanceGuardTest {
         )
 
         assertTrue(decision.shouldDowngradeDualCamera)
-        assertTrue(decision.summary?.contains("分段") == true)
+        assertEquals(RecordingPerformanceMessage.SlowSegmentDowngrade, decision.message)
     }
 
     @Test
@@ -121,7 +122,7 @@ class RecordingPerformanceGuardTest {
         )
 
         assertFalse(decision.shouldDowngradeDualCamera)
-        assertNull(decision.summary)
+        assertNull(decision.message)
     }
 
     @Test
@@ -136,6 +137,6 @@ class RecordingPerformanceGuardTest {
         )
 
         assertFalse(decision.shouldDowngradeDualCamera)
-        assertTrue(decision.summary?.contains("电量") == true)
+        assertEquals(RecordingPerformanceMessage.LowBatteryDowngrade, decision.message)
     }
 }

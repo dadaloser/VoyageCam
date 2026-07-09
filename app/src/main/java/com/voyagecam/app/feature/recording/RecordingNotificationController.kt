@@ -40,10 +40,10 @@ class RecordingNotificationController(private val context: Context) {
 
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "VoyageCam 录制状态",
+            context.getString(R.string.notification_channel_name),
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "显示行车记录录制状态，并提供停止入口"
+            description = context.getString(R.string.notification_channel_description)
             setShowBadge(false)
         }
 
@@ -55,11 +55,19 @@ class RecordingNotificationController(private val context: Context) {
     }
 
     fun build(state: RecordingNotificationState): Notification {
-        val mode = state.modeLabel()
+        val mode = state.modeLabel(context)
         val profile = "${state.recordingResolutionLabel}/${state.recordingFrameRateLabel}/${state.recordingBitrateLabel}"
-        val audio = if (state.ambientAudio) "环境声开启" else "静音"
-        val segment = "${state.segmentDurationMinutes}分钟分段"
-        val locked = if (state.lockedSegmentCount > 0) " · 已锁定${state.lockedSegmentCount}段" else ""
+        val audio = if (state.ambientAudio) {
+            context.getString(R.string.notification_audio_on)
+        } else {
+            context.getString(R.string.notification_audio_off)
+        }
+        val segment = context.getString(R.string.notification_segment_minutes, state.segmentDurationMinutes)
+        val locked = if (state.lockedSegmentCount > 0) {
+            context.getString(R.string.notification_locked_count, state.lockedSegmentCount)
+        } else {
+            ""
+        }
         val elapsed = ((System.currentTimeMillis() - state.startedAtMillis).coerceAtLeast(0L)) / 1000L
         val elapsedText = String.format(
             Locale.getDefault(),
@@ -71,7 +79,9 @@ class RecordingNotificationController(private val context: Context) {
         val fileText = state.currentFileName?.let { " · $it" }.orEmpty()
         val transitionText = state.segmentTransitionSummary?.let { " · $it" }.orEmpty()
         val diagnosticText = state.dualCameraDiagnostic?.let { " · $it" }.orEmpty()
-        val performanceText = state.performanceGuardSummary?.let { " · 性能保护：$it" }.orEmpty()
+        val performanceText = state.performanceGuardSummary
+            ?.let { context.getString(R.string.notification_performance_prefix, it) }
+            .orEmpty()
 
         val openIntent = PendingIntent.getActivity(
             context,
@@ -94,17 +104,43 @@ class RecordingNotificationController(private val context: Context) {
 
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher)
-            .setContentTitle("VoyageCam 正在录制")
-            .setContentText("$mode · $profile · $segment$locked · $elapsedText$fileText")
+            .setContentTitle(context.getString(R.string.notification_content_title))
+            .setContentText(
+                context.getString(
+                    R.string.notification_content_text,
+                    mode,
+                    profile,
+                    segment,
+                    locked,
+                    elapsedText,
+                    fileText,
+                ),
+            )
             .setStyle(
                 NotificationCompat.BigTextStyle()
-                    .bigText("${state.status} · $mode · $profile · $audio · $segment$locked$transitionText$diagnosticText$performanceText · ${state.storageCapacityGb}GB循环空间 · 已运行 $elapsedText$fileText"),
+                    .bigText(
+                        context.getString(
+                            R.string.notification_big_text,
+                            state.status,
+                            mode,
+                            profile,
+                            audio,
+                            segment,
+                            locked,
+                            transitionText,
+                            diagnosticText,
+                            performanceText,
+                            state.storageCapacityGb,
+                            elapsedText,
+                            fileText,
+                        ),
+                    ),
             )
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(openIntent)
-            .addAction(0, "紧急锁定", lockIntent)
-            .addAction(0, "停止录制", stopIntent)
+            .addAction(0, context.getString(R.string.notification_action_lock), lockIntent)
+            .addAction(0, context.getString(R.string.notification_action_stop), stopIntent)
             .build()
     }
 
@@ -114,8 +150,8 @@ class RecordingNotificationController(private val context: Context) {
     }
 }
 
-internal fun RecordingNotificationState.modeLabel(): String {
-    return recordingModeLabel(
+internal fun RecordingNotificationState.modeLabel(context: Context): String {
+    return context.recordingModeLabel(
         recordingModeAuto = recordingModeAuto,
         dualCameraActive = dualCamera,
     )

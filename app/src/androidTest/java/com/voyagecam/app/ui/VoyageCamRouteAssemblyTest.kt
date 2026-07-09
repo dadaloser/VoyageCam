@@ -79,7 +79,7 @@ class VoyageCamRouteAssemblyTest {
                         onClick = permissionCoordinator.requestStartRecording,
                         modifier = Modifier.testTag("route_permission_start_button"),
                     ) {
-                        Text("通过权限开始")
+                        Text("Start via permissions")
                     }
                 },
             )

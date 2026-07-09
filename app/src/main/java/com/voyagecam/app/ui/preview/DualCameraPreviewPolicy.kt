@@ -1,7 +1,9 @@
 package com.voyagecam.app.ui.preview
 
+import android.content.Context
 import com.voyagecam.app.core.camera.DualCameraSessionStatus
 import com.voyagecam.app.core.model.DualCameraCapability
+import com.voyagecam.app.ui.dualCameraTelemetryPresentation as buildDualCameraTelemetryPresentation
 
 data class DualCameraPreviewPresentation(
     val showFrontInset: Boolean,
@@ -62,30 +64,39 @@ fun dualCameraTelemetryPresentation(
     if (sessionStatus.previewSessionToken != sessionToken) return null
 
     val summary = buildString {
-        append("双摄 Session ")
+        append("Dual Session ")
         append(sessionToken)
         append(" · ")
         append(
             when {
-                sessionStatus.concurrentCameraActive && sessionStatus.recordingActive -> "并发预览/录制已绑定"
-                sessionStatus.concurrentCameraActive -> "并发预览已绑定"
-                sessionStatus.recordingActive -> "录制切换中"
-                sessionStatus.lastDiagnostic != null -> "已回落到后摄预览"
-                else -> "准备中"
+                sessionStatus.concurrentCameraActive && sessionStatus.recordingActive -> "Concurrent preview/recording attached"
+                sessionStatus.concurrentCameraActive -> "Concurrent preview attached"
+                sessionStatus.recordingActive -> "Switching recording session"
+                sessionStatus.lastDiagnostic != null -> "Fell back to rear preview"
+                else -> "Preparing"
             },
         )
     }
     val detail = buildString {
-        append("后摄预览")
-        append(if (sessionStatus.rearPreviewAttached) "已连接" else "未连接")
-        append(" · 前摄预览")
-        append(if (sessionStatus.frontPreviewAttached) "已连接" else "未连接")
+        append("Rear preview ")
+        append(if (sessionStatus.rearPreviewAttached) "connected" else "disconnected")
+        append(" · Front preview ")
+        append(if (sessionStatus.frontPreviewAttached) "connected" else "disconnected")
     }
     return DualCameraTelemetryPresentation(
         summary = summary,
         detail = detail,
         diagnostic = sessionStatus.lastDiagnostic?.summary(),
     )
+}
+
+fun dualCameraTelemetryPresentation(
+    context: Context,
+    frontInsetEnabled: Boolean,
+    sessionToken: Int,
+    sessionStatus: DualCameraSessionStatus,
+): DualCameraTelemetryPresentation? {
+    return context.buildDualCameraTelemetryPresentation(frontInsetEnabled, sessionToken, sessionStatus)
 }
 
 private const val SESSION_HIDDEN = 0

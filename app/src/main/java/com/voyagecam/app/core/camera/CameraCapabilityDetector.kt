@@ -10,6 +10,7 @@ import android.os.Build
 import android.util.Range
 import android.util.Size
 import androidx.core.content.ContextCompat
+import com.voyagecam.app.R
 import com.voyagecam.app.core.model.DeviceCapabilityGrade
 import com.voyagecam.app.core.model.DualCameraCapability
 import com.voyagecam.app.core.model.DualCameraSwitchState
@@ -23,7 +24,7 @@ class CameraCapabilityDetector(private val context: Context) {
                 return DualCameraCapability(
                     state = DualCameraSwitchState.Unavailable,
                     grade = DeviceCapabilityGrade.D,
-                    reason = "相机权限未授权，授权后才能检测和录制",
+                    reason = context.getString(R.string.camera_capability_permission_missing),
                 )
             }
 
@@ -40,8 +41,10 @@ class CameraCapabilityDetector(private val context: Context) {
             }
             val rearCharacteristics = rearCameraId?.let(cameraManager::getCameraCharacteristics)
             val frontCharacteristics = frontCameraId?.let(cameraManager::getCameraCharacteristics)
-            val rearSummary = rearCharacteristics?.toCameraSummary() ?: "未检测到后置摄像头"
-            val frontSummary = frontCharacteristics?.toCameraSummary() ?: "未检测到前置摄像头"
+            val rearSummary = rearCharacteristics?.toCameraSummary()
+                ?: context.getString(R.string.camera_capability_no_rear)
+            val frontSummary = frontCharacteristics?.toCameraSummary()
+                ?: context.getString(R.string.camera_capability_no_front)
 
             if (rearCameraId == null || frontCameraId == null) {
                 return DualCameraCapability(
@@ -49,7 +52,7 @@ class CameraCapabilityDetector(private val context: Context) {
                     grade = DeviceCapabilityGrade.D,
                     rearCameraId = rearCameraId,
                     frontCameraId = frontCameraId,
-                    reason = "未检测到完整的前后摄像头组合",
+                    reason = context.getString(R.string.camera_capability_incomplete),
                     rearSummary = rearSummary,
                     frontSummary = frontSummary,
                 )
@@ -61,7 +64,7 @@ class CameraCapabilityDetector(private val context: Context) {
                     grade = DeviceCapabilityGrade.C,
                     rearCameraId = rearCameraId,
                     frontCameraId = frontCameraId,
-                    reason = "系统版本低于 Android 11，无法可靠判断前后摄像头并发能力",
+                    reason = context.getString(R.string.camera_capability_android_version_low),
                     rearSummary = rearSummary,
                     frontSummary = frontSummary,
                 )
@@ -81,7 +84,7 @@ class CameraCapabilityDetector(private val context: Context) {
                     grade = DeviceCapabilityGrade.A,
                     rearCameraId = rearCameraId,
                     frontCameraId = frontCameraId,
-                    reason = "当前设备报告支持前后摄像头同时开启",
+                    reason = context.getString(R.string.camera_capability_supported),
                     rearSummary = rearSummary,
                     frontSummary = frontSummary,
                 )
@@ -91,7 +94,7 @@ class CameraCapabilityDetector(private val context: Context) {
                     grade = DeviceCapabilityGrade.C,
                     rearCameraId = rearCameraId,
                     frontCameraId = frontCameraId,
-                    reason = "当前设备未报告支持前后摄像头同时开启",
+                    reason = context.getString(R.string.camera_capability_unsupported),
                     rearSummary = rearSummary,
                     frontSummary = frontSummary,
                 )
@@ -100,7 +103,7 @@ class CameraCapabilityDetector(private val context: Context) {
             DualCameraCapability(
                 state = DualCameraSwitchState.CheckFailed,
                 grade = DeviceCapabilityGrade.D,
-                reason = error.message ?: "双摄能力检测失败",
+                reason = error.message ?: context.getString(R.string.camera_capability_check_failed),
             )
         }
     }
@@ -119,7 +122,7 @@ class CameraCapabilityDetector(private val context: Context) {
             else -> "UNKNOWN"
         }
 
-        return "硬件 $hardwareLevel · 视频 $sizes · 帧率 $fpsRanges"
+        return context.getString(R.string.camera_capability_summary, hardwareLevel, sizes, fpsRanges)
     }
 
     private fun StreamConfigurationMap?.videoSizesSummary(): String {
@@ -130,7 +133,7 @@ class CameraCapabilityDetector(private val context: Context) {
             .take(3)
 
         return if (preferred.isEmpty()) {
-            "未报告 720p+"
+            context.getString(R.string.camera_capability_video_unreported)
         } else {
             preferred.joinToString { "${it.width}x${it.height}" }
         }
@@ -142,7 +145,7 @@ class CameraCapabilityDetector(private val context: Context) {
             .take(3)
 
         return if (preferred.isEmpty()) {
-            "未报告 30fps"
+            context.getString(R.string.camera_capability_fps_unreported)
         } else {
             preferred.joinToString { "${it.lower}-${it.upper}fps" }
         }

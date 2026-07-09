@@ -1,5 +1,7 @@
 package com.voyagecam.app.feature.recording
 
+import android.content.Context
+import com.voyagecam.app.R
 import com.voyagecam.app.core.camera.RecordingSegmentFileSet
 import com.voyagecam.app.core.model.CollisionSensitivity
 import com.voyagecam.app.data.settings.VoyageCamSettingsStore
@@ -17,7 +19,7 @@ class RecordingServiceState {
     var segmentDurationMinutes: Int = 3
     var collisionSensitivity: CollisionSensitivity = CollisionSensitivity.Medium
     var currentSegmentIndex: Int = 0
-    var status: String = "正在准备后置摄像头"
+    var status: String = ""
     var currentFileName: String? = null
     var previousSegmentFiles: RecordingSegmentFileSet = RecordingSegmentFileSet(rear = null)
     var currentSegmentFiles: RecordingSegmentFileSet = RecordingSegmentFileSet(rear = null)
@@ -29,6 +31,7 @@ class RecordingServiceState {
     var performanceGuardSummary: String? = null
 
     fun resetForStart(
+        context: Context,
         startedAtMillis: Long,
         recordingModeAuto: Boolean,
         dualCamera: Boolean,
@@ -53,7 +56,7 @@ class RecordingServiceState {
         this.segmentDurationMinutes = segmentDurationMinutes
         this.collisionSensitivity = collisionSensitivity
         currentSegmentIndex = 0
-        status = "正在准备后置摄像头，每 ${segmentDurationMinutes} 分钟自动分段"
+        status = context.getString(R.string.recording_service_preparing_segment, segmentDurationMinutes)
         currentFileName = null
         previousSegmentFiles = RecordingSegmentFileSet(rear = null)
         currentSegmentFiles = RecordingSegmentFileSet(rear = null)

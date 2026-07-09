@@ -18,13 +18,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.voyagecam.app.R
 import com.voyagecam.app.core.model.EmergencyEvent
 import com.voyagecam.app.core.model.EmergencyTrigger
 import com.voyagecam.app.core.model.GpsTrackPoint
 import com.voyagecam.app.core.model.GpsTrackSummary
 import com.voyagecam.app.core.model.toGpsTrackSummary
+import com.voyagecam.app.ui.labelRes
 import com.voyagecam.app.ui.theme.SectionCard
 import java.io.File
 import java.text.SimpleDateFormat
@@ -46,6 +50,7 @@ fun EmergencyEventPanel(
     onOpenMap: (EmergencyEvent) -> Unit,
     onDelete: (EmergencyEvent) -> Unit,
 ) {
+    val context = LocalContext.current
     SectionCard {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -53,17 +58,17 @@ fun EmergencyEventPanel(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                text = "紧急事件",
+                text = stringResource(R.string.events_title),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF163036),
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onRepairMissingSegments) {
-                    Text("修复")
+                    Text(stringResource(R.string.events_repair))
                 }
                 OutlinedButton(onClick = onRefresh) {
-                    Text("刷新")
+                    Text(stringResource(R.string.settings_refresh))
                 }
             }
         }
@@ -79,7 +84,7 @@ fun EmergencyEventPanel(
         }
         if (events.isEmpty()) {
             Text(
-                text = "暂无紧急事件。手动锁定或碰撞触发后，这里会记录触发时间和关联片段。",
+                text = stringResource(R.string.events_empty),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFF64777B),
             )
@@ -123,7 +128,7 @@ private fun EvidenceExportStatusPanel(
         when (state) {
             is EvidenceExportState.Running -> {
                 Text(
-                    text = "正在导出证据包",
+                    text = stringResource(R.string.events_export_running),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = Color(0xFF163036),
@@ -150,36 +155,41 @@ private fun EvidenceExportStatusPanel(
                         color = Color(0xFF64777B),
                     )
                     OutlinedButton(onClick = onCancel) {
-                        Text("取消导出")
+                        Text(stringResource(R.string.events_export_cancel))
                     }
                 }
             }
 
             is EvidenceExportState.Ready -> {
                 Text(
-                    text = "证据包已就绪",
+                    text = stringResource(R.string.events_export_ready),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = Color(0xFF163036),
                 )
                 Text(
-                    text = "${state.file.name} · ${state.clipCount} 段视频 · ${state.file.length().asFileSize()}",
+                    text = stringResource(
+                        R.string.events_export_ready_summary,
+                        state.file.name,
+                        state.clipCount,
+                        state.file.length().asFileSize(),
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFF4D6267),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { onShare(state.file) }) {
-                        Text("分享证据包")
+                        Text(stringResource(R.string.events_export_share))
                     }
                     OutlinedButton(onClick = onDismiss) {
-                        Text("收起")
+                        Text(stringResource(R.string.events_collapse))
                     }
                 }
             }
 
             is EvidenceExportState.Failed -> {
                 Text(
-                    text = "证据包导出失败",
+                    text = stringResource(R.string.events_export_failed),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = Color(0xFF9B2C2C),
@@ -190,13 +200,13 @@ private fun EvidenceExportStatusPanel(
                     color = Color(0xFF4D6267),
                 )
                 OutlinedButton(onClick = onDismiss) {
-                    Text("收起")
+                    Text(stringResource(R.string.events_collapse))
                 }
             }
 
             is EvidenceExportState.Cancelled -> {
                 Text(
-                    text = "证据包导出已取消",
+                    text = stringResource(R.string.events_export_cancelled),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = Color(0xFF163036),
@@ -207,7 +217,7 @@ private fun EvidenceExportStatusPanel(
                     color = Color(0xFF4D6267),
                 )
                 OutlinedButton(onClick = onDismiss) {
-                    Text("收起")
+                    Text(stringResource(R.string.events_collapse))
                 }
             }
         }
@@ -223,6 +233,7 @@ private fun EmergencyEventRow(
     onOpenMap: (EmergencyEvent) -> Unit,
     onDelete: (EmergencyEvent) -> Unit,
 ) {
+    val context = LocalContext.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -235,13 +246,13 @@ private fun EmergencyEventRow(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                text = event.trigger.label,
+                text = stringResource(event.trigger.labelRes()),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 color = if (event.trigger == EmergencyTrigger.Collision) Color(0xFF9B2C2C) else Color(0xFF163036),
             )
             Text(
-                text = "${event.segmentPaths.size} 段",
+                text = stringResource(R.string.events_segment_count, event.segmentPaths.size),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFF64777B),
             )
@@ -251,14 +262,14 @@ private fun EmergencyEventRow(
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),
         )
-        event.collisionSummary()?.let { summary ->
+        event.collisionSummary(context)?.let { summary ->
             Text(
                 text = summary,
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFF9B2C2C),
             )
         }
-        event.locationSummary()?.let { summary ->
+        event.locationSummary(context)?.let { summary ->
             Text(
                 text = summary,
                 style = MaterialTheme.typography.bodySmall,
@@ -285,21 +296,21 @@ private fun EmergencyEventRow(
                 enabled = event.segmentPaths.isNotEmpty(),
                 modifier = Modifier.weight(1f),
             ) {
-                Text("播放首段")
+                Text(stringResource(R.string.events_open_first))
             }
             OutlinedButton(
                 onClick = { onShare(event) },
                 enabled = event.segmentPaths.isNotEmpty(),
                 modifier = Modifier.weight(1f),
             ) {
-                Text("分享全部")
+                Text(stringResource(R.string.events_share_all))
             }
             OutlinedButton(
                 onClick = { onOpenMap(event) },
                 enabled = event.hasLocation(),
                 modifier = Modifier.weight(1f),
             ) {
-                Text("地图")
+                Text(stringResource(R.string.events_map))
             }
         }
         Row(
@@ -311,13 +322,13 @@ private fun EmergencyEventRow(
                 enabled = event.segmentPaths.isNotEmpty(),
                 modifier = Modifier.weight(1f),
             ) {
-                Text("导出证据包")
+                Text(stringResource(R.string.events_export_button))
             }
             OutlinedButton(
                 onClick = { onDelete(event) },
                 modifier = Modifier.weight(1f),
             ) {
-                Text("删除事件")
+                Text(stringResource(R.string.events_delete_button))
             }
         }
     }
@@ -325,6 +336,7 @@ private fun EmergencyEventRow(
 
 @Composable
 private fun GpsRoutePreview(points: List<GpsTrackPoint>) {
+    val context = LocalContext.current
     val summary = points.toGpsTrackSummary() ?: return
     Column(
         modifier = Modifier
@@ -334,30 +346,35 @@ private fun GpsRoutePreview(points: List<GpsTrackPoint>) {
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(
-            text = "路线预览 · ${summary.pointCount} 点",
+            text = stringResource(R.string.events_route_preview, summary.pointCount),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
             color = Color(0xFF163036),
         )
         Text(
-            text = "${summary.distanceText()} · ${summary.durationText()} · 均速 ${summary.averageSpeedText()}",
+            text = stringResource(
+                R.string.events_route_summary,
+                summary.distanceText(),
+                summary.durationText(context),
+                summary.averageSpeedText(context),
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF4D6267),
         )
         summary.maxSpeedMetersPerSecond?.let { speed ->
             Text(
-                text = "最高速度 ${speed.toKilometersPerHourText()}",
+                text = stringResource(R.string.events_route_max_speed, speed.toKilometersPerHourText(context)),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFF64777B),
             )
         }
         Text(
-            text = "起点 ${summary.startPoint.coordinateText()}",
+            text = stringResource(R.string.events_route_start, summary.startPoint.coordinateText(context)),
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),
         )
         Text(
-            text = "终点 ${summary.endPoint.coordinateText()}",
+            text = stringResource(R.string.events_route_end, summary.endPoint.coordinateText(context)),
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),
         )
@@ -388,30 +405,40 @@ private fun GpsTrackSummary.distanceText(): String {
     }
 }
 
-private fun GpsTrackSummary.durationText(): String {
+private fun GpsTrackSummary.durationText(context: android.content.Context): String {
     val totalSeconds = durationMillis / 1000L
     val minutes = totalSeconds / 60L
     val seconds = totalSeconds % 60L
     return when {
-        minutes > 0L -> "${minutes}分${seconds}秒"
-        seconds > 0L -> "${seconds}秒"
-        else -> "瞬时"
+        minutes > 0L -> context.getString(R.string.events_duration_minutes_seconds, minutes, seconds)
+        seconds > 0L -> context.getString(R.string.events_duration_seconds, seconds)
+        else -> context.getString(R.string.events_duration_instant)
     }
 }
 
-private fun GpsTrackSummary.averageSpeedText(): String {
-    return averageSpeedMetersPerSecond.toFloat().toKilometersPerHourText()
+private fun GpsTrackSummary.averageSpeedText(context: android.content.Context): String {
+    return averageSpeedMetersPerSecond.toFloat().toKilometersPerHourText(context)
 }
 
-private fun Float.toKilometersPerHourText(): String {
-    return String.format(Locale.getDefault(), "%.0fkm/h", this * METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR)
+private fun Float.toKilometersPerHourText(context: android.content.Context): String {
+    return String.format(
+        Locale.getDefault(),
+        context.getString(R.string.events_speed_kmh),
+        this * METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR,
+    )
 }
 
-private fun GpsTrackPoint.coordinateText(): String {
+private fun GpsTrackPoint.coordinateText(context: android.content.Context): String {
     val bearingText = bearingDegrees?.let {
-        String.format(Locale.getDefault(), " · 航向 %.0f°", it)
+        context.getString(R.string.events_bearing, it)
     }.orEmpty()
-    return String.format(Locale.getDefault(), "%.5f, %.5f%s · %s", latitude, longitude, bearingText, capturedAtMillis.asTime())
+    return context.getString(
+        R.string.events_coordinate_text,
+        latitude,
+        longitude,
+        bearingText,
+        capturedAtMillis.asTime(),
+    )
 }
 
 private const val METERS_PER_SECOND_TO_KILOMETERS_PER_HOUR = 3.6f

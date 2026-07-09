@@ -3,6 +3,7 @@ package com.voyagecam.app.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.voyagecam.app.R
 import com.voyagecam.app.core.camera.CameraCapabilityDetector
 import com.voyagecam.app.core.model.AutoStartDiagnostic
 import com.voyagecam.app.core.model.CameraDirection
@@ -59,7 +60,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
     private val initialSettings = settingsStore.load().coerceTo(storageLimit)
     private val initialCapability = settingsStore.loadCapability() ?: DualCameraCapability(
         state = DualCameraSwitchState.Checking,
-        reason = "正在检测前后摄像头并发能力",
+        reason = appContext.getString(R.string.vm_initial_capability_reason),
     )
 
     private val _uiState = MutableStateFlow(
@@ -67,7 +68,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
             settings = initialSettings,
             capability = initialCapability,
             storageLimit = storageLimit,
-            statusMessage = "已支持后摄单录到本地 MP4；双摄录制仍在下一阶段接入。",
+            statusMessage = appContext.getString(R.string.vm_initial_status),
             storageOverview = emptyStorageOverview(initialSettings, initialCapability),
         ),
     )
@@ -85,7 +86,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.update {
             it.copy(
                 isRecording = true,
-                statusMessage = "后摄录制服务已启动；预览与录制共用 CameraX 管线，每 ${it.settings.segmentDurationMinutes} 分钟分段。",
+                statusMessage = appContext.getString(R.string.vm_recording_started, it.settings.segmentDurationMinutes),
             )
         }
     }
@@ -94,7 +95,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.update {
             it.copy(
                 isRecording = false,
-                statusMessage = "录制服务已停止。",
+                statusMessage = appContext.getString(R.string.vm_recording_stopped),
             )
         }
         refreshRecordingData()
@@ -121,7 +122,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
         persistCapability(
             DualCameraCapability(
                 state = DualCameraSwitchState.Checking,
-                reason = "正在检测前后摄像头并发能力",
+                reason = appContext.getString(R.string.vm_initial_capability_reason),
             ),
         )
         viewModelScope.launch(Dispatchers.IO) {
@@ -234,7 +235,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
                         currentNormalBytes = state.storageOverview.normalBytes,
                         overflowBytes = state.storageOverview.normalBytes - nextBytes,
                     ),
-                    statusMessage = "录像容量低于当前普通片段占用，请确认后再应用。",
+                    statusMessage = appContext.getString(R.string.vm_storage_change_needs_confirm),
                 )
             }
         } else {
@@ -246,7 +247,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
         persistSettings(_uiState.value.settings.copy(storageCapacityGb = capacityGb))
         _uiState.update { it.copy(pendingStorageCapacityChange = null) }
         if (!cleanupNow) {
-            _uiState.update { it.copy(statusMessage = "已将录像容量调整为 ${capacityGb}GB。") }
+            _uiState.update { it.copy(statusMessage = appContext.getString(R.string.vm_storage_changed, capacityGb)) }
             return
         }
 
@@ -256,9 +257,14 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
             val segments = recordingRepository.listSegments()
             val overview = recordingRepository.storageOverview(state.settings, state.capability)
             val message = if (cleanup.deletedFiles > 0) {
-                "已将录像容量调整为 ${capacityGb}GB，并清理 ${cleanup.deletedFiles} 个普通片段、释放 ${cleanup.deletedBytes.asFileSize()}。"
+                appContext.getString(
+                    R.string.vm_storage_changed_cleanup,
+                    capacityGb,
+                    cleanup.deletedFiles,
+                    cleanup.deletedBytes.asFileSize(),
+                )
             } else {
-                "已将录像容量调整为 ${capacityGb}GB；当前普通片段无需清理。"
+                appContext.getString(R.string.vm_storage_changed_no_cleanup, capacityGb)
             }
             withContext(Dispatchers.Main) {
                 _uiState.update {
@@ -280,9 +286,13 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
             val segments = recordingRepository.listSegments()
             val overview = recordingRepository.storageOverview(state.settings, state.capability)
             val message = if (cleanup.deletedFiles > 0) {
-                "已清理 ${cleanup.deletedFiles} 个普通片段，释放 ${cleanup.deletedBytes.asFileSize()}；锁定片段未受影响。"
+                appContext.getString(
+                    R.string.vm_storage_cleanup_done,
+                    cleanup.deletedFiles,
+                    cleanup.deletedBytes.asFileSize(),
+                )
             } else {
-                "当前普通片段未超过 ${settings.storageCapacityGb}GB 容量，无需清理。"
+                appContext.getString(R.string.vm_storage_cleanup_not_needed, settings.storageCapacityGb)
             }
             withContext(Dispatchers.Main) {
                 _uiState.update {
@@ -305,7 +315,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
             )
         }
         persistSettings(VoyageCamSettings())
-        setStatus("已恢复默认设置；录像、紧急事件和已导出的证据包均未删除。")
+        setStatus(appContext.getString(R.string.vm_defaults_restored))
     }
 
     fun applyGpsMetadataSetting(enabled: Boolean) {
@@ -313,9 +323,9 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
         persistSettings(_uiState.value.settings.copy(gpsMetadataEnabled = enabled))
         setStatus(
             if (enabled) {
-                "已开启GPS位置与轨迹记录；后续紧急事件会保存最近位置和轨迹。"
+                appContext.getString(R.string.vm_gps_enabled)
             } else {
-                "已关闭GPS位置与轨迹记录；后续紧急事件不记录位置和轨迹。"
+                appContext.getString(R.string.vm_gps_disabled)
             },
         )
     }
@@ -364,10 +374,10 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
             it.copy(
                 playbackItem = PlaybackItem(
                     title = primary.name,
-                    subtitle = primary.playbackSubtitle(secondary),
-                    primaryLabel = primary.cameraDirection.label,
+                    subtitle = primary.playbackSubtitle(appContext, secondary),
+                    primaryLabel = appContext.getString(primary.cameraDirection.labelRes()),
                     primaryFile = File(primary.absolutePath),
-                    secondaryLabel = secondary?.cameraDirection?.label,
+                    secondaryLabel = secondary?.cameraDirection?.let { direction -> appContext.getString(direction.labelRes()) },
                     secondaryFile = secondary?.let { File(it.absolutePath) },
                 ),
             )
@@ -384,7 +394,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun unlockSegment(segment: RecordingSegment) {
         if (!segment.locked) {
-            setStatus("该片段已经是普通片段。")
+            setStatus(appContext.getString(R.string.vm_segment_already_normal))
             return
         }
 
@@ -402,12 +412,12 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
                                 allSegments = segments,
                                 emergencyEvents = events,
                                 storageOverview = overview,
-                                statusMessage = "已解除锁定：${file.name}。该片段之后会按循环空间策略管理。",
+                                statusMessage = appContext.getString(R.string.vm_segment_unlocked, file.name),
                             )
                         }
                     }
                     .onFailure { error ->
-                        setStatus("解除锁定失败：${error.message ?: segment.name}")
+                        setStatus(appContext.getString(R.string.vm_segment_unlock_failed, error.message ?: segment.name))
                     }
             }
         }
@@ -417,7 +427,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch(Dispatchers.IO) {
             val result = runCatching {
                 val delete = recordingRepository.deleteSegment(segment)
-                if (!delete.deleted) error("片段不存在或不在可管理目录内")
+                if (!delete.deleted) error(appContext.getString(R.string.vm_segment_not_manageable))
                 delete
             }
             val state = _uiState.value
@@ -437,12 +447,16 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
                                     item.primaryFile.absolutePath != segment.absolutePath &&
                                         item.secondaryFile?.absolutePath != segment.absolutePath
                                 },
-                                statusMessage = "已删除片段：${segment.name}，释放 ${delete.deletedBytes.asFileSize()}。",
+                                statusMessage = appContext.getString(
+                                    R.string.vm_segment_deleted,
+                                    segment.name,
+                                    delete.deletedBytes.asFileSize(),
+                                ),
                             )
                         }
                     }
                     .onFailure { error ->
-                        setStatus("删除片段失败：${error.message ?: segment.name}")
+                        setStatus(appContext.getString(R.string.vm_segment_delete_failed, error.message ?: segment.name))
                     }
             }
         }
@@ -462,7 +476,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
                         pendingEmergencyEventDelete = null,
                         emergencyEvents = events,
                         evidenceExportState = it.evidenceExportState?.takeIf { export -> export.eventId != event.id },
-                        statusMessage = "已删除紧急事件记录；关联录像仍保留在历史列表中。",
+                        statusMessage = appContext.getString(R.string.vm_event_deleted),
                     )
                 }
             }
@@ -474,9 +488,14 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
             val result = recordingRepository.repairEmergencyEvents()
             val events = recordingRepository.listEmergencyEvents()
             val message = if (result.removedSegmentPaths == 0) {
-                "紧急事件关联片段正常，无需修复。"
+                appContext.getString(R.string.vm_events_repair_not_needed)
             } else {
-                "已修复 ${result.updatedEvents} 个紧急事件，移除 ${result.removedSegmentPaths} 条失效片段引用；${result.emptyEvents} 个事件当前没有可用片段。"
+                appContext.getString(
+                    R.string.vm_events_repair_done,
+                    result.updatedEvents,
+                    result.removedSegmentPaths,
+                    result.emptyEvents,
+                )
             }
             withContext(Dispatchers.Main) {
                 _uiState.update {
@@ -495,7 +514,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
                 recordingRepository.existingSegmentFiles(event)
                     .sortedWith(compareBy<File> { it.name.cameraDirectionSortOrder() }.thenBy { it.name })
                     .takeIf { it.isNotEmpty() }
-                    ?: error("关联片段文件不存在")
+                    ?: error(appContext.getString(R.string.vm_event_files_missing))
             }
             withContext(Dispatchers.Main) {
                 result
@@ -506,17 +525,27 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
                             it.copy(
                                 playbackItem = PlaybackItem(
                                     title = primary.name,
-                                    subtitle = "${event.trigger.label} · ${event.triggeredAtMillis.asTime()}${if (secondary != null) " · 双摄事件" else ""}",
-                                    primaryLabel = primary.name.cameraDirectionLabel(),
+                                    subtitle = appContext.getString(
+                                        R.string.vm_event_subtitle,
+                                        appContext.getString(event.trigger.labelRes()),
+                                        event.triggeredAtMillis.asTime(),
+                                        if (secondary != null) appContext.getString(R.string.vm_event_dual_camera_suffix) else "",
+                                    ),
+                                    primaryLabel = primary.name.cameraDirectionLabel(appContext),
                                     primaryFile = primary,
-                                    secondaryLabel = secondary?.name?.cameraDirectionLabel(),
+                                    secondaryLabel = secondary?.name?.cameraDirectionLabel(appContext),
                                     secondaryFile = secondary,
                                 ),
                             )
                         }
                     }
                     .onFailure { error ->
-                        setStatus("无法打开紧急事件片段：${error.message ?: event.trigger.label}")
+                        setStatus(
+                            appContext.getString(
+                                R.string.vm_event_open_failed,
+                                error.message ?: appContext.getString(event.trigger.labelRes()),
+                            ),
+                        )
                     }
             }
         }
@@ -530,7 +559,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
             val result = runCatching {
                 recordingRepository.existingSegmentFiles(event)
                     .takeIf { it.isNotEmpty() }
-                    ?: error("关联片段文件不存在")
+                    ?: error(appContext.getString(R.string.vm_event_files_missing))
             }
             withContext(Dispatchers.Main) {
                 onResult(result)
@@ -540,21 +569,26 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun exportEmergencyEvent(event: EmergencyEvent) {
         if (_uiState.value.evidenceExportState is EvidenceExportState.Running) {
-            setStatus("证据包正在导出，请稍候。")
+            setStatus(appContext.getString(R.string.vm_export_busy))
             return
         }
 
         val cancelFlag = AtomicBoolean(false)
         evidenceExportCancelFlag = cancelFlag
-        val title = "${event.trigger.label} · ${event.triggeredAtMillis.asTime()}"
+        val title = appContext.getString(
+            R.string.vm_event_subtitle,
+            appContext.getString(event.trigger.labelRes()),
+            event.triggeredAtMillis.asTime(),
+            "",
+        )
         _uiState.update {
             it.copy(
                 evidenceExportState = EvidenceExportState.Running(
                     eventId = event.id,
                     title = title,
-                    currentItem = "准备导出",
+                    currentItem = appContext.getString(R.string.vm_export_preparing),
                 ),
-                statusMessage = "正在导出紧急事件证据包...",
+                statusMessage = appContext.getString(R.string.vm_export_running),
             )
         }
 
@@ -597,7 +631,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
                                     file = packageFile.file,
                                     clipCount = packageFile.clipCount,
                                 ),
-                                statusMessage = "证据包已导出：${packageFile.file.name}",
+                                statusMessage = appContext.getString(R.string.vm_export_ready, packageFile.file.name),
                             )
                         }
                     }
@@ -605,8 +639,11 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
                         if (error is EvidenceExportCancelledException) {
                             _uiState.update {
                                 it.copy(
-                                    evidenceExportState = EvidenceExportState.Cancelled(eventId = event.id),
-                                    statusMessage = "证据包导出已取消，原始录像未受影响。",
+                                    evidenceExportState = EvidenceExportState.Cancelled(
+                                        eventId = event.id,
+                                        message = appContext.getString(R.string.vm_export_cancelled),
+                                    ),
+                                    statusMessage = appContext.getString(R.string.vm_export_cancelled),
                                 )
                             }
                         } else {
@@ -614,9 +651,12 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
                                 it.copy(
                                     evidenceExportState = EvidenceExportState.Failed(
                                         eventId = event.id,
-                                        message = error.message ?: "导出失败",
+                                        message = error.message ?: appContext.getString(R.string.vm_export_failed_default),
                                     ),
-                                    statusMessage = "证据包导出失败：${error.message ?: event.trigger.label}",
+                                    statusMessage = appContext.getString(
+                                        R.string.vm_export_failed,
+                                        error.message ?: appContext.getString(event.trigger.labelRes()),
+                                    ),
                                 )
                             }
                         }
@@ -631,8 +671,8 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
         if (running != null) {
             _uiState.update {
                 it.copy(
-                    evidenceExportState = running.copy(currentItem = "正在取消..."),
-                    statusMessage = "正在取消证据包导出...",
+                    evidenceExportState = running.copy(currentItem = appContext.getString(R.string.vm_export_cancelling)),
+                    statusMessage = appContext.getString(R.string.vm_export_cancelling_status),
                 )
             }
         }
@@ -720,14 +760,37 @@ private fun Long.asFileSize(): String {
     }
 }
 
-private fun RecordingSegment.playbackSubtitle(secondary: RecordingSegment?): String {
-    val lockState = if (locked) "已锁定" else "普通"
-    val playbackMode = if (secondary != null) "双摄同步回放" else "单摄回放"
-    return "${cameraDirection.label} · $lockState · $playbackMode"
+private fun RecordingSegment.playbackSubtitle(context: android.content.Context, secondary: RecordingSegment?): String {
+    val lockState = context.getString(
+        if (locked) {
+            R.string.route_segment_status_locked
+        } else {
+            R.string.route_segment_status_normal
+        },
+    )
+    val playbackMode = context.getString(
+        if (secondary != null) {
+            R.string.vm_playback_mode_dual
+        } else {
+            R.string.vm_playback_mode_single
+        },
+    )
+    return context.getString(
+        R.string.vm_playback_subtitle,
+        context.getString(cameraDirection.labelRes()),
+        lockState,
+        playbackMode,
+    )
 }
 
-private fun String.cameraDirectionLabel(): String {
-    return if (contains("_front", ignoreCase = true)) CameraDirection.Front.label else CameraDirection.Rear.label
+private fun String.cameraDirectionLabel(context: android.content.Context): String {
+    return context.getString(
+        if (contains("_front", ignoreCase = true)) {
+            CameraDirection.Front.labelRes()
+        } else {
+            CameraDirection.Rear.labelRes()
+        },
+    )
 }
 
 private fun String.cameraDirectionSortOrder(): Int {

@@ -1,16 +1,25 @@
 package com.voyagecam.app.core.model
 
+import java.util.Locale
+
 data class DualCameraDiagnostic(
     val stage: DualCameraDiagnosticStage,
     val detail: String,
 ) {
-    fun summary(): String = "${stage.label}：$detail"
+    fun summary(): String = "${stage.summaryLabel()}: $detail"
 }
 
-enum class DualCameraDiagnosticStage(val label: String) {
-    Preview("双摄预览"),
-    Session("双摄会话"),
-    RearRecording("后摄录制"),
-    FrontRecording("前摄录制"),
-    ConcurrentRecording("双摄并发录制"),
+enum class DualCameraDiagnosticStage {
+    Preview,
+    Session,
+    RearRecording,
+    FrontRecording,
+    ConcurrentRecording,
+}
+
+private fun DualCameraDiagnosticStage.summaryLabel(): String {
+    return name
+        .replace(Regex("([a-z])([A-Z])"), "$1 $2")
+        .lowercase(Locale.US)
+        .replaceFirstChar { character -> character.titlecase(Locale.US) }
 }

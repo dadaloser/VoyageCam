@@ -1,5 +1,7 @@
 package com.voyagecam.app.feature.recording
 
+import android.content.Context
+import com.voyagecam.app.R
 import com.voyagecam.app.core.camera.RecordingSegmentTransitionStats
 
 data class RecordingPerformanceSample(
@@ -11,8 +13,16 @@ data class RecordingPerformanceSample(
 
 data class RecordingPerformanceDecision(
     val shouldDowngradeDualCamera: Boolean,
-    val summary: String?,
+    val message: RecordingPerformanceMessage?,
 )
+
+enum class RecordingPerformanceMessage {
+    ThermalDowngrade,
+    LowBatteryDowngrade,
+    SlowSegmentDowngrade,
+    ThermalWarning,
+    LowBatteryWarning,
+}
 
 data class RecordingPerformancePolicy(
     val thermalGuardEnabled: Boolean = true,
@@ -36,38 +46,55 @@ object RecordingPerformanceGuard {
     ): RecordingPerformanceDecision {
         val downgradeReason = when {
             policy.thermalGuardEnabled &&
-                sample.thermalSeverity >= ThermalSeverity.Severe -> "设备过热，需要关闭前摄以降低发热"
+                sample.thermalSeverity >= ThermalSeverity.Severe -> RecordingPerformanceMessage.ThermalDowngrade
             policy.lowBatteryGuardEnabled &&
                 sample.batteryPercent != null &&
                 !sample.charging &&
                 sample.batteryPercent <= LOW_BATTERY_DOWNGRADE_PERCENT ->
-                "电量低于 $LOW_BATTERY_DOWNGRADE_PERCENT%，需要关闭前摄以延长后摄录制"
+                RecordingPerformanceMessage.LowBatteryDowngrade
             policy.slowSegmentGuardEnabled &&
                 sample.transitionStats?.isSlowTransition() == true ->
-                "分段切换耗时过高，需要关闭前摄以降低编码压力"
+                RecordingPerformanceMessage.SlowSegmentDowngrade
             else -> null
         }
         if (downgradeReason != null) {
             return RecordingPerformanceDecision(
                 shouldDowngradeDualCamera = dualCameraActive,
-                summary = downgradeReason,
+                message = downgradeReason,
             )
         }
 
         val warning = when {
             policy.thermalGuardEnabled &&
-                sample.thermalSeverity >= ThermalSeverity.Moderate -> "设备温度升高，继续双摄可能触发自动降级"
+                sample.thermalSeverity >= ThermalSeverity.Moderate -> RecordingPerformanceMessage.ThermalWarning
             policy.lowBatteryGuardEnabled &&
                 sample.batteryPercent != null &&
                 !sample.charging &&
                 sample.batteryPercent <= LOW_BATTERY_WARNING_PERCENT ->
-                "电量低于 $LOW_BATTERY_WARNING_PERCENT%，建议连接电源"
+                RecordingPerformanceMessage.LowBatteryWarning
             else -> null
         }
         return RecordingPerformanceDecision(
             shouldDowngradeDualCamera = false,
-            summary = warning,
+            message = warning,
         )
+    }
+
+    fun summary(context: Context, decision: RecordingPerformanceDecision): String? {
+        return decision.message?.let { message ->
+            when (message) {
+                RecordingPerformanceMessage.ThermalDowngrade -> context.getString(R.string.recording_guard_thermal_downgrade)
+                RecordingPerformanceMessage.LowBatteryDowngrade -> {
+                    context.getString(R.string.recording_guard_battery_downgrade, LOW_BATTERY_DOWNGRADE_PERCENT)
+                }
+
+                RecordingPerformanceMessage.SlowSegmentDowngrade -> context.getString(R.string.recording_guard_segment_downgrade)
+                RecordingPerformanceMessage.ThermalWarning -> context.getString(R.string.recording_guard_thermal_warning)
+                RecordingPerformanceMessage.LowBatteryWarning -> {
+                    context.getString(R.string.recording_guard_battery_warning, LOW_BATTERY_WARNING_PERCENT)
+                }
+            }
+        }
     }
 
     private fun RecordingSegmentTransitionStats.isSlowTransition(): Boolean {

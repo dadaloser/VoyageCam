@@ -45,9 +45,9 @@ data class GpsTrackSummary(
     val endPoint: GpsTrackPoint,
 )
 
-enum class EmergencyTrigger(val label: String) {
-    Manual("手动锁定"),
-    Collision("碰撞触发"),
+enum class EmergencyTrigger {
+    Manual,
+    Collision,
 }
 
 fun List<GpsTrackPoint>.toGpsTrackSummary(): GpsTrackSummary? {

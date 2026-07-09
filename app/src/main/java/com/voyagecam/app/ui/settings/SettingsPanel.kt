@@ -16,6 +16,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -31,6 +33,7 @@ import com.voyagecam.app.core.model.PersistedDualCameraDiagnostic
 import com.voyagecam.app.core.model.PersistedDualCameraSessionTelemetry
 import com.voyagecam.app.core.model.RecordingStorageOverview
 import com.voyagecam.app.core.model.TrustedBluetoothDevice
+import com.voyagecam.app.R
 import com.voyagecam.app.data.settings.RecordingBitratePreset
 import com.voyagecam.app.data.settings.RecordingFrameRatePreset
 import com.voyagecam.app.data.settings.RecordingResolutionPreset
@@ -38,6 +41,7 @@ import com.voyagecam.app.data.settings.StorageCapacityLimit
 import com.voyagecam.app.data.settings.VoyageCamSettings
 import com.voyagecam.app.data.settings.VoyageCamSettingsStore
 import com.voyagecam.app.data.settings.recordingModeDescription
+import com.voyagecam.app.ui.labelRes
 import com.voyagecam.app.ui.theme.SectionCard
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -90,6 +94,7 @@ fun SettingsPanel(
     onClearDualCameraSessionTelemetry: () -> Unit,
     bluetoothDevicePickerState: BluetoothDevicePickerState,
 ) {
+    val context = LocalContext.current
     val visibleStorageCapacityGb = pendingStorageCapacityGb ?: settings.storageCapacityGb
     val storageInputState = androidx.compose.runtime.remember(visibleStorageCapacityGb) {
         androidx.compose.runtime.mutableStateOf(visibleStorageCapacityGb.toString())
@@ -98,7 +103,7 @@ fun SettingsPanel(
 
     SectionCard {
         Text(
-            text = "设备与权限",
+            text = stringResource(R.string.settings_device_permissions_title),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF163036),
@@ -106,20 +111,46 @@ fun SettingsPanel(
         Spacer(modifier = Modifier.height(10.dp))
         CapabilityDetail(capability = capability)
         Spacer(modifier = Modifier.height(12.dp))
-        PermissionRow("相机权限", cameraPermissionGranted, "授权相机", onRequestCameraPermission)
+        PermissionRow(
+            stringResource(R.string.settings_permission_camera),
+            cameraPermissionGranted,
+            stringResource(R.string.settings_permission_request_camera),
+            onRequestCameraPermission,
+        )
         Spacer(modifier = Modifier.height(8.dp))
-        PermissionRow("通知权限", notificationPermissionGranted, "授权通知", onRequestNotificationPermission)
+        PermissionRow(
+            stringResource(R.string.settings_permission_notification),
+            notificationPermissionGranted,
+            stringResource(R.string.settings_permission_request_notification),
+            onRequestNotificationPermission,
+        )
         Spacer(modifier = Modifier.height(8.dp))
-        PermissionRow("麦克风权限", audioPermissionGranted, "按需授权", {}, enabled = false)
+        PermissionRow(
+            stringResource(R.string.settings_permission_microphone),
+            audioPermissionGranted,
+            stringResource(R.string.settings_permission_request_on_demand),
+            {},
+            enabled = false,
+        )
         Spacer(modifier = Modifier.height(8.dp))
-        PermissionRow("定位权限", locationPermissionGranted, "授权定位", onRequestLocationPermission)
+        PermissionRow(
+            stringResource(R.string.settings_permission_location),
+            locationPermissionGranted,
+            stringResource(R.string.settings_permission_request_location),
+            onRequestLocationPermission,
+        )
         Spacer(modifier = Modifier.height(8.dp))
-        PermissionRow("蓝牙权限", bluetoothPermissionGranted, "授权蓝牙", onRequestBluetoothPermission)
+        PermissionRow(
+            stringResource(R.string.settings_permission_bluetooth),
+            bluetoothPermissionGranted,
+            stringResource(R.string.settings_permission_request_bluetooth),
+            onRequestBluetoothPermission,
+        )
     }
 
     SectionCard {
         Text(
-            text = "录制设置",
+            text = stringResource(R.string.settings_recording_title),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF163036),
@@ -127,7 +158,7 @@ fun SettingsPanel(
         Spacer(modifier = Modifier.height(14.dp))
 
         Text(
-            text = "录制模式",
+            text = stringResource(R.string.settings_recording_mode_title),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = Color(0xFF163036),
@@ -136,12 +167,12 @@ fun SettingsPanel(
         SelectionButtonRow(
             options = listOf(
                 SelectionOption(
-                    label = "仅后摄",
+                    label = stringResource(R.string.recording_mode_rear_only),
                     selected = !settings.dualCameraEnabled,
                     onClick = { onRecordingModeAutoChanged(false) },
                 ),
                 SelectionOption(
-                    label = "自动模式",
+                    label = stringResource(R.string.recording_mode_auto),
                     selected = settings.dualCameraEnabled,
                     onClick = { onRecordingModeAutoChanged(true) },
                 ),
@@ -151,8 +182,8 @@ fun SettingsPanel(
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = when {
-                isRecording -> "录制中不可切换模式，停止后修改"
-                else -> recordingModeDescription(
+                isRecording -> stringResource(R.string.settings_recording_mode_locked)
+                else -> context.recordingModeDescription(
                     recordingModeAuto = settings.dualCameraEnabled,
                     dualCameraSupported = capability.isAvailable,
                 )
@@ -167,12 +198,12 @@ fun SettingsPanel(
             enabled = !isRecording,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("重新检测双摄能力")
+            Text(stringResource(R.string.settings_redetect_dual_camera))
         }
 
         Spacer(modifier = Modifier.height(18.dp))
         Text(
-            text = "分辨率",
+            text = stringResource(R.string.settings_resolution_title),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = Color(0xFF163036),
@@ -190,14 +221,14 @@ fun SettingsPanel(
         )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
-            text = "目标分辨率；设备或双摄组合不支持时会自动降级到更低规格。",
+            text = stringResource(R.string.settings_resolution_summary),
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),
         )
 
         Spacer(modifier = Modifier.height(18.dp))
         Text(
-            text = "帧率",
+            text = stringResource(R.string.settings_frame_rate_title),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = Color(0xFF163036),
@@ -215,14 +246,14 @@ fun SettingsPanel(
         )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
-            text = "目标帧率；CameraX 会尽量贴近该值，但最终仍取决于设备和并发录制能力。",
+            text = stringResource(R.string.settings_frame_rate_summary),
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),
         )
 
         Spacer(modifier = Modifier.height(18.dp))
         Text(
-            text = "码率",
+            text = stringResource(R.string.settings_bitrate_title),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = Color(0xFF163036),
@@ -240,14 +271,14 @@ fun SettingsPanel(
         )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
-            text = "目标视频码率越高，画质通常越好，但发热、耗电和存储占用也会增加。",
+            text = stringResource(R.string.settings_bitrate_summary),
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),
         )
 
         Spacer(modifier = Modifier.height(18.dp))
         Text(
-            text = "分段时长",
+            text = stringResource(R.string.settings_segment_duration_title),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = Color(0xFF163036),
@@ -257,7 +288,7 @@ fun SettingsPanel(
 
         Spacer(modifier = Modifier.height(18.dp))
         Text(
-            text = "碰撞检测灵敏度",
+            text = stringResource(R.string.settings_collision_sensitivity_title),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = Color(0xFF163036),
@@ -284,10 +315,16 @@ fun SettingsPanel(
                     onStorageChanged(next)
                 }
             },
-            label = { Text("自定义视频存储容量") },
-            suffix = { Text("GB") },
+            label = { Text(stringResource(R.string.settings_custom_storage_label)) },
+            suffix = { Text(stringResource(R.string.settings_storage_suffix_gb)) },
             supportingText = {
-                Text("范围 ${VoyageCamSettingsStore.MIN_STORAGE_GB}-${storageLimit.maxGb}GB，约为当前可用空间的 80% 上限")
+                Text(
+                    stringResource(
+                        R.string.settings_custom_storage_summary,
+                        VoyageCamSettingsStore.MIN_STORAGE_GB,
+                        storageLimit.maxGb,
+                    ),
+                )
             },
             isError = storageInput.toIntOrNull()?.let {
                 it !in VoyageCamSettingsStore.MIN_STORAGE_GB..storageLimit.maxGb
@@ -304,13 +341,13 @@ fun SettingsPanel(
             enabled = !isRecording,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("立即按容量清理普通片段")
+            Text(stringResource(R.string.settings_cleanup_storage_now))
         }
 
         Spacer(modifier = Modifier.height(12.dp))
         SettingSwitchRow(
-            title = "行车环境声录制",
-            subtitle = "默认关闭；开启后请求麦克风权限，关闭时不占用麦克风、不写入音频轨道",
+            title = stringResource(R.string.settings_ambient_audio_title),
+            subtitle = stringResource(R.string.settings_ambient_audio_summary),
             checked = settings.ambientAudioEnabled,
             enabled = !isRecording,
             onCheckedChange = onAmbientAudioChanged,
@@ -318,18 +355,18 @@ fun SettingsPanel(
 
         Spacer(modifier = Modifier.height(18.dp))
         Text(
-            text = "性能保护",
+            text = stringResource(R.string.settings_performance_title),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = Color(0xFF163036),
         )
         Spacer(modifier = Modifier.height(8.dp))
         SettingSwitchRow(
-            title = "过热时自动关闭前摄",
+            title = stringResource(R.string.settings_thermal_guard_title),
             subtitle = if (settings.thermalGuardEnabled) {
-                "默认开启；检测到设备严重过热时会自动降级为后摄单录"
+                stringResource(R.string.settings_thermal_guard_enabled_summary)
             } else {
-                "已强制关闭；设备过热时不会因为温度自动关闭前摄"
+                stringResource(R.string.settings_thermal_guard_disabled_summary)
             },
             checked = settings.thermalGuardEnabled,
             enabled = true,
@@ -339,11 +376,11 @@ fun SettingsPanel(
 
         Spacer(modifier = Modifier.height(12.dp))
         SettingSwitchRow(
-            title = "低电量时自动关闭前摄",
+            title = stringResource(R.string.settings_low_battery_guard_title),
             subtitle = if (settings.lowBatteryGuardEnabled) {
-                "默认开启；未充电且电量过低时会自动降级为后摄单录"
+                stringResource(R.string.settings_low_battery_guard_enabled_summary)
             } else {
-                "已强制关闭；低电量时不会因为电量自动关闭前摄"
+                stringResource(R.string.settings_low_battery_guard_disabled_summary)
             },
             checked = settings.lowBatteryGuardEnabled,
             enabled = true,
@@ -353,11 +390,11 @@ fun SettingsPanel(
 
         Spacer(modifier = Modifier.height(12.dp))
         SettingSwitchRow(
-            title = "分段切换过慢时自动关闭前摄",
+            title = stringResource(R.string.settings_slow_segment_guard_title),
             subtitle = if (settings.slowSegmentGuardEnabled) {
-                "默认开启；分段切换间隙过长时会自动降级，优先保证后摄连续录制"
+                stringResource(R.string.settings_slow_segment_guard_enabled_summary)
             } else {
-                "已强制关闭；即使分段切换压力较高也不会自动关闭前摄"
+                stringResource(R.string.settings_slow_segment_guard_disabled_summary)
             },
             checked = settings.slowSegmentGuardEnabled,
             enabled = true,
@@ -367,11 +404,11 @@ fun SettingsPanel(
 
         Spacer(modifier = Modifier.height(12.dp))
         SettingSwitchRow(
-            title = "GPS位置与轨迹记录",
+            title = stringResource(R.string.settings_gps_metadata_title),
             subtitle = when {
-                locationPermissionGranted -> "默认关闭；开启后紧急事件会保存位置和最近轨迹，关闭后不记录位置元数据"
-                settings.gpsMetadataEnabled -> "已允许记录；授权定位后才会保存位置和最近轨迹"
-                else -> "默认关闭；开启前需要授权定位，关闭后核心录制仍可使用"
+                locationPermissionGranted -> stringResource(R.string.settings_gps_metadata_summary_enabled)
+                settings.gpsMetadataEnabled -> stringResource(R.string.settings_gps_metadata_summary_granted)
+                else -> stringResource(R.string.settings_gps_metadata_summary_disabled)
             },
             checked = settings.gpsMetadataEnabled,
             enabled = true,
@@ -381,8 +418,8 @@ fun SettingsPanel(
 
         Spacer(modifier = Modifier.height(12.dp))
         SettingSwitchRow(
-            title = "导出时间/速度水印字幕",
-            subtitle = "默认关闭；开启后在证据包导出时生成SRT侧车字幕，便于外部播放器预览水印",
+            title = stringResource(R.string.settings_export_subtitles_title),
+            subtitle = stringResource(R.string.settings_export_subtitles_summary),
             checked = settings.exportWatermarkSubtitlesEnabled,
             enabled = true,
             onCheckedChange = onExportWatermarkSubtitlesChanged,
@@ -390,8 +427,8 @@ fun SettingsPanel(
 
         Spacer(modifier = Modifier.height(12.dp))
         SettingSwitchRow(
-            title = "导出烧录时间/速度/位置水印视频",
-            subtitle = "默认关闭；开启后证据包会额外转码生成带烧录水印的视频副本，原始视频不改写",
+            title = stringResource(R.string.settings_export_burned_title),
+            subtitle = stringResource(R.string.settings_export_burned_summary),
             checked = settings.exportBurnedWatermarkVideoEnabled,
             enabled = true,
             onCheckedChange = onExportBurnedWatermarkVideoChanged,
@@ -399,8 +436,8 @@ fun SettingsPanel(
 
         Spacer(modifier = Modifier.height(12.dp))
         SettingSwitchRow(
-            title = "连接充电器自动开始录制",
-            subtitle = "插入电源时自动启动前台录制；需要已授权相机和通知权限",
+            title = stringResource(R.string.settings_auto_start_power_title),
+            subtitle = stringResource(R.string.settings_auto_start_power_summary),
             checked = settings.autoStartOnPowerConnected,
             enabled = !isRecording,
             onCheckedChange = onAutoStartOnPowerChanged,
@@ -414,8 +451,8 @@ fun SettingsPanel(
                     bluetoothDevicePickerState.updateTrustedDeviceInput(value),
                 )
             },
-            label = { Text("可信蓝牙设备") },
-            supportingText = { Text("填写车机蓝牙名称或 MAC 地址，完全匹配后自动启动") },
+            label = { Text(stringResource(R.string.settings_trusted_bluetooth_label)) },
+            supportingText = { Text(stringResource(R.string.settings_trusted_bluetooth_supporting)) },
             enabled = !isRecording,
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
@@ -431,8 +468,8 @@ fun SettingsPanel(
         )
         Spacer(modifier = Modifier.height(12.dp))
         SettingSwitchRow(
-            title = "可信蓝牙连接自动开始录制",
-            subtitle = "连接指定蓝牙设备时自动启动；需要相机、通知和蓝牙权限",
+            title = stringResource(R.string.settings_auto_start_bluetooth_title),
+            subtitle = stringResource(R.string.settings_auto_start_bluetooth_summary),
             checked = settings.autoStartOnTrustedBluetooth,
             enabled = !isRecording && bluetoothDevicePickerState.trustedDeviceInput.isNotBlank(),
             onCheckedChange = onAutoStartOnTrustedBluetoothChanged,
@@ -461,19 +498,20 @@ fun SettingsPanel(
             enabled = !isRecording,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("恢复默认设置")
+            Text(stringResource(R.string.settings_reset_defaults))
         }
     }
 }
 
 @Composable
 private fun StorageOverviewPanel(storageOverview: RecordingStorageOverview) {
+    val context = LocalContext.current
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(
-            text = "录像空间概览",
+            text = stringResource(R.string.settings_storage_overview_title),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = Color(0xFF163036),
@@ -483,17 +521,30 @@ private fun StorageOverviewPanel(storageOverview: RecordingStorageOverview) {
             modifier = Modifier.fillMaxWidth(),
         )
         Text(
-            text = "普通片段 ${storageOverview.normalBytes.asFileSize()} / ${storageOverview.maxStorageBytes.asFileSize()} · ${storageOverview.normalUsagePercent}%",
+            text = stringResource(
+                R.string.settings_storage_overview_normal,
+                storageOverview.normalBytes.asFileSize(),
+                storageOverview.maxStorageBytes.asFileSize(),
+                storageOverview.normalUsagePercent,
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF4D6267),
         )
         Text(
-            text = "锁定片段 ${storageOverview.lockedBytes.asFileSize()} · 普通 ${storageOverview.normalClipCount} 个，锁定 ${storageOverview.lockedClipCount} 个",
+            text = stringResource(
+                R.string.settings_storage_overview_locked,
+                storageOverview.lockedBytes.asFileSize(),
+                storageOverview.normalClipCount,
+                storageOverview.lockedClipCount,
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),
         )
         Text(
-            text = "按当前配置预计还可录制 ${storageOverview.estimatedRemainingMinutes.asDurationText()}",
+            text = stringResource(
+                R.string.settings_storage_overview_remaining,
+                storageOverview.estimatedRemainingMinutes.asDurationText(context),
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),
         )
@@ -513,25 +564,25 @@ private fun PairedBluetoothDevicePanel(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            text = "已配对蓝牙设备",
+            text = stringResource(R.string.settings_paired_bluetooth_title),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = Color(0xFF163036),
         )
         OutlinedButton(onClick = onRefresh) {
-            Text("刷新")
+            Text(stringResource(R.string.settings_refresh))
         }
     }
     Spacer(modifier = Modifier.height(8.dp))
     if (!bluetoothPermissionGranted) {
         Text(
-            text = "授权蓝牙权限后可选择已配对设备。",
+            text = stringResource(R.string.settings_paired_bluetooth_permission_required),
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),
         )
     } else if (devices.isEmpty()) {
         Text(
-            text = "暂无可读取的已配对设备，可手动填写车机蓝牙名称或 MAC 地址。",
+            text = stringResource(R.string.settings_paired_bluetooth_empty),
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),
         )
@@ -553,31 +604,32 @@ private fun AutoStartDiagnosticPanel(
     diagnostic: AutoStartDiagnostic?,
     onRefresh: () -> Unit,
 ) {
+    val context = LocalContext.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            text = "自动启动诊断",
+            text = stringResource(R.string.settings_auto_start_diagnostic_title),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = Color(0xFF163036),
         )
         OutlinedButton(onClick = onRefresh) {
-            Text("刷新")
+            Text(stringResource(R.string.settings_refresh))
         }
     }
     Spacer(modifier = Modifier.height(8.dp))
     if (diagnostic == null) {
         Text(
-            text = "暂无自动启动触发记录。",
+            text = stringResource(R.string.settings_auto_start_diagnostic_empty),
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),
         )
     } else {
         Text(
-            text = "${diagnostic.source.label} · ${diagnostic.result.label} · ${diagnostic.recordedAtMillis.asTime()}",
+            text = "${context.getString(diagnostic.source.labelRes())} · ${context.getString(diagnostic.result.labelRes())} · ${diagnostic.recordedAtMillis.asTime()}",
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.SemiBold,
             color = if (diagnostic.result == AutoStartResult.Started) Color(0xFF1F6F78) else Color(0xFF9B2C2C),
@@ -605,36 +657,37 @@ private fun DualCameraDiagnosticPanel(
     onRefresh: () -> Unit,
     onClear: () -> Unit,
 ) {
+    val context = LocalContext.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            text = "双摄诊断",
+            text = stringResource(R.string.settings_dual_camera_diagnostic_title),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = Color(0xFF163036),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onRefresh) {
-                Text("刷新")
+                Text(stringResource(R.string.settings_refresh))
             }
             OutlinedButton(onClick = onClear) {
-                Text("清空")
+                Text(stringResource(R.string.settings_clear))
             }
         }
     }
     Spacer(modifier = Modifier.height(8.dp))
     if (diagnostic == null) {
         Text(
-            text = "暂无双摄降级记录。",
+            text = stringResource(R.string.settings_dual_camera_diagnostic_empty),
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),
         )
     } else {
         Text(
-            text = "${diagnostic.stage.label} · ${diagnostic.recordedAtMillis.asTime()}",
+            text = "${context.getString(diagnostic.stage.labelRes())} · ${diagnostic.recordedAtMillis.asTime()}",
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.SemiBold,
             color = Color(0xFF9B2C2C),
@@ -647,7 +700,7 @@ private fun DualCameraDiagnosticPanel(
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = "最近一次双摄录制已回落为后摄单录，可结合通知栏状态一起排查。",
+            text = stringResource(R.string.settings_dual_camera_diagnostic_hint),
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),
         )
@@ -666,24 +719,24 @@ private fun DualCameraSessionTelemetryPanel(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            text = "双摄会话状态",
+            text = stringResource(R.string.settings_dual_camera_session_title),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = Color(0xFF163036),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onRefresh) {
-                Text("刷新")
+                Text(stringResource(R.string.settings_refresh))
             }
             OutlinedButton(onClick = onClear) {
-                Text("清空")
+                Text(stringResource(R.string.settings_clear))
             }
         }
     }
     Spacer(modifier = Modifier.height(8.dp))
     if (telemetry == null) {
         Text(
-            text = "暂无双摄会话记录。",
+            text = stringResource(R.string.settings_dual_camera_session_empty),
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),
         )
@@ -714,7 +767,11 @@ private fun DualCameraSessionTelemetryPanel(
 @Composable
 private fun CapabilityDetail(capability: DualCameraCapability) {
     Text(
-        text = "能力等级 ${capability.grade.name} · ${capability.state.asLabel()}",
+        text = stringResource(
+            R.string.settings_capability_grade,
+            capability.grade.name,
+            stringResource(capability.state.asLabelRes()),
+        ),
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.SemiBold,
         color = Color(0xFF163036),
@@ -727,19 +784,31 @@ private fun CapabilityDetail(capability: DualCameraCapability) {
     )
     Spacer(modifier = Modifier.height(8.dp))
     Text(
-        text = "后摄 ${capability.rearCameraId ?: "-"}：${capability.rearSummary}",
+        text = stringResource(
+            R.string.settings_capability_rear,
+            capability.rearCameraId ?: "-",
+            capability.rearSummary,
+        ),
         style = MaterialTheme.typography.bodySmall,
         color = Color(0xFF4D6267),
     )
     Spacer(modifier = Modifier.height(4.dp))
     Text(
-        text = "前摄 ${capability.frontCameraId ?: "-"}：${capability.frontSummary}",
+        text = stringResource(
+            R.string.settings_capability_front,
+            capability.frontCameraId ?: "-",
+            capability.frontSummary,
+        ),
         style = MaterialTheme.typography.bodySmall,
         color = Color(0xFF4D6267),
     )
     Spacer(modifier = Modifier.height(4.dp))
     Text(
-        text = "${capability.systemSummary} · 最近检测 ${capability.checkedAtMillis.asTime()}",
+        text = stringResource(
+            R.string.settings_capability_checked_at,
+            capability.systemSummary,
+            capability.checkedAtMillis.asTime(),
+        ),
         style = MaterialTheme.typography.bodySmall,
         color = Color(0xFF64777B),
     )
@@ -759,7 +828,17 @@ private fun PermissionRow(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            text = "$label：${if (granted) "已授权" else "未授权"}",
+            text = stringResource(
+                R.string.settings_permission_row,
+                label,
+                stringResource(
+                    if (granted) {
+                        R.string.settings_permission_state
+                    } else {
+                        R.string.settings_permission_state_not_granted
+                    },
+                ),
+            ),
             style = MaterialTheme.typography.bodyMedium,
             color = Color(0xFF4D6267),
         )
@@ -791,7 +870,7 @@ private fun SegmentDurationRow(
                     enabled = enabled,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("${option}分钟")
+                    Text(stringResource(R.string.settings_segment_minutes, option))
                 }
             } else {
                 OutlinedButton(
@@ -799,7 +878,7 @@ private fun SegmentDurationRow(
                     enabled = enabled,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("${option}分钟")
+                    Text(stringResource(R.string.settings_segment_minutes, option))
                 }
             }
         }
@@ -817,7 +896,11 @@ private fun CollisionSensitivityRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         CollisionSensitivity.entries.forEach { option ->
-            val label = "${option.label} ${option.thresholdG}g"
+            val label = stringResource(
+                R.string.settings_collision_option,
+                stringResource(option.labelRes()),
+                option.thresholdG,
+            )
             if (current == option) {
                 Button(
                     onClick = { onCollisionSensitivityChanged(option) },
@@ -857,7 +940,7 @@ private fun PresetStorageRow(
                     enabled = enabled,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("${option}GB")
+                    Text(stringResource(R.string.settings_storage_preset_gb, option))
                 }
             } else {
                 OutlinedButton(
@@ -865,7 +948,7 @@ private fun PresetStorageRow(
                     enabled = enabled,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("${option}GB")
+                    Text(stringResource(R.string.settings_storage_preset_gb, option))
                 }
             }
         }
@@ -963,14 +1046,18 @@ private fun Long.asFileSize(): String {
     }
 }
 
-private fun Long.asDurationText(): String {
-    if (this <= 0L) return "不足 1 分钟"
+private fun Long.asDurationText(context: android.content.Context): String {
+    if (this <= 0L) return context.getString(R.string.settings_duration_less_than_one_minute)
     val hours = this / 60
     val minutes = this % 60
     return when {
-        hours > 0 && minutes > 0 -> "${hours}小时${minutes}分钟"
-        hours > 0 -> "${hours}小时"
-        else -> "${minutes}分钟"
+        hours > 0 && minutes > 0 -> context.getString(
+            R.string.settings_duration_hours_minutes,
+            hours,
+            minutes,
+        )
+        hours > 0 -> context.getString(R.string.settings_duration_hours_only, hours)
+        else -> context.getString(R.string.settings_duration_minutes_only, minutes)
     }
 }
 

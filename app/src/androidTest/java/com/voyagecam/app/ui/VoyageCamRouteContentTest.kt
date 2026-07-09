@@ -51,7 +51,7 @@ class VoyageCamRouteContentTest {
                             reason = "supported",
                         ),
                         storageLimit = StorageCapacityLimit(maxGb = 64),
-                        statusMessage = "双摄录制中",
+                        statusMessage = "Dual recording active",
                         isRecording = true,
                         storageOverview = RecordingStorageOverview(
                             normalBytes = 0L,

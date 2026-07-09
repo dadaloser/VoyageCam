@@ -10,6 +10,7 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import com.voyagecam.app.R
 import com.voyagecam.app.core.model.CameraDirection
 import com.voyagecam.app.core.model.RecordingSegment
 import java.io.File
@@ -18,6 +19,7 @@ class RecordingSegmentIndexStore(context: Context) {
     private val prefs = context.getSharedPreferences("voyage_cam_recording_segment_index", Context.MODE_PRIVATE)
     private val database = RecordingSegmentIndexDatabase.from(context.applicationContext)
     private val dao = database.recordingSegmentIndexDao()
+    private val unknownDateLabel = context.applicationContext.getString(R.string.common_unknown_date)
 
     suspend fun ensureImported(normalRoot: File, lockedRoot: File, dashcamRoot: File) {
         if (prefs.getBoolean(KEY_IMPORTED, false)) return
@@ -81,7 +83,11 @@ class RecordingSegmentIndexStore(context: Context) {
 
     suspend fun upsertFile(file: File?, dashcamRoot: File, locked: Boolean? = null) {
         if (file == null || !file.exists() || !file.isFile) return
-        val entity = file.toEntityOrNull(dashcamRoot, locked ?: file.isLockedSegment()) ?: return
+        val entity = file.toEntityOrNull(
+            dashcamRoot = dashcamRoot,
+            locked = locked ?: file.isLockedSegment(),
+            unknownDateLabel = unknownDateLabel,
+        ) ?: return
         dao.insert(entity)
     }
 
@@ -118,7 +124,7 @@ class RecordingSegmentIndexStore(context: Context) {
         if (!root.exists()) return emptyList()
         return root.walkTopDown()
             .filter { it.isFile && it.extension.equals("mp4", ignoreCase = true) }
-            .mapNotNull { file -> file.toEntityOrNull(dashcamRoot, locked) }
+            .mapNotNull { file -> file.toEntityOrNull(dashcamRoot, locked, unknownDateLabel) }
             .toList()
     }
 
@@ -227,7 +233,11 @@ abstract class RecordingSegmentIndexDatabase : RoomDatabase() {
     }
 }
 
-private fun File.toEntityOrNull(dashcamRoot: File, locked: Boolean): RecordingSegmentIndexEntity? {
+private fun File.toEntityOrNull(
+    dashcamRoot: File,
+    locked: Boolean,
+    unknownDateLabel: String,
+): RecordingSegmentIndexEntity? {
     val dashcamPath = toDashcamPathOrNull(dashcamRoot) ?: return null
     val relativePath = dashcamPath.removeManagedPrefix(locked)
     val direction = when {
@@ -238,7 +248,7 @@ private fun File.toEntityOrNull(dashcamRoot: File, locked: Boolean): RecordingSe
         dashcamPath = dashcamPath,
         name = name,
         groupKey = relativePath.toSegmentGroupKey(),
-        day = relativePath.toSegmentDay(),
+        day = relativePath.toSegmentDay(unknownDateLabel),
         cameraDirection = direction.name,
         locked = locked,
         sizeBytes = length(),
@@ -263,11 +273,11 @@ private fun String.removeManagedPrefix(locked: Boolean): String {
     return normalized.removePrefix(prefix)
 }
 
-private fun String.toSegmentDay(): String {
+private fun String.toSegmentDay(unknownDateLabel: String): String {
     return replace(File.separatorChar, '/')
         .substringBefore('/', missingDelimiterValue = "")
         .takeIf { it.isNotBlank() }
-        ?: "未知日期"
+        ?: unknownDateLabel
 }
 
 private fun String.toSegmentGroupKey(): String {

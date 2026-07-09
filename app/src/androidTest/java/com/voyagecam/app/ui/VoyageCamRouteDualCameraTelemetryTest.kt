@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.platform.app.InstrumentationRegistry
+import com.voyagecam.app.R
 import com.voyagecam.app.core.model.DualCameraDiagnostic
 import com.voyagecam.app.core.model.DualCameraDiagnosticStage
 import com.voyagecam.app.data.camera.DualCameraDiagnosticsStore
@@ -28,6 +29,28 @@ class VoyageCamRouteDualCameraTelemetryTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val diagnosticStore = DualCameraDiagnosticsStore(context)
         val telemetryStore = DualCameraSessionTelemetryStore(context)
+        val sessionTitle = context.getString(R.string.settings_dual_camera_session_title)
+        val diagnosticTitle = context.getString(R.string.settings_dual_camera_diagnostic_title)
+        val clearLabel = context.getString(R.string.settings_clear)
+        val emptyDiagnostic = context.getString(R.string.settings_dual_camera_diagnostic_empty)
+        val emptySession = context.getString(R.string.settings_dual_camera_session_empty)
+        val summary = context.getString(
+            R.string.preview_telemetry_summary,
+            2,
+            context.getString(R.string.preview_telemetry_state_rear_fallback),
+        )
+        val detail = context.getString(
+            R.string.preview_telemetry_detail,
+            context.getString(R.string.preview_telemetry_detail_rear),
+            context.getString(R.string.preview_telemetry_connected),
+            context.getString(R.string.preview_telemetry_detail_front),
+            context.getString(R.string.preview_telemetry_connected),
+        )
+        val diagnostic = context.getString(
+            R.string.preview_dual_camera_diagnostic_summary,
+            context.getString(R.string.label_dual_camera_stage_session),
+            "bind failed",
+        )
 
         try {
             runBlocking {
@@ -41,9 +64,9 @@ class VoyageCamRouteDualCameraTelemetryTest {
                 )
                 telemetryStore.record(
                     DualCameraTelemetryPresentation(
-                        summary = "双摄 Session 2 · 已回落到后摄预览",
-                        detail = "后摄预览已连接 · 前摄预览已连接",
-                        diagnostic = "双摄会话：bind failed",
+                        summary = summary,
+                        detail = detail,
+                        diagnostic = diagnostic,
                     ),
                 )
             }
@@ -53,29 +76,29 @@ class VoyageCamRouteDualCameraTelemetryTest {
             }
 
             composeRule.waitUntil(timeoutMillis = 5_000) {
-                composeRule.onAllNodesWithText("双摄会话状态")
+                composeRule.onAllNodesWithText(sessionTitle)
                     .fetchSemanticsNodes().isNotEmpty()
             }
             composeRule.onNode(hasScrollAction())
-                .performScrollToNode(hasText("双摄会话状态"))
+                .performScrollToNode(hasText(sessionTitle))
 
-            composeRule.onNodeWithText("双摄诊断").assertIsDisplayed()
-            composeRule.onNodeWithText("双摄会话状态").assertIsDisplayed()
-            composeRule.onNodeWithText("双摄 Session 2 · 已回落到后摄预览").assertIsDisplayed()
-            composeRule.onNodeWithText("双摄会话：bind failed").assertIsDisplayed()
+            composeRule.onNodeWithText(diagnosticTitle).assertIsDisplayed()
+            composeRule.onNodeWithText(sessionTitle).assertIsDisplayed()
+            composeRule.onNodeWithText(summary).assertIsDisplayed()
+            composeRule.onNodeWithText(diagnostic).assertIsDisplayed()
 
-            composeRule.onAllNodesWithText("清空")[0].performClick()
-            composeRule.onAllNodesWithText("清空")[1].performClick()
+            composeRule.onAllNodesWithText(clearLabel)[0].performClick()
+            composeRule.onAllNodesWithText(clearLabel)[1].performClick()
 
             composeRule.waitUntil(timeoutMillis = 5_000) {
-                composeRule.onAllNodesWithText("暂无双摄会话记录。")
+                composeRule.onAllNodesWithText(emptySession)
                     .fetchSemanticsNodes().isNotEmpty()
             }
             composeRule.onNode(hasScrollAction())
-                .performScrollToNode(hasText("暂无双摄降级记录。"))
+                .performScrollToNode(hasText(emptyDiagnostic))
 
-            composeRule.onNodeWithText("暂无双摄降级记录。").assertIsDisplayed()
-            composeRule.onNodeWithText("暂无双摄会话记录。").assertIsDisplayed()
+            composeRule.onNodeWithText(emptyDiagnostic).assertIsDisplayed()
+            composeRule.onNodeWithText(emptySession).assertIsDisplayed()
         } finally {
             runBlocking {
                 diagnosticStore.clear()

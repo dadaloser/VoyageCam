@@ -1,13 +1,19 @@
 package com.voyagecam.app.ui.events
 
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.voyagecam.app.core.model.EmergencyEvent
 import com.voyagecam.app.core.model.EmergencyTrigger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
 
+@RunWith(AndroidJUnit4::class)
 class EmergencyEventDisplayTest {
+    private val context = InstrumentationRegistry.getInstrumentation().targetContext
+
     @Test
     fun collisionSummary_includesThresholdWhenPresent() {
         val event = emergencyEvent(
@@ -16,7 +22,7 @@ class EmergencyEventDisplayTest {
             thresholdG = 2.0f,
         )
 
-        assertEquals("峰值 2.6g · 阈值 2.0g", event.collisionSummary())
+        assertEquals("峰值 2.6g · 阈值 2.0g", event.collisionSummary(context))
     }
 
     @Test
@@ -29,7 +35,7 @@ class EmergencyEventDisplayTest {
             locationCapturedAtMillis = 1_700_000_000_000L,
         )
 
-        val summary = event.locationSummary()
+        val summary = event.locationSummary(context)
 
         assertTrue(summary!!.contains("位置 31.23040, 121.47370"))
         assertTrue(summary.contains("65km/h"))
@@ -40,7 +46,7 @@ class EmergencyEventDisplayTest {
     fun locationSummary_returnsNullWhenCoordinatesMissing() {
         val event = emergencyEvent(latitude = null, longitude = null)
 
-        assertNull(event.locationSummary())
+        assertNull(event.locationSummary(context))
     }
 
     private fun emergencyEvent(

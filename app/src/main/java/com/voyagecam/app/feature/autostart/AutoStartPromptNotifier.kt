@@ -12,6 +12,7 @@ import com.voyagecam.app.MainActivity
 import com.voyagecam.app.R
 import com.voyagecam.app.core.model.AutoStartSource
 import com.voyagecam.app.feature.recording.RecordingForegroundService
+import com.voyagecam.app.ui.labelRes
 
 class AutoStartPromptNotifier(private val context: Context) {
     @SuppressLint("MissingPermission")
@@ -35,21 +36,21 @@ class AutoStartPromptNotifier(private val context: Context) {
             dualCamera = dualCamera,
             ambientAudio = ambientAudio,
         )
-        val triggerText = detail.takeIf { it.isNotBlank() } ?: source.label
+        val triggerText = detail.takeIf { it.isNotBlank() } ?: context.getString(source.labelRes())
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher)
-            .setContentTitle("VoyageCam 准备开始录制")
-            .setContentText("$triggerText 已触发自动启动，点按开始录制。")
+            .setContentTitle(context.getString(R.string.autostart_prompt_title))
+            .setContentText(context.getString(R.string.autostart_prompt_text, triggerText))
             .setStyle(
                 NotificationCompat.BigTextStyle()
-                    .bigText("$triggerText 已触发自动启动。Android 14+ 不允许应用在后台直接开启相机录制，请点按“开始录制”。"),
+                    .bigText(context.getString(R.string.autostart_prompt_big_text, triggerText)),
             )
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setAutoCancel(true)
             .setContentIntent(openAppIntent)
-            .addAction(0, "开始录制", startRecordingIntent)
+            .addAction(0, context.getString(R.string.autostart_prompt_action), startRecordingIntent)
             .build()
 
         context.getSystemService(NotificationManager::class.java)
@@ -61,10 +62,10 @@ class AutoStartPromptNotifier(private val context: Context) {
 
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "VoyageCam 自动启动",
+            context.getString(R.string.autostart_channel_name),
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = "显示需要用户确认的自动启动录制请求"
+            description = context.getString(R.string.autostart_channel_description)
         }
         context.getSystemService(NotificationManager::class.java)
             .createNotificationChannel(channel)

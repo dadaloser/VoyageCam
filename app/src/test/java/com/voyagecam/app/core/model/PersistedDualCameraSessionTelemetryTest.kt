@@ -8,14 +8,14 @@ class PersistedDualCameraSessionTelemetryTest {
     @Test
     fun keepsSummaryDetailAndDiagnostic() {
         val telemetry = PersistedDualCameraSessionTelemetry(
-            summary = "双摄 Session 2 · 并发预览已绑定",
-            detail = "后摄预览已连接 · 前摄预览已连接",
+            summary = "Dual Session 2 · Concurrent preview attached",
+            detail = "Rear preview connected · Front preview connected",
             diagnostic = null,
             recordedAtMillis = 1234L,
         )
 
-        assertEquals("双摄 Session 2 · 并发预览已绑定", telemetry.summary)
-        assertEquals("后摄预览已连接 · 前摄预览已连接", telemetry.detail)
+        assertEquals("Dual Session 2 · Concurrent preview attached", telemetry.summary)
+        assertEquals("Rear preview connected · Front preview connected", telemetry.detail)
         assertNull(telemetry.diagnostic)
         assertEquals(1234L, telemetry.recordedAtMillis)
     }

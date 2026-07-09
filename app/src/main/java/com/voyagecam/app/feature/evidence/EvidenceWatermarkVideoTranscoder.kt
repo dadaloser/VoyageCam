@@ -19,6 +19,7 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
+import com.voyagecam.app.R
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
@@ -111,7 +112,7 @@ internal class EvidenceWatermarkVideoTranscoder(
 
         try {
             latch.await()
-            outcome.get()?.getOrThrow() ?: error("水印转码未返回结果")
+            outcome.get()?.getOrThrow() ?: error(appContext.getString(R.string.evidence_export_watermark_no_result))
         } catch (error: Throwable) {
             outputFile.delete()
             throw error

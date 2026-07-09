@@ -47,9 +47,9 @@ fun Int.toStorageBytes(): Long {
     return coerceAtLeast(0).toLong() * BYTES_PER_GB
 }
 
-enum class CameraDirection(val label: String) {
-    Rear("后摄"),
-    Front("前摄"),
+enum class CameraDirection {
+    Rear,
+    Front,
 }
 
 private const val BYTES_PER_GB = 1024L * 1024L * 1024L

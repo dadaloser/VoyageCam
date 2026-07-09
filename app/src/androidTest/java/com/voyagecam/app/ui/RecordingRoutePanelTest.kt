@@ -18,6 +18,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
+import com.voyagecam.app.R
 import com.voyagecam.app.core.camera.DualCameraSessionStatus
 import com.voyagecam.app.core.model.DeviceCapabilityGrade
 import com.voyagecam.app.core.model.DualCameraCapability
@@ -37,6 +38,7 @@ class RecordingRoutePanelTest {
 
     @Test
     fun clickingStartDelegatesToPermissionCoordinatorBeforeStartingService() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
         val controller = FakeRecordingServiceController()
         var permissionStartRequests = 0
 
@@ -53,7 +55,7 @@ class RecordingRoutePanelTest {
                     reason = "supported",
                 ),
                 isRecording = false,
-                statusMessage = "等待开始",
+                statusMessage = context.getString(R.string.route_recording_state_ready),
                 permissionCoordinator = PermissionCoordinator(
                     cameraPermissionGranted = false,
                     notificationPermissionGranted = false,
@@ -97,6 +99,28 @@ class RecordingRoutePanelTest {
         val sessionStatusFlow = MutableStateFlow(previewSessionStatus(sessionToken = 1, recordingActive = false))
         val controller = FakeRecordingServiceController()
         var permissionStartRequests = 0
+        val readyStatus = context.getString(R.string.route_recording_state_ready)
+        val startingStatus = context.getString(R.string.route_starting_mode, context.getString(R.string.label_camera_rear))
+        val dualRecordingStatus = "Dual recording active"
+        val stoppedStatus = context.getString(R.string.vm_recording_stopped)
+        val previewSummary = context.getString(
+            R.string.preview_telemetry_summary,
+            1,
+            context.getString(R.string.preview_telemetry_state_bound_preview),
+        )
+        val recordingSummary = context.getString(
+            R.string.preview_telemetry_summary,
+            2,
+            context.getString(R.string.preview_telemetry_state_bound_recording),
+        )
+        val previewDetail = context.getString(
+            R.string.preview_telemetry_detail,
+            context.getString(R.string.preview_telemetry_detail_rear),
+            context.getString(R.string.preview_telemetry_connected),
+            context.getString(R.string.preview_telemetry_detail_front),
+            context.getString(R.string.preview_telemetry_connected),
+        )
+        val emergencyLockLabel = context.getString(R.string.route_emergency_lock_button)
 
         runBlocking {
             telemetryStore.clear()
@@ -104,7 +128,7 @@ class RecordingRoutePanelTest {
         try {
             composeRule.setContent {
                 var isRecording by remember { mutableStateOf(false) }
-                var statusMessage by remember { mutableStateOf("等待开始") }
+                var statusMessage by remember { mutableStateOf(readyStatus) }
 
                 RecordingRoutePanel(
                     settings = VoyageCamSettings(
@@ -127,14 +151,14 @@ class RecordingRoutePanelTest {
                         bluetoothPermissionGranted = true,
                         requestStartRecording = {
                             permissionStartRequests++
-                            statusMessage = "正在启动后摄录制..."
+                            statusMessage = startingStatus
                             controller.start(
                                 context = context,
                                 dualCamera = true,
                                 ambientAudio = false,
                             )
                             isRecording = true
-                            statusMessage = "双摄录制中"
+                            statusMessage = dualRecordingStatus
                             sessionStatusFlow.value = previewSessionStatus(sessionToken = 2, recordingActive = true)
                         },
                         requestCameraPermission = {},
@@ -146,7 +170,7 @@ class RecordingRoutePanelTest {
                     recordingServiceController = controller,
                     onRecordingStopped = {
                         isRecording = false
-                        statusMessage = "录制服务已停止。"
+                        statusMessage = stoppedStatus
                         sessionStatusFlow.value = previewSessionStatus(sessionToken = 1, recordingActive = false)
                     },
                     onStatus = { statusMessage = it },
@@ -178,7 +202,7 @@ class RecordingRoutePanelTest {
 
             composeRule.onNodeWithTag("front_inset_preview").assertIsDisplayed()
             composeRule.onNodeWithTag("dual_camera_telemetry_summary")
-                .assertTextContains("双摄 Session 1 · 并发预览已绑定")
+                .assertTextContains(previewSummary)
 
             composeRule.onNodeWithTag("recording_toggle_button").performClick()
 
@@ -186,9 +210,9 @@ class RecordingRoutePanelTest {
             assertEquals(1, controller.startCalls)
             composeRule.onNodeWithTag("front_inset_preview").assertIsDisplayed()
             composeRule.onNodeWithTag("dual_camera_telemetry_summary")
-                .assertTextContains("双摄 Session 2 · 并发预览/录制已绑定")
+                .assertTextContains(recordingSummary)
 
-            composeRule.onNodeWithText("紧急锁定").performClick()
+            composeRule.onNodeWithText(emergencyLockLabel).performClick()
 
             assertEquals(1, controller.lockCalls)
             assertEquals(1, controller.refreshCalls)
@@ -198,14 +222,14 @@ class RecordingRoutePanelTest {
             assertEquals(1, controller.stopCalls)
             composeRule.waitUntil(timeoutMillis = 5_000) {
                 runBlocking {
-                    telemetryStore.load()?.summary == "双摄 Session 1 · 并发预览已绑定"
+                    telemetryStore.load()?.summary == previewSummary
                 }
             }
 
             val persisted = runBlocking { telemetryStore.load() }
             assertNotNull(persisted)
-            assertEquals("双摄 Session 1 · 并发预览已绑定", persisted?.summary)
-            assertEquals("后摄预览已连接 · 前摄预览已连接", persisted?.detail)
+            assertEquals(previewSummary, persisted?.summary)
+            assertEquals(previewDetail, persisted?.detail)
         } finally {
             runBlocking {
                 telemetryStore.clear()

@@ -8,9 +8,9 @@ class DualCameraDiagnosticTest {
     fun summary_formatsStageAndDetail() {
         val diagnostic = DualCameraDiagnostic(
             stage = DualCameraDiagnosticStage.ConcurrentRecording,
-            detail = "前摄录制初始化失败",
+            detail = "Front recorder init failed",
         )
 
-        assertEquals("双摄并发录制：前摄录制初始化失败", diagnostic.summary())
+        assertEquals("Concurrent recording: Front recorder init failed", diagnostic.summary())
     }
 }

@@ -18,6 +18,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import com.voyagecam.app.R
 import com.voyagecam.app.data.settings.RecordingBitratePreset
 import com.voyagecam.app.data.settings.RecordingFrameRatePreset
 import com.voyagecam.app.data.settings.RecordingResolutionPreset
@@ -78,7 +79,7 @@ object RearCameraCameraXPipeline : LifecycleOwner {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) !=
                 PackageManager.PERMISSION_GRANTED
             ) {
-                onError("相机权限未授权，无法启动录制")
+                onError(context.getString(R.string.camera_error_permission_recording))
                 return@runOnMain
             }
 
@@ -153,7 +154,7 @@ object RearCameraCameraXPipeline : LifecycleOwner {
 
             videoCapture
         }.getOrElse { error ->
-            onError(error.message ?: "CameraX 后摄管线初始化失败")
+            onError(error.message ?: context.getString(R.string.camera_error_rear_pipeline_failed))
             null
         }
     }

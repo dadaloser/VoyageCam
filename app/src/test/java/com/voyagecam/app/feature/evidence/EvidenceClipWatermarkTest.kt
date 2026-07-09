@@ -30,9 +30,9 @@ class EvidenceClipWatermarkTest {
 
         assertNotNull(watermark)
         val lines = watermark!!.linesAt(5_000_000L)
-        assertTrue(lines.first().startsWith("时间 "))
+        assertTrue(lines.first().startsWith("Time "))
         assertTrue(lines.any { it.contains("65km/h") })
-        assertTrue(lines.any { it.contains("航向 90°") })
+        assertTrue(lines.any { it.contains("Heading 90°") })
         assertTrue(lines.any { it.contains("31.23040, 121.47370") })
     }
 
@@ -46,7 +46,7 @@ class EvidenceClipWatermarkTest {
         val lines = watermark!!.linesAt(0L)
 
         assertEquals(1, lines.size)
-        assertTrue(lines.single().startsWith("时间 "))
+        assertTrue(lines.single().startsWith("Time "))
     }
 
     private fun emergencyEvent(

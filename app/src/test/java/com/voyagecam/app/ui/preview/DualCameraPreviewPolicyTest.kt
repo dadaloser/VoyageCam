@@ -137,10 +137,10 @@ class DualCameraPreviewPolicyTest {
             ),
         )
 
-        assertTrue(telemetry?.summary?.contains("Session 2") == true)
-        assertTrue(telemetry?.summary?.contains("并发预览/录制已绑定") == true)
-        assertTrue(telemetry?.detail?.contains("后摄预览已连接") == true)
-        assertTrue(telemetry?.detail?.contains("前摄预览已连接") == true)
+        assertTrue(telemetry?.summary?.contains("2") == true)
+        assertTrue(telemetry?.summary?.contains("Concurrent preview/recording attached") == true)
+        assertTrue(telemetry?.detail?.contains("Rear preview") == true)
+        assertTrue(telemetry?.detail?.contains("Front preview") == true)
         assertTrue(telemetry?.diagnostic == null)
     }
 
@@ -176,7 +176,7 @@ class DualCameraPreviewPolicyTest {
             ),
         )
 
-        assertTrue(telemetry?.summary?.contains("已回落到后摄预览") == true)
-        assertTrue(telemetry?.diagnostic?.contains("双摄会话") == true)
+        assertTrue(telemetry?.summary?.contains("Fell back to rear preview") == true)
+        assertTrue(telemetry?.diagnostic?.contains("Session") == true)
     }
 }

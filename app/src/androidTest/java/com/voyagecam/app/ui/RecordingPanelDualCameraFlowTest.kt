@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
+import com.voyagecam.app.R
 import com.voyagecam.app.core.camera.DualCameraSessionStatus
 import com.voyagecam.app.core.model.DeviceCapabilityGrade
 import com.voyagecam.app.core.model.DualCameraCapability
@@ -35,6 +36,25 @@ class RecordingPanelDualCameraFlowTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val telemetryStore = DualCameraSessionTelemetryStore(context)
         val sessionStatusFlow = MutableStateFlow(previewSessionStatus(sessionToken = 1, recordingActive = false))
+        val readyStatus = context.getString(R.string.route_recording_state_ready)
+        val dualRecordingStatus = "Dual recording active"
+        val previewSummary = context.getString(
+            R.string.preview_telemetry_summary,
+            1,
+            context.getString(R.string.preview_telemetry_state_bound_preview),
+        )
+        val recordingSummary = context.getString(
+            R.string.preview_telemetry_summary,
+            2,
+            context.getString(R.string.preview_telemetry_state_bound_recording),
+        )
+        val previewDetail = context.getString(
+            R.string.preview_telemetry_detail,
+            context.getString(R.string.preview_telemetry_detail_rear),
+            context.getString(R.string.preview_telemetry_connected),
+            context.getString(R.string.preview_telemetry_detail_front),
+            context.getString(R.string.preview_telemetry_connected),
+        )
 
         runBlocking {
             telemetryStore.clear()
@@ -56,7 +76,7 @@ class RecordingPanelDualCameraFlowTest {
                         reason = "supported",
                     ),
                     isRecording = isRecording.value,
-                    statusMessage = if (isRecording.value) "双摄录制中" else "等待开始",
+                    statusMessage = if (isRecording.value) dualRecordingStatus else readyStatus,
                     onToggleRecording = {
                         val nextRecording = !isRecording.value
                         isRecording.value = nextRecording
@@ -95,30 +115,30 @@ class RecordingPanelDualCameraFlowTest {
             composeRule.onNodeWithTag("rear_camera_preview").assertIsDisplayed()
             composeRule.onNodeWithTag("front_inset_preview").assertIsDisplayed()
             composeRule.onNodeWithTag("dual_camera_telemetry_summary")
-                .assertTextContains("双摄 Session 1 · 并发预览已绑定")
+                .assertTextContains(previewSummary)
 
             composeRule.onNodeWithTag("recording_toggle_button").performClick()
 
             composeRule.onNodeWithTag("front_inset_preview").assertIsDisplayed()
             composeRule.onNodeWithTag("dual_camera_telemetry_summary")
-                .assertTextContains("双摄 Session 2 · 并发预览/录制已绑定")
+                .assertTextContains(recordingSummary)
 
             composeRule.onNodeWithTag("recording_toggle_button").performClick()
 
             composeRule.waitUntil(timeoutMillis = 5_000) {
                 runBlocking {
-                    telemetryStore.load()?.summary == "双摄 Session 1 · 并发预览已绑定"
+                    telemetryStore.load()?.summary == previewSummary
                 }
             }
 
             composeRule.onNodeWithTag("front_inset_preview").assertIsDisplayed()
             composeRule.onNodeWithTag("dual_camera_telemetry_summary")
-                .assertTextContains("双摄 Session 1 · 并发预览已绑定")
+                .assertTextContains(previewSummary)
 
             val persisted = runBlocking { telemetryStore.load() }
             assertNotNull(persisted)
-            assertEquals("双摄 Session 1 · 并发预览已绑定", persisted?.summary)
-            assertEquals("后摄预览已连接 · 前摄预览已连接", persisted?.detail)
+            assertEquals(previewSummary, persisted?.summary)
+            assertEquals(previewDetail, persisted?.detail)
         } finally {
             runBlocking {
                 telemetryStore.clear()

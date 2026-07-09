@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
+import com.voyagecam.app.R
 import com.voyagecam.app.core.model.AutoStartResult
 import com.voyagecam.app.core.model.AutoStartSource
 import com.voyagecam.app.data.autostart.AutoStartDiagnosticsStore
@@ -23,7 +24,7 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
             diagnostics.record(
                 source = AutoStartSource.Bluetooth,
                 result = AutoStartResult.Ignored,
-                reason = "可信蓝牙自动启动开关未开启",
+                reason = context.getString(R.string.autostart_bt_toggle_off),
             )
             return
         }
@@ -31,7 +32,7 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
             diagnostics.record(
                 source = AutoStartSource.Bluetooth,
                 result = AutoStartResult.Ignored,
-                reason = "未填写可信蓝牙设备",
+                reason = context.getString(R.string.autostart_bt_device_missing),
             )
             return
         }
@@ -39,7 +40,7 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
             diagnostics.record(
                 source = AutoStartSource.Bluetooth,
                 result = AutoStartResult.Ignored,
-                reason = "蓝牙权限未授权",
+                reason = context.getString(R.string.autostart_bt_permission_missing),
                 detail = settings.trustedBluetoothDevice,
             )
             return
@@ -50,7 +51,7 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
             diagnostics.record(
                 source = AutoStartSource.Bluetooth,
                 result = AutoStartResult.Ignored,
-                reason = "连接广播未包含蓝牙设备信息",
+                reason = context.getString(R.string.autostart_bt_device_info_missing),
                 detail = settings.trustedBluetoothDevice,
             )
             return
@@ -61,7 +62,7 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
             diagnostics.record(
                 source = AutoStartSource.Bluetooth,
                 result = AutoStartResult.Ignored,
-                reason = "连接设备与可信设备不匹配",
+                reason = context.getString(R.string.autostart_bt_mismatch),
                 detail = deviceSummary,
             )
             return
@@ -75,7 +76,7 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
         diagnostics.record(
             source = AutoStartSource.Bluetooth,
             result = if (blockedReason == null) AutoStartResult.Started else AutoStartResult.Ignored,
-            reason = blockedReason ?: "可信蓝牙已连接并启动录制",
+            reason = blockedReason ?: context.getString(R.string.autostart_bt_started),
             detail = deviceSummary,
         )
     }
