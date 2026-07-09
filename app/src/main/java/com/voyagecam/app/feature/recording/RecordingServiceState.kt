@@ -8,6 +8,9 @@ class RecordingServiceState {
     var startedAtMillis: Long = 0L
     var dualCamera: Boolean = false
     var ambientAudio: Boolean = false
+    var recordingResolutionLabel: String = "1080p"
+    var recordingFrameRateLabel: String = "30fps"
+    var recordingBitrateLabel: String = "12Mbps"
     var gpsMetadataEnabled: Boolean = false
     var storageCapacityGb: Int = VoyageCamSettingsStore.MIN_STORAGE_GB
     var segmentDurationMinutes: Int = 3
@@ -28,6 +31,9 @@ class RecordingServiceState {
         startedAtMillis: Long,
         dualCamera: Boolean,
         ambientAudio: Boolean,
+        recordingResolutionLabel: String,
+        recordingFrameRateLabel: String,
+        recordingBitrateLabel: String,
         gpsMetadataEnabled: Boolean,
         storageCapacityGb: Int,
         segmentDurationMinutes: Int,
@@ -36,6 +42,9 @@ class RecordingServiceState {
         this.startedAtMillis = startedAtMillis
         this.dualCamera = dualCamera
         this.ambientAudio = ambientAudio
+        this.recordingResolutionLabel = recordingResolutionLabel
+        this.recordingFrameRateLabel = recordingFrameRateLabel
+        this.recordingBitrateLabel = recordingBitrateLabel
         this.gpsMetadataEnabled = gpsMetadataEnabled
         this.storageCapacityGb = storageCapacityGb
         this.segmentDurationMinutes = segmentDurationMinutes
@@ -62,6 +71,9 @@ class RecordingServiceState {
             startedAtMillis = startedAtMillis,
             dualCamera = dualCamera,
             ambientAudio = ambientAudio,
+            recordingResolutionLabel = recordingResolutionLabel,
+            recordingFrameRateLabel = recordingFrameRateLabel,
+            recordingBitrateLabel = recordingBitrateLabel,
             segmentDurationMinutes = segmentDurationMinutes,
             storageCapacityGb = storageCapacityGb,
             lockedSegmentCount = lockedSegmentCount,

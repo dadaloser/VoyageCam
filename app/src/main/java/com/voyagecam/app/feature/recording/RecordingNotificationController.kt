@@ -16,6 +16,9 @@ data class RecordingNotificationState(
     val startedAtMillis: Long,
     val dualCamera: Boolean,
     val ambientAudio: Boolean,
+    val recordingResolutionLabel: String,
+    val recordingFrameRateLabel: String,
+    val recordingBitrateLabel: String,
     val segmentDurationMinutes: Int,
     val storageCapacityGb: Int,
     val lockedSegmentCount: Int,
@@ -51,6 +54,7 @@ class RecordingNotificationController(private val context: Context) {
 
     fun build(state: RecordingNotificationState): Notification {
         val mode = if (state.dualCamera) "双摄设置已开" else "后摄单录"
+        val profile = "${state.recordingResolutionLabel}/${state.recordingFrameRateLabel}/${state.recordingBitrateLabel}"
         val audio = if (state.ambientAudio) "环境声开启" else "静音"
         val segment = "${state.segmentDurationMinutes}分钟分段"
         val locked = if (state.lockedSegmentCount > 0) " · 已锁定${state.lockedSegmentCount}段" else ""
@@ -89,10 +93,10 @@ class RecordingNotificationController(private val context: Context) {
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher)
             .setContentTitle("VoyageCam 正在录制")
-            .setContentText("$mode · $segment$locked · $elapsedText$fileText")
+            .setContentText("$mode · $profile · $segment$locked · $elapsedText$fileText")
             .setStyle(
                 NotificationCompat.BigTextStyle()
-                    .bigText("${state.status} · $mode · $audio · $segment$locked$transitionText$diagnosticText$performanceText · ${state.storageCapacityGb}GB循环空间 · 已运行 $elapsedText$fileText"),
+                    .bigText("${state.status} · $mode · $profile · $audio · $segment$locked$transitionText$diagnosticText$performanceText · ${state.storageCapacityGb}GB循环空间 · 已运行 $elapsedText$fileText"),
             )
             .setOngoing(true)
             .setOnlyAlertOnce(true)
