@@ -37,6 +37,7 @@ import com.voyagecam.app.data.settings.RecordingResolutionPreset
 import com.voyagecam.app.data.settings.StorageCapacityLimit
 import com.voyagecam.app.data.settings.VoyageCamSettings
 import com.voyagecam.app.data.settings.VoyageCamSettingsStore
+import com.voyagecam.app.data.settings.recordingModeDescription
 import com.voyagecam.app.ui.theme.SectionCard
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -151,12 +152,10 @@ fun SettingsPanel(
         Text(
             text = when {
                 isRecording -> "录制中不可切换模式，停止后修改"
-                settings.dualCameraEnabled && capability.isAvailable ->
-                    "自动模式：支持时启用前后双摄；双摄启动失败或性能保护触发时会自动回落后摄"
-                settings.dualCameraEnabled ->
-                    "自动模式：当前设备未报告双摄并发能力，本次仍会以后摄录制"
-                else ->
-                    "仅后摄：始终只使用后摄录制，更省电也更稳定"
+                else -> recordingModeDescription(
+                    recordingModeAuto = settings.dualCameraEnabled,
+                    dualCameraSupported = capability.isAvailable,
+                )
             },
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),

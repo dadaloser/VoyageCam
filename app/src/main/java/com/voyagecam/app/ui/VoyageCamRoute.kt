@@ -41,6 +41,8 @@ import com.voyagecam.app.core.model.EmergencyEvent
 import com.voyagecam.app.core.model.PendingStorageCapacityChange
 import com.voyagecam.app.core.model.RecordingSegment
 import com.voyagecam.app.data.settings.VoyageCamSettings
+import com.voyagecam.app.data.settings.recordingModeDescription
+import com.voyagecam.app.data.settings.recordingModeLabel
 import com.voyagecam.app.feature.recording.RecordingForegroundService
 import com.voyagecam.app.ui.events.EmergencyEventPanel
 import com.voyagecam.app.ui.history.SegmentHistoryPanel
@@ -165,11 +167,10 @@ fun VoyageCamRoute(
     )
 
     fun beginRecordingService() {
-        val startingMode = when {
-            settings.dualCameraEnabled && capability.isAvailable -> "自动双摄录制"
-            settings.dualCameraEnabled -> "自动模式录制（当前以后摄运行）"
-            else -> "后摄录制"
-        }
+        val startingMode = recordingModeLabel(
+            recordingModeAuto = settings.dualCameraEnabled,
+            dualCameraActive = settings.dualCameraEnabled && capability.isAvailable,
+        )
         viewModel.setStatus("正在启动$startingMode...")
         recordingServiceController.start(
             context = context,
@@ -389,11 +390,11 @@ internal fun VoyageCamRouteContent(
                         onSetStatus(
                             when {
                                 enabled && capability.isAvailable ->
-                                    "已切换到自动模式；支持时会启用双摄，失败时自动回落到后摄。"
+                                    "已切换为自动模式：支持时使用双摄；不支持或降级时自动切回后摄。"
                                 enabled ->
-                                    "已切换到自动模式；当前设备未报告双摄并发能力，本次仍会以后摄录制。"
+                                    "已切换为自动模式：当前设备仅支持后摄录制。"
                                 else ->
-                                    "已切换到仅后摄模式；后续录制只使用后摄。"
+                                    "已切换为仅后摄：始终使用后摄录制。"
                             },
                         )
                     },
@@ -775,11 +776,10 @@ internal fun RecordingPanel(
         Text(
             text = buildString {
                 append(
-                    when {
-                        settings.dualCameraEnabled && capability.isAvailable -> "自动双摄"
-                        settings.dualCameraEnabled -> "自动后摄"
-                        else -> "仅后摄"
-                    },
+                    recordingModeLabel(
+                        recordingModeAuto = settings.dualCameraEnabled,
+                        dualCameraActive = settings.dualCameraEnabled && capability.isAvailable,
+                    ),
                 )
                 append(" · ")
                 append(settings.recordingResolution.label)

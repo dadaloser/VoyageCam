@@ -7,7 +7,7 @@ class RecordingNotificationStateTest {
     @Test
     fun modeLabelShowsAutoDualWhenDualCameraActive() {
         assertEquals(
-            "自动模式（当前双摄）",
+            "自动模式 · 双摄",
             notificationState(recordingModeAuto = true, dualCamera = true).modeLabel(),
         )
     }
@@ -15,7 +15,7 @@ class RecordingNotificationStateTest {
     @Test
     fun modeLabelShowsAutoRearWhenAutoModeFallsBackToRear() {
         assertEquals(
-            "自动模式（当前后摄）",
+            "自动模式 · 后摄",
             notificationState(recordingModeAuto = true, dualCamera = false).modeLabel(),
         )
     }

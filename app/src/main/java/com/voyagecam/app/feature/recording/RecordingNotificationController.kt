@@ -10,6 +10,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.voyagecam.app.MainActivity
 import com.voyagecam.app.R
+import com.voyagecam.app.data.settings.recordingModeLabel
 import java.util.Locale
 
 data class RecordingNotificationState(
@@ -114,9 +115,8 @@ class RecordingNotificationController(private val context: Context) {
 }
 
 internal fun RecordingNotificationState.modeLabel(): String {
-    return when {
-        recordingModeAuto && dualCamera -> "自动模式（当前双摄）"
-        recordingModeAuto -> "自动模式（当前后摄）"
-        else -> "仅后摄"
-    }
+    return recordingModeLabel(
+        recordingModeAuto = recordingModeAuto,
+        dualCameraActive = dualCamera,
+    )
 }
