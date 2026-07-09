@@ -126,6 +126,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         val settings = settingsStore.load()
         state.resetForStart(
             startedAtMillis = System.currentTimeMillis(),
+            recordingModeAuto = settings.dualCameraEnabled,
             dualCamera = dualCamera,
             ambientAudio = ambientAudio,
             recordingResolutionLabel = settings.recordingResolution.label,

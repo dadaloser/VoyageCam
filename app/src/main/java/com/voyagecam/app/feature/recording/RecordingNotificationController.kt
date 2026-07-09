@@ -14,6 +14,7 @@ import java.util.Locale
 
 data class RecordingNotificationState(
     val startedAtMillis: Long,
+    val recordingModeAuto: Boolean,
     val dualCamera: Boolean,
     val ambientAudio: Boolean,
     val recordingResolutionLabel: String,
@@ -53,7 +54,7 @@ class RecordingNotificationController(private val context: Context) {
     }
 
     fun build(state: RecordingNotificationState): Notification {
-        val mode = if (state.dualCamera) "双摄设置已开" else "后摄单录"
+        val mode = state.modeLabel()
         val profile = "${state.recordingResolutionLabel}/${state.recordingFrameRateLabel}/${state.recordingBitrateLabel}"
         val audio = if (state.ambientAudio) "环境声开启" else "静音"
         val segment = "${state.segmentDurationMinutes}分钟分段"
@@ -109,5 +110,13 @@ class RecordingNotificationController(private val context: Context) {
     companion object {
         const val CHANNEL_ID = "voyage_cam_recording"
         const val NOTIFICATION_ID = 1001
+    }
+}
+
+internal fun RecordingNotificationState.modeLabel(): String {
+    return when {
+        recordingModeAuto && dualCamera -> "自动模式（当前双摄）"
+        recordingModeAuto -> "自动模式（当前后摄）"
+        else -> "仅后摄"
     }
 }

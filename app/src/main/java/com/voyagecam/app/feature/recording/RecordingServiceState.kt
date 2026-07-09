@@ -6,6 +6,7 @@ import com.voyagecam.app.data.settings.VoyageCamSettingsStore
 
 class RecordingServiceState {
     var startedAtMillis: Long = 0L
+    var recordingModeAuto: Boolean = false
     var dualCamera: Boolean = false
     var ambientAudio: Boolean = false
     var recordingResolutionLabel: String = "1080p"
@@ -29,6 +30,7 @@ class RecordingServiceState {
 
     fun resetForStart(
         startedAtMillis: Long,
+        recordingModeAuto: Boolean,
         dualCamera: Boolean,
         ambientAudio: Boolean,
         recordingResolutionLabel: String,
@@ -40,6 +42,7 @@ class RecordingServiceState {
         collisionSensitivity: CollisionSensitivity,
     ) {
         this.startedAtMillis = startedAtMillis
+        this.recordingModeAuto = recordingModeAuto
         this.dualCamera = dualCamera
         this.ambientAudio = ambientAudio
         this.recordingResolutionLabel = recordingResolutionLabel
@@ -69,6 +72,7 @@ class RecordingServiceState {
     fun notificationState(): RecordingNotificationState {
         return RecordingNotificationState(
             startedAtMillis = startedAtMillis,
+            recordingModeAuto = recordingModeAuto,
             dualCamera = dualCamera,
             ambientAudio = ambientAudio,
             recordingResolutionLabel = recordingResolutionLabel,
