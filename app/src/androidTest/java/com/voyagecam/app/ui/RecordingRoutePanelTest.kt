@@ -35,11 +35,67 @@ class RecordingRoutePanelTest {
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
-    fun clickingRoutePanelButtonsUsesRecordingControllerAndPersistsTelemetry() {
+    fun clickingStartDelegatesToPermissionCoordinatorBeforeStartingService() {
+        val controller = FakeRecordingServiceController()
+        var permissionStartRequests = 0
+
+        composeRule.setContent {
+            RecordingRoutePanel(
+                settings = VoyageCamSettings(
+                    dualCameraEnabled = true,
+                    storageCapacityGb = 10,
+                    segmentDurationMinutes = 3,
+                ),
+                capability = DualCameraCapability(
+                    state = DualCameraSwitchState.AvailableOn,
+                    grade = DeviceCapabilityGrade.A,
+                    reason = "supported",
+                ),
+                isRecording = false,
+                statusMessage = "等待开始",
+                permissionCoordinator = PermissionCoordinator(
+                    cameraPermissionGranted = false,
+                    notificationPermissionGranted = false,
+                    audioPermissionGranted = false,
+                    locationPermissionGranted = false,
+                    bluetoothPermissionGranted = false,
+                    requestStartRecording = { permissionStartRequests++ },
+                    requestCameraPermission = {},
+                    requestNotificationPermission = {},
+                    requestAudioPermission = {},
+                    requestLocationPermission = {},
+                    requestBluetoothPermission = {},
+                ),
+                recordingServiceController = controller,
+                onRecordingStopped = {},
+                onStatus = {},
+                onRefreshRecordingData = {},
+                onDualCameraTelemetry = {},
+                previewContent = { _, _ ->
+                    Box(
+                        modifier = Modifier
+                            .width(180.dp)
+                            .height(100.dp)
+                            .testTag("rear_camera_preview"),
+                    )
+                },
+            )
+        }
+
+        composeRule.onNodeWithTag("recording_toggle_button").performClick()
+
+        assertEquals(1, permissionStartRequests)
+        assertEquals(0, controller.startCalls)
+        assertEquals(0, controller.stopCalls)
+    }
+
+    @Test
+    fun clickingRoutePanelButtonsUsesPermissionCoordinatorControllerAndPersistsTelemetry() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val telemetryStore = DualCameraSessionTelemetryStore(context)
         val sessionStatusFlow = MutableStateFlow(previewSessionStatus(sessionToken = 1, recordingActive = false))
         val controller = FakeRecordingServiceController()
+        var permissionStartRequests = 0
 
         telemetryStore.clear()
         try {
@@ -60,17 +116,30 @@ class RecordingRoutePanelTest {
                     ),
                     isRecording = isRecording,
                     statusMessage = statusMessage,
-                    onStartRecordingRequested = {
-                        statusMessage = "正在启动后摄录制..."
-                        controller.start(
-                            context = context,
-                            dualCamera = true,
-                            ambientAudio = false,
-                        )
-                        isRecording = true
-                        statusMessage = "双摄录制中"
-                        sessionStatusFlow.value = previewSessionStatus(sessionToken = 2, recordingActive = true)
-                    },
+                    permissionCoordinator = PermissionCoordinator(
+                        cameraPermissionGranted = true,
+                        notificationPermissionGranted = true,
+                        audioPermissionGranted = true,
+                        locationPermissionGranted = true,
+                        bluetoothPermissionGranted = true,
+                        requestStartRecording = {
+                            permissionStartRequests++
+                            statusMessage = "正在启动后摄录制..."
+                            controller.start(
+                                context = context,
+                                dualCamera = true,
+                                ambientAudio = false,
+                            )
+                            isRecording = true
+                            statusMessage = "双摄录制中"
+                            sessionStatusFlow.value = previewSessionStatus(sessionToken = 2, recordingActive = true)
+                        },
+                        requestCameraPermission = {},
+                        requestNotificationPermission = {},
+                        requestAudioPermission = {},
+                        requestLocationPermission = {},
+                        requestBluetoothPermission = {},
+                    ),
                     recordingServiceController = controller,
                     onRecordingStopped = {
                         isRecording = false
@@ -106,6 +175,7 @@ class RecordingRoutePanelTest {
 
             composeRule.onNodeWithTag("recording_toggle_button").performClick()
 
+            assertEquals(1, permissionStartRequests)
             assertEquals(1, controller.startCalls)
             composeRule.onNodeWithTag("front_inset_preview").assertIsDisplayed()
             composeRule.onNodeWithTag("dual_camera_telemetry_summary")
@@ -133,11 +203,13 @@ class RecordingRoutePanelTest {
     }
 }
 
-private class FakeRecordingServiceController : RecordingServiceController {
+class FakeRecordingServiceController : RecordingServiceController {
     var startCalls = 0
     var stopCalls = 0
     var lockCalls = 0
     var refreshCalls = 0
+    var gpsMetadataCalls = 0
+    var lastGpsMetadataEnabled: Boolean? = null
 
     override fun start(context: android.content.Context, dualCamera: Boolean, ambientAudio: Boolean) {
         startCalls++
@@ -151,7 +223,10 @@ private class FakeRecordingServiceController : RecordingServiceController {
         lockCalls++
     }
 
-    override fun setGpsMetadataEnabled(context: android.content.Context, enabled: Boolean) = Unit
+    override fun setGpsMetadataEnabled(context: android.content.Context, enabled: Boolean) {
+        gpsMetadataCalls++
+        lastGpsMetadataEnabled = enabled
+    }
 }
 
 private fun previewSessionStatus(

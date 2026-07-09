@@ -45,13 +45,17 @@ import com.voyagecam.app.feature.recording.RecordingForegroundService
 import com.voyagecam.app.ui.events.EmergencyEventPanel
 import com.voyagecam.app.ui.history.SegmentHistoryPanel
 import com.voyagecam.app.ui.playback.PlaybackPanel
+import com.voyagecam.app.ui.playback.PlaybackItem
 import com.voyagecam.app.ui.preview.RearCameraPreview
+import com.voyagecam.app.ui.preview.DualCameraTelemetryPresentation
 import com.voyagecam.app.ui.preview.dualCameraPreviewPresentation
 import com.voyagecam.app.ui.preview.dualCameraTelemetryPresentation
+import com.voyagecam.app.ui.settings.BluetoothDevicePickerState
 import com.voyagecam.app.ui.settings.SettingsPanel
 import com.voyagecam.app.ui.settings.rememberBluetoothDevicePickerState
 import com.voyagecam.app.ui.theme.SectionCard
 import com.voyagecam.app.ui.theme.VoyageCamTheme
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -86,13 +90,62 @@ private object ForegroundRecordingServiceController : RecordingServiceController
     }
 }
 
+data class PermissionCoordinatorParams(
+    val context: Context,
+    val settings: VoyageCamSettings,
+    val isRecording: Boolean,
+    val pendingGpsMetadataEnable: Boolean,
+    val onRedetect: () -> Unit,
+    val onBeginRecording: () -> Unit,
+    val onPersistSettings: (VoyageCamSettings) -> Unit,
+    val onApplyGpsMetadataSetting: (Boolean) -> Unit,
+    val onSetPendingGpsMetadataEnable: (Boolean) -> Unit,
+    val onSetStatus: (String) -> Unit,
+    val onBluetoothPermissionGranted: () -> Unit,
+)
+
+@Composable
+private fun defaultPermissionCoordinatorFactory(
+    params: PermissionCoordinatorParams,
+): PermissionCoordinator {
+    return rememberPermissionCoordinator(
+        context = params.context,
+        settings = params.settings,
+        isRecording = params.isRecording,
+        pendingGpsMetadataEnable = params.pendingGpsMetadataEnable,
+        onRedetect = params.onRedetect,
+        onBeginRecording = params.onBeginRecording,
+        onPersistSettings = params.onPersistSettings,
+        onApplyGpsMetadataSetting = params.onApplyGpsMetadataSetting,
+        onSetPendingGpsMetadataEnable = params.onSetPendingGpsMetadataEnable,
+        onSetStatus = params.onSetStatus,
+        onBluetoothPermissionGranted = params.onBluetoothPermissionGranted,
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VoyageCamRoute(
     recordingServiceController: RecordingServiceController = ForegroundRecordingServiceController,
+    viewModelProvider: @Composable () -> VoyageCamViewModel = { viewModel() },
+    permissionCoordinatorFactory: @Composable (PermissionCoordinatorParams) -> PermissionCoordinator = { params ->
+        defaultPermissionCoordinatorFactory(params)
+    },
+    bluetoothDevicePickerStateFactory: @Composable (Context, String) -> BluetoothDevicePickerState = { factoryContext, trustedDeviceInput ->
+        rememberBluetoothDevicePickerState(
+            context = factoryContext,
+            trustedDeviceInput = trustedDeviceInput,
+        )
+    },
+    routeContentOverride: (@Composable (
+        uiState: VoyageCamUiState,
+        permissionCoordinator: PermissionCoordinator,
+        bluetoothDevicePickerState: BluetoothDevicePickerState,
+        recordingServiceController: RecordingServiceController,
+    ) -> Unit)? = null,
 ) {
     val context = LocalContext.current
-    val viewModel: VoyageCamViewModel = viewModel()
+    val viewModel: VoyageCamViewModel = viewModelProvider()
     val uiState by viewModel.uiState.collectAsState()
     val settings = uiState.settings
     val capability = uiState.capability
@@ -102,9 +155,9 @@ fun VoyageCamRoute(
     val emergencyEvents = uiState.emergencyEvents
     val availableDays = uiState.availableDays
     val filteredSegments = uiState.filteredSegments
-    val bluetoothDevicePickerState = rememberBluetoothDevicePickerState(
-        context = context,
-        trustedDeviceInput = settings.trustedBluetoothDevice,
+    val bluetoothDevicePickerState = bluetoothDevicePickerStateFactory(
+        context,
+        settings.trustedBluetoothDevice,
     )
     val shareLauncher = rememberShareLauncher(
         context = context,
@@ -128,18 +181,20 @@ fun VoyageCamRoute(
         }
     }
 
-    val permissionCoordinator = rememberPermissionCoordinator(
-        context = context,
-        settings = settings,
-        isRecording = isRecording,
-        pendingGpsMetadataEnable = uiState.pendingGpsMetadataEnable,
-        onRedetect = viewModel::redetect,
-        onBeginRecording = ::beginRecordingService,
-        onPersistSettings = viewModel::persistSettings,
-        onApplyGpsMetadataSetting = ::applyGpsMetadataSetting,
-        onSetPendingGpsMetadataEnable = viewModel::setPendingGpsMetadataEnable,
-        onSetStatus = viewModel::setStatus,
-        onBluetoothPermissionGranted = bluetoothDevicePickerState::refreshPairedDevices,
+    val permissionCoordinator = permissionCoordinatorFactory(
+        PermissionCoordinatorParams(
+            context = context,
+            settings = settings,
+            isRecording = isRecording,
+            pendingGpsMetadataEnable = uiState.pendingGpsMetadataEnable,
+            onRedetect = viewModel::redetect,
+            onBeginRecording = ::beginRecordingService,
+            onPersistSettings = viewModel::persistSettings,
+            onApplyGpsMetadataSetting = ::applyGpsMetadataSetting,
+            onSetPendingGpsMetadataEnable = viewModel::setPendingGpsMetadataEnable,
+            onSetStatus = viewModel::setStatus,
+            onBluetoothPermissionGranted = bluetoothDevicePickerState::refreshPairedDevices,
+        ),
     )
 
     fun stopRecording() {
@@ -158,6 +213,115 @@ fun VoyageCamRoute(
                 }
         }
     }
+
+    routeContentOverride?.invoke(
+        uiState,
+        permissionCoordinator,
+        bluetoothDevicePickerState,
+        recordingServiceController,
+    ) ?: VoyageCamRouteContent(
+        uiState = uiState,
+        permissionCoordinator = permissionCoordinator,
+        bluetoothDevicePickerState = bluetoothDevicePickerState,
+        recordingServiceController = recordingServiceController,
+        onSetStatus = viewModel::setStatus,
+        onRecordDualCameraTelemetry = viewModel::recordDualCameraSessionTelemetry,
+        onPersistSettings = viewModel::persistSettings,
+        onRedetect = viewModel::redetect,
+        onRequestStorageCapacityChange = viewModel::requestStorageCapacityChange,
+        onCleanupStorageNow = viewModel::cleanupStorageNow,
+        onApplyGpsMetadataSetting = ::applyGpsMetadataSetting,
+        onRecordingStopped = viewModel::setRecordingStopped,
+        onSetPendingGpsMetadataEnable = viewModel::setPendingGpsMetadataEnable,
+        onSetPendingSettingsReset = viewModel::setPendingSettingsReset,
+        onRefreshAutoStartDiagnostic = viewModel::refreshAutoStartDiagnostic,
+        onRefreshDualCameraDiagnostic = viewModel::refreshDualCameraDiagnostic,
+        onClearDualCameraDiagnostic = viewModel::clearDualCameraDiagnostic,
+        onRefreshDualCameraSessionTelemetry = viewModel::refreshDualCameraSessionTelemetry,
+        onClearDualCameraSessionTelemetry = viewModel::clearDualCameraSessionTelemetry,
+        onResetSettingsToDefaults = viewModel::resetSettingsToDefaults,
+        onApplyStorageCapacityChange = viewModel::applyStorageCapacityChange,
+        onClearPendingStorageCapacityChange = viewModel::clearPendingStorageCapacityChange,
+        onClosePlayback = viewModel::closePlayback,
+        onOpenPlaybackInSystem = { item -> shareLauncher.openVideoFile(item.primaryFile) },
+        onSetPendingEmergencyEventDelete = viewModel::setPendingEmergencyEventDelete,
+        onDeleteEmergencyEvent = viewModel::deleteEmergencyEvent,
+        onRefreshRecordingData = viewModel::refreshRecordingData,
+        onRepairEmergencyEvents = viewModel::repairEmergencyEvents,
+        onOpenEmergencyEvent = viewModel::openEmergencyEvent,
+        onShareEmergencyEvent = ::shareEmergencyEvent,
+        onExportEmergencyEvent = viewModel::exportEmergencyEvent,
+        onCancelEvidenceExport = viewModel::cancelEvidenceExport,
+        onShareEvidencePackage = shareLauncher::shareEvidencePackage,
+        onDismissEvidenceExport = viewModel::dismissEvidenceExport,
+        onOpenEmergencyEventMap = shareLauncher::openEmergencyEventMap,
+        onSetPendingSegmentDelete = viewModel::setPendingSegmentDelete,
+        onDeleteSegment = viewModel::deleteSegment,
+        onSelectDay = viewModel::selectDay,
+        onSelectCameraFilter = viewModel::selectCameraFilter,
+        onSelectLockFilter = viewModel::selectLockFilter,
+        onOpenSegment = viewModel::openSegment,
+        onShareSegment = shareLauncher::shareSegment,
+        onUnlockSegment = viewModel::unlockSegment,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun VoyageCamRouteContent(
+    uiState: VoyageCamUiState,
+    permissionCoordinator: PermissionCoordinator,
+    bluetoothDevicePickerState: BluetoothDevicePickerState,
+    recordingServiceController: RecordingServiceController,
+    onSetStatus: (String) -> Unit = {},
+    onRecordDualCameraTelemetry: (DualCameraTelemetryPresentation) -> Unit = {},
+    onPersistSettings: (VoyageCamSettings) -> Unit = {},
+    onRedetect: () -> Unit = {},
+    onRequestStorageCapacityChange: (Int) -> Unit = {},
+    onCleanupStorageNow: () -> Unit = {},
+    onApplyGpsMetadataSetting: (Boolean) -> Unit = {},
+    onRecordingStopped: () -> Unit = {},
+    onSetPendingGpsMetadataEnable: (Boolean) -> Unit = {},
+    onSetPendingSettingsReset: (Boolean) -> Unit = {},
+    onRefreshAutoStartDiagnostic: () -> Unit = {},
+    onRefreshDualCameraDiagnostic: () -> Unit = {},
+    onClearDualCameraDiagnostic: () -> Unit = {},
+    onRefreshDualCameraSessionTelemetry: () -> Unit = {},
+    onClearDualCameraSessionTelemetry: () -> Unit = {},
+    onResetSettingsToDefaults: () -> Unit = {},
+    onApplyStorageCapacityChange: (Int, Boolean) -> Unit = { _, _ -> },
+    onClearPendingStorageCapacityChange: (String) -> Unit = {},
+    onClosePlayback: () -> Unit = {},
+    onOpenPlaybackInSystem: (PlaybackItem) -> Unit = {},
+    onSetPendingEmergencyEventDelete: (EmergencyEvent?) -> Unit = {},
+    onDeleteEmergencyEvent: (EmergencyEvent) -> Unit = {},
+    onRefreshRecordingData: () -> Unit = {},
+    onRepairEmergencyEvents: () -> Unit = {},
+    onOpenEmergencyEvent: (EmergencyEvent) -> Unit = {},
+    onShareEmergencyEvent: (EmergencyEvent) -> Unit = {},
+    onExportEmergencyEvent: (EmergencyEvent) -> Unit = {},
+    onCancelEvidenceExport: () -> Unit = {},
+    onShareEvidencePackage: (File) -> Unit = {},
+    onDismissEvidenceExport: () -> Unit = {},
+    onOpenEmergencyEventMap: (EmergencyEvent) -> Unit = {},
+    onSetPendingSegmentDelete: (RecordingSegment?) -> Unit = {},
+    onDeleteSegment: (RecordingSegment) -> Unit = {},
+    onSelectDay: (String?) -> Unit = {},
+    onSelectCameraFilter: (com.voyagecam.app.ui.history.SegmentCameraFilter) -> Unit = {},
+    onSelectLockFilter: (com.voyagecam.app.ui.history.SegmentLockFilter) -> Unit = {},
+    onOpenSegment: (RecordingSegment) -> Unit = {},
+    onShareSegment: (RecordingSegment) -> Unit = {},
+    onUnlockSegment: (RecordingSegment) -> Unit = {},
+) {
+    val settings = uiState.settings
+    val capability = uiState.capability
+    val isRecording = uiState.isRecording
+    val statusMessage = uiState.statusMessage
+    val allSegments = uiState.allSegments
+    val emergencyEvents = uiState.emergencyEvents
+    val availableDays = uiState.availableDays
+    val filteredSegments = uiState.filteredSegments
+    val context = LocalContext.current
 
     VoyageCamTheme {
         Scaffold(
@@ -185,12 +349,12 @@ fun VoyageCamRoute(
                     capability = capability,
                     isRecording = isRecording,
                     statusMessage = statusMessage,
-                    onStartRecordingRequested = permissionCoordinator.requestStartRecording,
+                    permissionCoordinator = permissionCoordinator,
                     recordingServiceController = recordingServiceController,
-                    onRecordingStopped = viewModel::setRecordingStopped,
-                    onStatus = viewModel::setStatus,
-                    onRefreshRecordingData = viewModel::refreshRecordingData,
-                    onDualCameraTelemetry = viewModel::recordDualCameraSessionTelemetry,
+                    onRecordingStopped = onRecordingStopped,
+                    onStatus = onSetStatus,
+                    onRefreshRecordingData = onRefreshRecordingData,
+                    onDualCameraTelemetry = onRecordDualCameraTelemetry,
                 )
 
                 SettingsPanel(
@@ -209,66 +373,66 @@ fun VoyageCamRoute(
                     onRequestNotificationPermission = permissionCoordinator.requestNotificationPermission,
                     onRequestLocationPermission = permissionCoordinator.requestLocationPermission,
                     onRequestBluetoothPermission = permissionCoordinator.requestBluetoothPermission,
-                    onRedetect = viewModel::redetect,
+                    onRedetect = onRedetect,
                     onDualCameraChanged = { enabled ->
                         if (!isRecording) {
-                            viewModel.persistSettings(settings.copy(dualCameraEnabled = enabled))
-                            viewModel.redetect()
+                            onPersistSettings(settings.copy(dualCameraEnabled = enabled))
+                            onRedetect()
                         } else {
-                            viewModel.setStatus("录制中不可切换双摄；停止后修改会在下一次录制生效。")
+                            onSetStatus("录制中不可切换双摄；停止后修改会在下一次录制生效。")
                         }
                     },
-                    onStorageChanged = viewModel::requestStorageCapacityChange,
-                    onCleanupStorage = viewModel::cleanupStorageNow,
+                    onStorageChanged = onRequestStorageCapacityChange,
+                    onCleanupStorage = onCleanupStorageNow,
                     onSegmentDurationChanged = { minutes ->
                         if (isRecording) {
-                            viewModel.setStatus("录制中不可修改分段时长；停止后修改会在下一次录制生效。")
+                            onSetStatus("录制中不可修改分段时长；停止后修改会在下一次录制生效。")
                         } else {
-                            viewModel.persistSettings(settings.copy(segmentDurationMinutes = minutes))
+                            onPersistSettings(settings.copy(segmentDurationMinutes = minutes))
                         }
                     },
                     onCollisionSensitivityChanged = { sensitivity ->
                         if (isRecording) {
-                            viewModel.setStatus("录制中不可修改碰撞检测灵敏度；停止后修改会在下一次录制生效。")
+                            onSetStatus("录制中不可修改碰撞检测灵敏度；停止后修改会在下一次录制生效。")
                         } else {
-                            viewModel.persistSettings(settings.copy(collisionSensitivity = sensitivity))
+                            onPersistSettings(settings.copy(collisionSensitivity = sensitivity))
                         }
                     },
                     onAmbientAudioChanged = { enabled ->
                         if (isRecording) {
-                            viewModel.setStatus("录制中不可切换环境声；停止后修改会在下一次录制生效。")
+                            onSetStatus("录制中不可切换环境声；停止后修改会在下一次录制生效。")
                             return@SettingsPanel
                         }
 
                         if (!enabled) {
-                            viewModel.persistSettings(settings.copy(ambientAudioEnabled = false))
-                            viewModel.setStatus("已切换为静音录制；后续录制不写入音频轨道。")
+                            onPersistSettings(settings.copy(ambientAudioEnabled = false))
+                            onSetStatus("已切换为静音录制；后续录制不写入音频轨道。")
                             return@SettingsPanel
                         }
 
                         if (permissionCoordinator.audioPermissionGranted) {
-                            viewModel.persistSettings(settings.copy(ambientAudioEnabled = true))
-                            viewModel.setStatus("行车环境声已开启；音频仅写入本地行车视频。")
+                            onPersistSettings(settings.copy(ambientAudioEnabled = true))
+                            onSetStatus("行车环境声已开启；音频仅写入本地行车视频。")
                         } else {
                             permissionCoordinator.requestAudioPermission()
                         }
                     },
                     onGpsMetadataChanged = { enabled ->
                         if (!enabled) {
-                            applyGpsMetadataSetting(false)
+                            onApplyGpsMetadataSetting(false)
                             return@SettingsPanel
                         }
 
                         if (permissionCoordinator.locationPermissionGranted) {
-                            applyGpsMetadataSetting(true)
+                            onApplyGpsMetadataSetting(true)
                         } else {
-                            viewModel.setPendingGpsMetadataEnable(true)
+                            onSetPendingGpsMetadataEnable(true)
                             permissionCoordinator.requestLocationPermission()
                         }
                     },
                     onExportWatermarkSubtitlesChanged = { enabled ->
-                        viewModel.persistSettings(settings.copy(exportWatermarkSubtitlesEnabled = enabled))
-                        viewModel.setStatus(
+                        onPersistSettings(settings.copy(exportWatermarkSubtitlesEnabled = enabled))
+                        onSetStatus(
                             if (enabled) {
                                 "证据包导出会附带时间/速度水印字幕，方便在外部播放器预览。"
                             } else {
@@ -277,8 +441,8 @@ fun VoyageCamRoute(
                         )
                     },
                     onExportBurnedWatermarkVideoChanged = { enabled ->
-                        viewModel.persistSettings(settings.copy(exportBurnedWatermarkVideoEnabled = enabled))
-                        viewModel.setStatus(
+                        onPersistSettings(settings.copy(exportBurnedWatermarkVideoEnabled = enabled))
+                        onSetStatus(
                             if (enabled) {
                                 "证据包导出会额外生成带烧录时间/速度/位置水印的视频副本；原始视频保持不变。"
                             } else {
@@ -287,8 +451,8 @@ fun VoyageCamRoute(
                         )
                     },
                     onAutoStartOnPowerChanged = { enabled ->
-                        viewModel.persistSettings(settings.copy(autoStartOnPowerConnected = enabled))
-                        viewModel.setStatus(
+                        onPersistSettings(settings.copy(autoStartOnPowerConnected = enabled))
+                        onSetStatus(
                             if (enabled) {
                                 "已开启连接充电器自动开始录制；需提前授权相机和通知权限。"
                             } else {
@@ -297,16 +461,16 @@ fun VoyageCamRoute(
                         )
                     },
                     onTrustedBluetoothDeviceChanged = { device ->
-                        viewModel.persistSettings(settings.copy(trustedBluetoothDevice = device))
+                        onPersistSettings(settings.copy(trustedBluetoothDevice = device))
                     },
                     onAutoStartOnTrustedBluetoothChanged = { enabled ->
                         if (enabled && settings.trustedBluetoothDevice.isBlank()) {
-                            viewModel.setStatus("请先填写可信蓝牙设备名称或 MAC 地址。")
+                            onSetStatus("请先填写可信蓝牙设备名称或 MAC 地址。")
                             return@SettingsPanel
                         }
 
-                        viewModel.persistSettings(settings.copy(autoStartOnTrustedBluetooth = enabled))
-                        viewModel.setStatus(
+                        onPersistSettings(settings.copy(autoStartOnTrustedBluetooth = enabled))
+                        onSetStatus(
                             if (enabled) {
                                 "已开启可信蓝牙连接自动开始录制；需提前授权相机、通知和蓝牙权限。"
                             } else {
@@ -316,34 +480,34 @@ fun VoyageCamRoute(
                     },
                     onRequestResetSettings = {
                         if (isRecording) {
-                            viewModel.setStatus("录制中不可恢复默认设置；停止后再操作。")
+                            onSetStatus("录制中不可恢复默认设置；停止后再操作。")
                         } else {
-                            viewModel.setPendingSettingsReset(true)
+                            onSetPendingSettingsReset(true)
                         }
                     },
                     autoStartDiagnostic = uiState.autoStartDiagnostic,
                     dualCameraDiagnostic = uiState.dualCameraDiagnostic,
                     dualCameraSessionTelemetry = uiState.dualCameraSessionTelemetry,
-                    onRefreshAutoStartDiagnostic = viewModel::refreshAutoStartDiagnostic,
-                    onRefreshDualCameraDiagnostic = viewModel::refreshDualCameraDiagnostic,
+                    onRefreshAutoStartDiagnostic = onRefreshAutoStartDiagnostic,
+                    onRefreshDualCameraDiagnostic = onRefreshDualCameraDiagnostic,
                     onClearDualCameraDiagnostic = {
-                        viewModel.clearDualCameraDiagnostic()
-                        viewModel.setStatus("已清空双摄降级诊断记录。")
+                        onClearDualCameraDiagnostic()
+                        onSetStatus("已清空双摄降级诊断记录。")
                     },
-                    onRefreshDualCameraSessionTelemetry = viewModel::refreshDualCameraSessionTelemetry,
+                    onRefreshDualCameraSessionTelemetry = onRefreshDualCameraSessionTelemetry,
                     onClearDualCameraSessionTelemetry = {
-                        viewModel.clearDualCameraSessionTelemetry()
-                        viewModel.setStatus("已清空双摄会话状态记录。")
+                        onClearDualCameraSessionTelemetry()
+                        onSetStatus("已清空双摄会话状态记录。")
                     },
                     bluetoothDevicePickerState = bluetoothDevicePickerState,
                 )
 
                 if (uiState.pendingSettingsReset) {
                     SettingsResetConfirmationPanel(
-                        onConfirm = viewModel::resetSettingsToDefaults,
+                        onConfirm = onResetSettingsToDefaults,
                         onCancel = {
-                            viewModel.setPendingSettingsReset(false)
-                            viewModel.setStatus("已取消恢复默认设置。")
+                            onSetPendingSettingsReset(false)
+                            onSetStatus("已取消恢复默认设置。")
                         },
                     )
                 }
@@ -352,13 +516,13 @@ fun VoyageCamRoute(
                     StorageCapacityConfirmationPanel(
                         pending = pending,
                         onConfirm = {
-                            viewModel.applyStorageCapacityChange(
-                                capacityGb = pending.nextCapacityGb,
-                                cleanupNow = true,
+                            onApplyStorageCapacityChange(
+                                pending.nextCapacityGb,
+                                true,
                             )
                         },
                         onCancel = {
-                            viewModel.clearPendingStorageCapacityChange("已取消调整录像容量。")
+                            onClearPendingStorageCapacityChange("已取消调整录像容量。")
                         },
                     )
                 }
@@ -366,9 +530,9 @@ fun VoyageCamRoute(
                 uiState.playbackItem?.let { item ->
                     PlaybackPanel(
                         item = item,
-                        onClose = viewModel::closePlayback,
+                        onClose = onClosePlayback,
                         onOpenInSystem = {
-                            shareLauncher.openVideoFile(item.primaryFile)
+                            onOpenPlaybackInSystem(item)
                         },
                     )
                 }
@@ -377,11 +541,11 @@ fun VoyageCamRoute(
                     EmergencyEventDeleteConfirmationPanel(
                         event = event,
                         onConfirm = {
-                            viewModel.deleteEmergencyEvent(event)
+                            onDeleteEmergencyEvent(event)
                         },
                         onCancel = {
-                            viewModel.setPendingEmergencyEventDelete(null)
-                            viewModel.setStatus("已取消删除紧急事件。")
+                            onSetPendingEmergencyEventDelete(null)
+                            onSetStatus("已取消删除紧急事件。")
                         },
                     )
                 }
@@ -389,27 +553,27 @@ fun VoyageCamRoute(
                 EmergencyEventPanel(
                     events = emergencyEvents,
                     exportState = uiState.evidenceExportState,
-                    onRefresh = viewModel::refreshRecordingData,
-                    onRepairMissingSegments = viewModel::repairEmergencyEvents,
-                    onOpen = viewModel::openEmergencyEvent,
-                    onShare = ::shareEmergencyEvent,
-                    onExport = viewModel::exportEmergencyEvent,
-                    onCancelExport = viewModel::cancelEvidenceExport,
-                    onShareExport = shareLauncher::shareEvidencePackage,
-                    onDismissExport = viewModel::dismissEvidenceExport,
-                    onOpenMap = shareLauncher::openEmergencyEventMap,
-                    onDelete = viewModel::setPendingEmergencyEventDelete,
+                    onRefresh = onRefreshRecordingData,
+                    onRepairMissingSegments = onRepairEmergencyEvents,
+                    onOpen = onOpenEmergencyEvent,
+                    onShare = onShareEmergencyEvent,
+                    onExport = onExportEmergencyEvent,
+                    onCancelExport = onCancelEvidenceExport,
+                    onShareExport = onShareEvidencePackage,
+                    onDismissExport = onDismissEvidenceExport,
+                    onOpenMap = onOpenEmergencyEventMap,
+                    onDelete = onSetPendingEmergencyEventDelete,
                 )
 
                 uiState.pendingSegmentDelete?.let { segment ->
                     SegmentDeleteConfirmationPanel(
                         segment = segment,
                         onConfirm = {
-                            viewModel.deleteSegment(segment)
+                            onDeleteSegment(segment)
                         },
                         onCancel = {
-                            viewModel.setPendingSegmentDelete(null)
-                            viewModel.setStatus("已取消删除录像片段。")
+                            onSetPendingSegmentDelete(null)
+                            onSetStatus("已取消删除录像片段。")
                         },
                     )
                 }
@@ -422,14 +586,14 @@ fun VoyageCamRoute(
                     selectedDay = uiState.selectedDay,
                     selectedCameraFilter = uiState.selectedCameraFilter,
                     selectedLockFilter = uiState.selectedLockFilter,
-                    onSelectedDayChanged = viewModel::selectDay,
-                    onCameraFilterChanged = viewModel::selectCameraFilter,
-                    onLockFilterChanged = viewModel::selectLockFilter,
-                    onRefresh = viewModel::refreshRecordingData,
-                    onOpen = viewModel::openSegment,
-                    onShare = shareLauncher::shareSegment,
-                    onUnlock = viewModel::unlockSegment,
-                    onDelete = viewModel::setPendingSegmentDelete,
+                    onSelectedDayChanged = onSelectDay,
+                    onCameraFilterChanged = onSelectCameraFilter,
+                    onLockFilterChanged = onSelectLockFilter,
+                    onRefresh = onRefreshRecordingData,
+                    onOpen = onOpenSegment,
+                    onShare = onShareSegment,
+                    onUnlock = onUnlockSegment,
+                    onDelete = onSetPendingSegmentDelete,
                 )
             }
         }
@@ -442,7 +606,7 @@ internal fun RecordingRoutePanel(
     capability: DualCameraCapability,
     isRecording: Boolean,
     statusMessage: String,
-    onStartRecordingRequested: () -> Unit,
+    permissionCoordinator: PermissionCoordinator,
     recordingServiceController: RecordingServiceController,
     onRecordingStopped: () -> Unit,
     onStatus: (String) -> Unit,
@@ -476,7 +640,7 @@ internal fun RecordingRoutePanel(
         isRecording = isRecording,
         statusMessage = statusMessage,
         onToggleRecording = {
-            if (isRecording) stopRecording() else onStartRecordingRequested()
+            if (isRecording) stopRecording() else permissionCoordinator.requestStartRecording()
         },
         onEmergencyLock = ::requestEmergencyLock,
         onDualCameraTelemetry = onDualCameraTelemetry,

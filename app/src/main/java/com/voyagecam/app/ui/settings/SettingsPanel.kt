@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -220,6 +221,7 @@ fun SettingsPanel(
             checked = settings.gpsMetadataEnabled,
             enabled = true,
             onCheckedChange = onGpsMetadataChanged,
+            switchModifier = Modifier.testTag("gps_metadata_switch"),
         )
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -722,6 +724,7 @@ private fun SettingSwitchRow(
     checked: Boolean,
     enabled: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    switchModifier: Modifier = Modifier,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -747,6 +750,7 @@ private fun SettingSwitchRow(
             checked = checked,
             enabled = enabled,
             onCheckedChange = onCheckedChange,
+            modifier = switchModifier,
         )
     }
 }
