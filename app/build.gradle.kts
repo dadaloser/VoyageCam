@@ -14,7 +14,10 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "1.0.0"
+        buildConfigField("String", "BUGLY_APP_ID", "\"2530e7eb67\"")
+        buildConfigField("String", "BUGLY_APP_KEY", "\"31384f47-8a53-4ec1-8444-08dac901c70a\"")
+        buildConfigField("boolean", "BUGLY_DEBUG", "false")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -38,6 +41,7 @@ android {
     }
 
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 }
@@ -64,6 +68,7 @@ dependencies {
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.room.runtime)
+    implementation(libs.tencent.bugly.crashreport)
     ksp(libs.androidx.room.compiler)
 
     testImplementation(libs.junit4)

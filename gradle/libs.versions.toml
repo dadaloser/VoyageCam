@@ -12,6 +12,7 @@ room = "2.6.1"
 junit4 = "4.13.2"
 junitExt = "1.2.1"
 espresso = "3.6.1"
+bugly = "4.1.9.3"
 
 [libraries]
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
@@ -41,6 +42,7 @@ androidx-room-runtime = { group = "androidx.room", name = "room-runtime", versio
 androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitExt" }
 androidx-test-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso" }
 junit4 = { group = "junit", name = "junit", version.ref = "junit4" }
+tencent-bugly-crashreport = { group = "com.tencent.bugly", name = "crashreport", version.ref = "bugly" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
