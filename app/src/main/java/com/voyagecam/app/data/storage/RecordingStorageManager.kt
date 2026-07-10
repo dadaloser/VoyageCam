@@ -220,7 +220,8 @@ class RecordingStorageManager(private val context: Context) {
         private const val DASHCAM_DIRECTORY = "Dashcam"
         private const val NORMAL_DIRECTORY = "normal"
         private const val LOCKED_DIRECTORY = "locked"
-        private const val DEFAULT_SEGMENT_LIST_LIMIT = 30
+        // Keep roughly a full day's clips available in history even with short segments.
+        private const val DEFAULT_SEGMENT_LIST_LIMIT = 3_000
 
         private fun File.withLockedName(): File {
             if (nameWithoutExtension.endsWith("_locked")) return this

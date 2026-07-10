@@ -2,27 +2,41 @@ package com.voyagecam.app.ui.history
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.voyagecam.app.R
 import com.voyagecam.app.core.model.CameraDirection
 import com.voyagecam.app.core.model.RecordingSegment
+import com.voyagecam.app.feature.evidence.RecordingClipExportMode
+import com.voyagecam.app.ui.events.EvidenceExportState
+import com.voyagecam.app.ui.export.ExportStatusPanel
 import com.voyagecam.app.ui.labelRes
 import com.voyagecam.app.ui.theme.SectionCard
 import java.text.SimpleDateFormat
@@ -34,6 +48,7 @@ fun SegmentHistoryPanel(
     segments: List<RecordingSegment>,
     allSegments: List<RecordingSegment>,
     totalSegmentCount: Int,
+    exportState: EvidenceExportState?,
     availableDays: List<String>,
     selectedDay: String?,
     selectedCameraFilter: SegmentCameraFilter,
@@ -44,13 +59,20 @@ fun SegmentHistoryPanel(
     onRefresh: () -> Unit,
     onOpen: (RecordingSegment) -> Unit,
     onShare: (RecordingSegment) -> Unit,
+    onExportGroup: (String, RecordingClipExportMode) -> Unit,
+    onCancelExport: () -> Unit,
+    onShareExport: (java.io.File) -> Unit,
+    onDismissExport: () -> Unit,
     onUnlock: (RecordingSegment) -> Unit,
     onDelete: (RecordingSegment) -> Unit,
 ) {
-    val context = LocalContext.current
-    val groupedDirections = allSegments
-        .groupBy { it.groupKey }
-        .mapValues { entry -> entry.value.map { it.cameraDirection }.toSet() }
+    val visibleGroupKeys = remember(segments) { segments.map { it.groupKey }.toSet() }
+    val allGroups = remember(allSegments) { allSegments.toTimelineGroups() }
+    val visibleGroups = remember(allGroups, visibleGroupKeys) {
+        allGroups.filter { it.groupKey in visibleGroupKeys }
+    }
+    var pendingExportGroupKey by rememberSaveable { mutableStateOf<String?>(null) }
+    val pendingExportGroup = visibleGroups.firstOrNull { it.groupKey == pendingExportGroupKey }
 
     SectionCard {
         Row(
@@ -79,6 +101,15 @@ fun SegmentHistoryPanel(
             onLockFilterChanged = onLockFilterChanged,
         )
         Spacer(modifier = Modifier.height(12.dp))
+        exportState?.let { state ->
+            ExportStatusPanel(
+                state = state,
+                onShare = onShareExport,
+                onCancel = onCancelExport,
+                onDismiss = onDismissExport,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+        }
         if (totalSegmentCount == 0) {
             Text(
                 text = stringResource(R.string.history_empty),
@@ -93,30 +124,344 @@ fun SegmentHistoryPanel(
             )
         } else {
             Text(
-                text = stringResource(R.string.history_summary, segments.size, totalSegmentCount),
+                text = stringResource(
+                    R.string.history_summary,
+                    visibleGroups.size,
+                    allGroups.size,
+                    segments.size,
+                    totalSegmentCount,
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFF64777B),
             )
             Spacer(modifier = Modifier.height(12.dp))
-            segments.forEachIndexed { index, segment ->
-                RecordingSegmentRow(
-                    segment = segment,
-                    groupedDirections = groupedDirections[segment.groupKey].orEmpty(),
-                    onOpen = onOpen,
-                    onShare = onShare,
-                    onUnlock = onUnlock,
-                    onDelete = onDelete,
+            TimelineGroupList(
+                groups = visibleGroups,
+                onOpen = onOpen,
+                onShare = onShare,
+                onExport = { pendingExportGroupKey = it },
+                onUnlock = onUnlock,
+                onDelete = onDelete,
+            )
+        }
+    }
+
+    pendingExportGroup?.let { group ->
+        HistoryExportModeDialog(
+            group = group,
+            onDismiss = { pendingExportGroupKey = null },
+            onExport = { mode ->
+                pendingExportGroupKey = null
+                onExportGroup(group.groupKey, mode)
+            },
+        )
+    }
+}
+
+@Composable
+private fun TimelineGroupList(
+    groups: List<RecordingSegmentGroup>,
+    onOpen: (RecordingSegment) -> Unit,
+    onShare: (RecordingSegment) -> Unit,
+    onExport: (String) -> Unit,
+    onUnlock: (RecordingSegment) -> Unit,
+    onDelete: (RecordingSegment) -> Unit,
+) {
+    var previousDay: String? = null
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        groups.forEach { group ->
+            if (group.day != previousDay) {
+                Text(
+                    text = group.day,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF163036),
                 )
-                if (index != segments.lastIndex) {
-                    Spacer(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(1.dp)
-                            .background(Color(0xFFE1E8EA)),
+                previousDay = group.day
+            }
+            TimelineGroupCard(
+                group = group,
+                onOpen = onOpen,
+                onShare = onShare,
+                onExport = onExport,
+                onUnlock = onUnlock,
+                onDelete = onDelete,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TimelineGroupCard(
+    group: RecordingSegmentGroup,
+    onOpen: (RecordingSegment) -> Unit,
+    onShare: (RecordingSegment) -> Unit,
+    onExport: (String) -> Unit,
+    onUnlock: (RecordingSegment) -> Unit,
+    onDelete: (RecordingSegment) -> Unit,
+) {
+    val context = LocalContext.current
+    val primarySegment = group.rearSegment ?: group.frontSegment
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Column(
+            modifier = Modifier.width(78.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = group.lastModifiedMillis.asTimelineTime(),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF163036),
+            )
+            Box(
+                modifier = Modifier
+                    .width(2.dp)
+                    .height(96.dp)
+                    .background(Color(0xFFD4E3DE)),
+            )
+        }
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .background(Color(0xFFF1F6F4), RoundedCornerShape(12.dp))
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = stringResource(R.string.history_group_export_title, group.lastModifiedMillis.asTime(), group.relationLabel(context)),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF163036),
                     )
+                    Text(
+                        text = stringResource(
+                            R.string.history_group_size_summary,
+                            group.segmentCount,
+                            group.totalSizeBytes.asFileSize(),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF64777B),
+                    )
+                }
+                Text(
+                    text = group.groupKey.substringAfterLast('/'),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF64777B),
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = { primarySegment?.let(onOpen) },
+                    enabled = primarySegment != null,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(R.string.history_open))
+                }
+                Button(
+                    onClick = { onExport(group.groupKey) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("history_export_button_${group.groupKey.testTagSuffix()}"),
+                ) {
+                    Text(stringResource(R.string.history_export))
+                }
+            }
+            SegmentCameraRow(
+                title = context.getString(CameraDirection.Rear.labelRes()),
+                segment = group.rearSegment,
+                linked = group.frontSegment != null,
+                onShare = onShare,
+                onUnlock = onUnlock,
+                onDelete = onDelete,
+            )
+            SegmentCameraRow(
+                title = context.getString(CameraDirection.Front.labelRes()),
+                segment = group.frontSegment,
+                linked = group.rearSegment != null,
+                onShare = onShare,
+                onUnlock = onUnlock,
+                onDelete = onDelete,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SegmentCameraRow(
+    title: String,
+    segment: RecordingSegment?,
+    linked: Boolean,
+    onShare: (RecordingSegment) -> Unit,
+    onUnlock: (RecordingSegment) -> Unit,
+    onDelete: (RecordingSegment) -> Unit,
+) {
+    val context = LocalContext.current
+    val statusText = when {
+        segment == null -> context.getString(R.string.history_camera_missing)
+        segment.locked -> context.getString(R.string.route_segment_status_locked)
+        else -> context.getString(R.string.route_segment_status_normal)
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White, RoundedCornerShape(10.dp))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = stringResource(R.string.history_camera_status, title, statusText),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = if (segment?.locked == true) Color(0xFF9B2C2C) else Color(0xFF163036),
+            )
+            Text(
+                text = if (segment != null) {
+                    segment.sizeBytes.asFileSize()
+                } else {
+                    context.getString(R.string.history_camera_missing_short)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF64777B),
+            )
+        }
+        Text(
+            text = when {
+                segment != null && linked -> stringResource(R.string.history_camera_linked_file, segment.name)
+                segment != null -> segment.name
+                else -> stringResource(R.string.history_camera_missing_detail)
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF4D6267),
+        )
+        segment?.let {
+            Text(
+                text = it.relativePath,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF64777B),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = { onShare(it) },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(R.string.history_share))
+                }
+                if (it.locked) {
+                    OutlinedButton(
+                        onClick = { onUnlock(it) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(stringResource(R.string.history_unlock))
+                    }
+                }
+                OutlinedButton(
+                    onClick = { onDelete(it) },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(R.string.history_delete))
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun HistoryExportModeDialog(
+    group: RecordingSegmentGroup,
+    onDismiss: () -> Unit,
+    onExport: (RecordingClipExportMode) -> Unit,
+) {
+    val context = LocalContext.current
+    AlertDialog(
+        modifier = Modifier.testTag("history_export_dialog"),
+        onDismissRequest = onDismiss,
+        title = {
+            Text(stringResource(R.string.history_export_dialog_title))
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = stringResource(
+                        R.string.history_group_export_title,
+                        group.lastModifiedMillis.asTime(),
+                        group.relationLabel(context),
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF163036),
+                )
+                Text(
+                    text = stringResource(R.string.history_export_dialog_summary),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF64777B),
+                )
+            }
+        },
+        confirmButton = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ExportModeButton(
+                    label = stringResource(R.string.history_export_mode_rear_only),
+                    enabled = group.rearSegment != null,
+                    tag = "history_export_mode_rear",
+                    onClick = { onExport(RecordingClipExportMode.RearOnly) },
+                )
+                ExportModeButton(
+                    label = stringResource(R.string.history_export_mode_front_only),
+                    enabled = group.frontSegment != null,
+                    tag = "history_export_mode_front",
+                    onClick = { onExport(RecordingClipExportMode.FrontOnly) },
+                )
+                ExportModeButton(
+                    label = stringResource(R.string.history_export_mode_dual_package),
+                    enabled = group.rearSegment != null && group.frontSegment != null,
+                    tag = "history_export_mode_dual",
+                    onClick = { onExport(RecordingClipExportMode.DualPackage) },
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.events_collapse))
+            }
+        },
+    )
+}
+
+@Composable
+private fun ExportModeButton(
+    label: String,
+    enabled: Boolean,
+    tag: String,
+    onClick: () -> Unit,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(tag),
+    ) {
+        Text(label)
     }
 }
 
@@ -272,114 +617,54 @@ private fun FilterButton(
     }
 }
 
-@Composable
-private fun RecordingSegmentRow(
-    segment: RecordingSegment,
-    groupedDirections: Set<CameraDirection>,
-    onOpen: (RecordingSegment) -> Unit,
-    onShare: (RecordingSegment) -> Unit,
-    onUnlock: (RecordingSegment) -> Unit,
-    onDelete: (RecordingSegment) -> Unit,
+private data class RecordingSegmentGroup(
+    val groupKey: String,
+    val day: String,
+    val lastModifiedMillis: Long,
+    val rearSegment: RecordingSegment?,
+    val frontSegment: RecordingSegment?,
 ) {
-    val context = LocalContext.current
-    val stateLabel = context.getString(
-        if (segment.locked) {
-            R.string.route_segment_status_locked
-        } else {
-            R.string.route_segment_status_normal
-        },
-    )
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text = "${context.getString(segment.cameraDirection.labelRes())} · $stateLabel",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = if (segment.locked) Color(0xFF9B2C2C) else Color(0xFF163036),
-            )
-            Text(
-                text = segment.sizeBytes.asFileSize(),
-                style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF64777B),
-            )
-        }
-        Text(
-            text = segment.name,
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color(0xFF4D6267),
-        )
-        Text(
-            text = "${segment.lastModifiedMillis.asTime()} · ${segment.relativePath}",
-            style = MaterialTheme.typography.bodySmall,
-            color = Color(0xFF64777B),
-        )
-        Text(
-            text = stringResource(R.string.history_grouped, groupedDirections.asDirectionSummary(context)),
-            style = MaterialTheme.typography.bodySmall,
-            color = if (groupedDirections.containsAll(setOf(CameraDirection.Rear, CameraDirection.Front))) {
-                Color(0xFF2F6F62)
-            } else {
-                Color(0xFF64777B)
-            },
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            OutlinedButton(
-                onClick = { onOpen(segment) },
-                modifier = Modifier.weight(1f),
-            ) {
-                Text(stringResource(R.string.history_open))
-            }
-            OutlinedButton(
-                onClick = { onShare(segment) },
-                modifier = Modifier.weight(1f),
-            ) {
-                Text(stringResource(R.string.history_share))
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            if (segment.locked) {
-                OutlinedButton(
-                    onClick = { onUnlock(segment) },
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(stringResource(R.string.history_unlock))
-                }
-            }
-            OutlinedButton(
-                onClick = { onDelete(segment) },
-                modifier = Modifier.weight(1f),
-            ) {
-                Text(stringResource(R.string.history_delete))
-            }
+    val segmentCount: Int
+        get() = listOfNotNull(rearSegment, frontSegment).size
+
+    val totalSizeBytes: Long
+        get() = listOfNotNull(rearSegment, frontSegment).sumOf { it.sizeBytes }
+
+    fun relationLabel(context: android.content.Context): String {
+        return when {
+            rearSegment != null && frontSegment != null -> context.getString(R.string.history_group_relation_dual)
+            rearSegment != null -> context.getString(R.string.history_group_relation_rear_only)
+            frontSegment != null -> context.getString(R.string.history_group_relation_front_only)
+            else -> context.getString(R.string.history_group_unknown)
         }
     }
 }
 
-private fun Set<CameraDirection>.asDirectionSummary(context: android.content.Context): String {
-    if (isEmpty()) return context.getString(R.string.history_group_unknown)
-    return buildList {
-        if (contains(CameraDirection.Rear)) add(context.getString(CameraDirection.Rear.labelRes()))
-        if (contains(CameraDirection.Front)) add(context.getString(CameraDirection.Front.labelRes()))
-    }.joinToString(" + ")
+private fun List<RecordingSegment>.toTimelineGroups(): List<RecordingSegmentGroup> {
+    return groupBy { it.groupKey }
+        .values
+        .map { groupSegments ->
+            RecordingSegmentGroup(
+                groupKey = groupSegments.first().groupKey,
+                day = groupSegments.first().day,
+                lastModifiedMillis = groupSegments.maxOfOrNull { it.lastModifiedMillis } ?: 0L,
+                rearSegment = groupSegments
+                    .filter { it.cameraDirection == CameraDirection.Rear }
+                    .maxByOrNull { it.lastModifiedMillis },
+                frontSegment = groupSegments
+                    .filter { it.cameraDirection == CameraDirection.Front }
+                    .maxByOrNull { it.lastModifiedMillis },
+            )
+        }
+        .sortedByDescending { it.lastModifiedMillis }
 }
 
 private fun Long.asTime(): String {
     return SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(this))
+}
+
+private fun Long.asTimelineTime(): String {
+    return SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(this))
 }
 
 private fun Long.asFileSize(): String {
@@ -392,4 +677,8 @@ private fun Long.asFileSize(): String {
         kb >= 1.0 -> String.format(Locale.getDefault(), "%.0fKB", kb)
         else -> "${this}B"
     }
+}
+
+private fun String.testTagSuffix(): String {
+    return replace(Regex("[^A-Za-z0-9_]"), "_")
 }

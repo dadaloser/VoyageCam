@@ -9,10 +9,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -28,6 +26,7 @@ import com.voyagecam.app.core.model.EmergencyTrigger
 import com.voyagecam.app.core.model.GpsTrackPoint
 import com.voyagecam.app.core.model.GpsTrackSummary
 import com.voyagecam.app.core.model.toGpsTrackSummary
+import com.voyagecam.app.ui.export.ExportStatusPanel
 import com.voyagecam.app.ui.labelRes
 import com.voyagecam.app.ui.theme.SectionCard
 import java.io.File
@@ -74,7 +73,7 @@ fun EmergencyEventPanel(
         }
         Spacer(modifier = Modifier.height(10.dp))
         exportState?.let { state ->
-            EvidenceExportStatusPanel(
+            ExportStatusPanel(
                 state = state,
                 onShare = onShareExport,
                 onCancel = onCancelExport,
@@ -105,119 +104,6 @@ fun EmergencyEventPanel(
                             .height(1.dp)
                             .background(Color(0xFFE1E8EA)),
                     )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun EvidenceExportStatusPanel(
-    state: EvidenceExportState,
-    onShare: (File) -> Unit,
-    onCancel: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFFEAF4F0), RoundedCornerShape(8.dp))
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        when (state) {
-            is EvidenceExportState.Running -> {
-                Text(
-                    text = stringResource(R.string.events_export_running),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF163036),
-                )
-                Text(
-                    text = buildString {
-                        append(state.title)
-                        if (state.currentItem.isNotBlank()) {
-                            append(" · ")
-                            append(state.currentItem)
-                        }
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF4D6267),
-                )
-                LinearProgressIndicator(
-                    progress = state.progressPercent / 100f,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "${state.progressPercent}%",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF64777B),
-                    )
-                    OutlinedButton(onClick = onCancel) {
-                        Text(stringResource(R.string.events_export_cancel))
-                    }
-                }
-            }
-
-            is EvidenceExportState.Ready -> {
-                Text(
-                    text = stringResource(R.string.events_export_ready),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF163036),
-                )
-                Text(
-                    text = stringResource(
-                        R.string.events_export_ready_summary,
-                        state.file.name,
-                        state.clipCount,
-                        state.file.length().asFileSize(),
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF4D6267),
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { onShare(state.file) }) {
-                        Text(stringResource(R.string.events_export_share))
-                    }
-                    OutlinedButton(onClick = onDismiss) {
-                        Text(stringResource(R.string.events_collapse))
-                    }
-                }
-            }
-
-            is EvidenceExportState.Failed -> {
-                Text(
-                    text = stringResource(R.string.events_export_failed),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF9B2C2C),
-                )
-                Text(
-                    text = state.message,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF4D6267),
-                )
-                OutlinedButton(onClick = onDismiss) {
-                    Text(stringResource(R.string.events_collapse))
-                }
-            }
-
-            is EvidenceExportState.Cancelled -> {
-                Text(
-                    text = stringResource(R.string.events_export_cancelled),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF163036),
-                )
-                Text(
-                    text = state.message,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF4D6267),
-                )
-                OutlinedButton(onClick = onDismiss) {
-                    Text(stringResource(R.string.events_collapse))
                 }
             }
         }

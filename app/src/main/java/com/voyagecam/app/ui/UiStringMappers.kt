@@ -106,11 +106,11 @@ fun Context.dualCameraDiagnosticSummary(diagnostic: DualCameraDiagnostic): Strin
 }
 
 fun Context.dualCameraTelemetryPresentation(
-    frontInsetEnabled: Boolean,
+    dualPreviewActive: Boolean,
     sessionToken: Int,
     sessionStatus: DualCameraSessionStatus,
 ): DualCameraTelemetryPresentation? {
-    if (!frontInsetEnabled) return null
+    if (!dualPreviewActive) return null
     if (sessionStatus.previewSessionToken != sessionToken) return null
 
     val stateLabel = getString(

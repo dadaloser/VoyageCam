@@ -44,15 +44,20 @@ class ShareLauncher(
     }
 
     fun shareEvidencePackage(file: File) {
+        shareExportedFile(file)
+    }
+
+    fun shareExportedFile(file: File) {
         runCatching {
             val uri = file.toContentUri(context)
+            val mimeType = file.shareMimeType()
             val intent = Intent(Intent.ACTION_SEND)
-                .setType(ZIP_MIME_TYPE)
+                .setType(mimeType)
                 .putExtra(Intent.EXTRA_STREAM, uri)
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_package_chooser)))
+            context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_export_chooser)))
         }.onFailure { error ->
-            onStatus(context.getString(R.string.share_package_failed, error.message ?: file.name))
+            onStatus(context.getString(R.string.share_export_failed, error.message ?: file.name))
         }
     }
 
@@ -143,6 +148,14 @@ private fun EmergencyEvent.toGeoUri(context: Context): Uri? {
 
 private fun Long.asTime(): String {
     return SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(this))
+}
+
+private fun File.shareMimeType(): String {
+    return if (extension.equals("zip", ignoreCase = true)) {
+        ZIP_MIME_TYPE
+    } else {
+        VIDEO_MIME_TYPE
+    }
 }
 
 private const val VIDEO_MIME_TYPE = "video/mp4"

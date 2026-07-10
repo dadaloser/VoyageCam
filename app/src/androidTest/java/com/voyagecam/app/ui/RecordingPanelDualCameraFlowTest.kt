@@ -21,6 +21,7 @@ import com.voyagecam.app.core.model.DualCameraSwitchState
 import com.voyagecam.app.data.camera.DualCameraSessionTelemetryStore
 import com.voyagecam.app.data.settings.RecordingMode
 import com.voyagecam.app.data.settings.VoyageCamSettings
+import com.voyagecam.app.ui.preview.frontInsetVisible
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -94,14 +95,14 @@ class RecordingPanelDualCameraFlowTest {
                         }
                     },
                     dualCameraSessionStatusFlow = sessionStatusFlow,
-                    previewContent = { frontInsetEnabled, _ ->
+                    previewContent = { previewPresentation ->
                         Box(
                             modifier = Modifier
                                 .width(180.dp)
                                 .height(100.dp)
                                 .testTag("rear_camera_preview"),
                         )
-                        if (frontInsetEnabled) {
+                        if (previewPresentation.frontInsetVisible) {
                             Box(
                                 modifier = Modifier
                                     .width(60.dp)

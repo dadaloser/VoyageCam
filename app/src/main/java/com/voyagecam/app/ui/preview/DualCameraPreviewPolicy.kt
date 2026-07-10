@@ -2,6 +2,7 @@ package com.voyagecam.app.ui.preview
 
 import android.content.Context
 import com.voyagecam.app.core.camera.DualCameraSessionStatus
+import com.voyagecam.app.core.model.CameraDirection
 import com.voyagecam.app.core.model.DualCameraCapability
 import com.voyagecam.app.data.settings.RecordingMode
 import com.voyagecam.app.data.settings.VoyageCamSettings
@@ -9,9 +10,18 @@ import com.voyagecam.app.data.settings.resolveRecordingConfig
 import com.voyagecam.app.ui.dualCameraTelemetryPresentation as buildDualCameraTelemetryPresentation
 
 data class DualCameraPreviewPresentation(
-    val showFrontInset: Boolean,
+    val dualPreviewActive: Boolean,
     val sessionToken: Int,
+    val mainCameraDirection: CameraDirection,
+    val insetCameraDirection: CameraDirection? = null,
+    val swapSupported: Boolean = false,
 )
+
+val DualCameraPreviewPresentation.frontInsetVisible: Boolean
+    get() = insetCameraDirection == CameraDirection.Front
+
+val DualCameraPreviewPresentation.rearInsetVisible: Boolean
+    get() = insetCameraDirection == CameraDirection.Rear
 
 data class DualCameraTelemetryPresentation(
     val summary: String,
@@ -23,16 +33,34 @@ fun dualCameraPreviewPresentation(
     settings: VoyageCamSettings,
     capability: DualCameraCapability,
     isRecording: Boolean,
+    preferredMainCameraDirection: CameraDirection = CameraDirection.Rear,
 ): DualCameraPreviewPresentation {
     val resolved = settings.resolveRecordingConfig(capability)
-    val showFrontInset = settings.recordingMode == RecordingMode.Auto && resolved.dualCameraActive
+    val dualPreviewActive = settings.recordingMode == RecordingMode.Auto && resolved.dualCameraActive
+    val mainCameraDirection = when {
+        !dualPreviewActive -> resolved.primaryCameraDirection
+        preferredMainCameraDirection == CameraDirection.Front -> CameraDirection.Front
+        else -> CameraDirection.Rear
+    }
+    val insetCameraDirection = if (dualPreviewActive) {
+        if (mainCameraDirection == CameraDirection.Rear) {
+            CameraDirection.Front
+        } else {
+            CameraDirection.Rear
+        }
+    } else {
+        null
+    }
     return DualCameraPreviewPresentation(
-        showFrontInset = showFrontInset,
+        dualPreviewActive = dualPreviewActive,
         sessionToken = when {
-            !showFrontInset -> SESSION_HIDDEN
+            !dualPreviewActive -> SESSION_HIDDEN
             isRecording -> SESSION_RECORDING
             else -> SESSION_PREVIEW
         },
+        mainCameraDirection = mainCameraDirection,
+        insetCameraDirection = insetCameraDirection,
+        swapSupported = dualPreviewActive,
     )
 }
 
@@ -45,26 +73,26 @@ fun shouldShowFrontInsetPreview(
         settings = settings,
         capability = capability,
         isRecording = isRecording,
-    ).showFrontInset
+    ).frontInsetVisible
 }
 
 fun shouldFallbackToRearPreview(
-    frontInsetEnabled: Boolean,
+    dualPreviewActive: Boolean,
     sessionToken: Int,
     sessionStatus: DualCameraSessionStatus,
 ): Boolean {
-    if (!frontInsetEnabled) return false
+    if (!dualPreviewActive) return false
     if (sessionStatus.previewSessionToken != sessionToken) return false
     if (sessionStatus.concurrentCameraActive) return false
     return sessionStatus.lastDiagnostic != null
 }
 
 fun dualCameraTelemetryPresentation(
-    frontInsetEnabled: Boolean,
+    dualPreviewActive: Boolean,
     sessionToken: Int,
     sessionStatus: DualCameraSessionStatus,
 ): DualCameraTelemetryPresentation? {
-    if (!frontInsetEnabled) return null
+    if (!dualPreviewActive) return null
     if (sessionStatus.previewSessionToken != sessionToken) return null
 
     val summary = buildString {
@@ -96,11 +124,11 @@ fun dualCameraTelemetryPresentation(
 
 fun dualCameraTelemetryPresentation(
     context: Context,
-    frontInsetEnabled: Boolean,
+    dualPreviewActive: Boolean,
     sessionToken: Int,
     sessionStatus: DualCameraSessionStatus,
 ): DualCameraTelemetryPresentation? {
-    return context.buildDualCameraTelemetryPresentation(frontInsetEnabled, sessionToken, sessionStatus)
+    return context.buildDualCameraTelemetryPresentation(dualPreviewActive, sessionToken, sessionStatus)
 }
 
 private const val SESSION_HIDDEN = 0

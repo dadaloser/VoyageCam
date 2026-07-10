@@ -27,6 +27,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,6 +42,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.voyagecam.app.R
 import com.voyagecam.app.core.camera.DualCameraSessionStatus
 import com.voyagecam.app.core.camera.DualCameraSessionCoordinator
+import com.voyagecam.app.core.model.CameraDirection
 import com.voyagecam.app.core.model.DeviceCapabilityGrade
 import com.voyagecam.app.core.model.DualCameraCapability
 import com.voyagecam.app.core.model.EmergencyEvent
@@ -51,14 +55,17 @@ import com.voyagecam.app.data.settings.recordingModeLabel
 import com.voyagecam.app.data.settings.resolveRecordingConfig
 import com.voyagecam.app.data.settings.recordingVideoProfile
 import com.voyagecam.app.data.settings.supportsDualCamera
+import com.voyagecam.app.feature.evidence.RecordingClipExportMode
 import com.voyagecam.app.feature.recording.RecordingForegroundService
 import com.voyagecam.app.ui.events.EmergencyEventPanel
 import com.voyagecam.app.ui.history.SegmentHistoryPanel
 import com.voyagecam.app.ui.playback.PlaybackPanel
 import com.voyagecam.app.ui.playback.PlaybackItem
+import com.voyagecam.app.ui.preview.DualCameraPreviewPresentation
 import com.voyagecam.app.ui.preview.RearCameraPreview
 import com.voyagecam.app.ui.preview.DualCameraTelemetryPresentation
 import com.voyagecam.app.ui.preview.dualCameraPreviewPresentation
+import com.voyagecam.app.ui.preview.shouldFallbackToRearPreview
 import com.voyagecam.app.ui.settings.BluetoothDevicePickerState
 import com.voyagecam.app.ui.settings.SettingsPanel
 import com.voyagecam.app.ui.settings.rememberBluetoothDevicePickerState
@@ -274,7 +281,7 @@ fun VoyageCamRoute(
         onShareEmergencyEvent = ::shareEmergencyEvent,
         onExportEmergencyEvent = viewModel::exportEmergencyEvent,
         onCancelEvidenceExport = viewModel::cancelEvidenceExport,
-        onShareEvidencePackage = shareLauncher::shareEvidencePackage,
+        onShareEvidencePackage = shareLauncher::shareExportedFile,
         onDismissEvidenceExport = viewModel::dismissEvidenceExport,
         onOpenEmergencyEventMap = shareLauncher::openEmergencyEventMap,
         onSetPendingSegmentDelete = viewModel::setPendingSegmentDelete,
@@ -284,6 +291,10 @@ fun VoyageCamRoute(
         onSelectLockFilter = viewModel::selectLockFilter,
         onOpenSegment = viewModel::openSegment,
         onShareSegment = shareLauncher::shareSegment,
+        onExportSegmentGroup = viewModel::exportSegmentGroup,
+        onCancelClipExport = viewModel::cancelClipExport,
+        onShareClipExport = shareLauncher::shareExportedFile,
+        onDismissClipExport = viewModel::dismissClipExport,
         onUnlockSegment = viewModel::unlockSegment,
     )
 }
@@ -335,6 +346,10 @@ internal fun VoyageCamRouteContent(
     onSelectLockFilter: (com.voyagecam.app.ui.history.SegmentLockFilter) -> Unit = {},
     onOpenSegment: (RecordingSegment) -> Unit = {},
     onShareSegment: (RecordingSegment) -> Unit = {},
+    onExportSegmentGroup: (String, RecordingClipExportMode) -> Unit = { _, _ -> },
+    onCancelClipExport: () -> Unit = {},
+    onShareClipExport: (File) -> Unit = {},
+    onDismissClipExport: () -> Unit = {},
     onUnlockSegment: (RecordingSegment) -> Unit = {},
 ) {
     val settings = uiState.settings
@@ -388,14 +403,13 @@ internal fun VoyageCamRouteContent(
                     onStatus = onSetStatus,
                     onRefreshRecordingData = onRefreshRecordingData,
                     onDualCameraTelemetry = onRecordDualCameraTelemetry,
-                    previewContent = { frontInsetEnabled, dualCameraSessionToken ->
+                    previewContent = { previewPresentation ->
                         RearCameraPreview(
                             enabled = true,
+                            previewPresentation = previewPresentation,
                             primaryCameraDirection = resolvedConfig.primaryCameraDirection,
                             frontMirrorEnabled = resolvedConfig.frontCameraMirrorActive,
                             orientationStrategy = resolvedConfig.orientationStrategy,
-                            frontInsetEnabled = frontInsetEnabled,
-                            dualCameraSessionToken = dualCameraSessionToken,
                         )
                     },
                 )
@@ -750,6 +764,7 @@ internal fun VoyageCamRouteContent(
                     segments = filteredSegments,
                     allSegments = allSegments,
                     totalSegmentCount = allSegments.size,
+                    exportState = uiState.clipExportState,
                     availableDays = availableDays,
                     selectedDay = uiState.selectedDay,
                     selectedCameraFilter = uiState.selectedCameraFilter,
@@ -760,6 +775,10 @@ internal fun VoyageCamRouteContent(
                     onRefresh = onRefreshRecordingData,
                     onOpen = onOpenSegment,
                     onShare = onShareSegment,
+                    onExportGroup = onExportSegmentGroup,
+                    onCancelExport = onCancelClipExport,
+                    onShareExport = onShareClipExport,
+                    onDismissExport = onDismissClipExport,
                     onUnlock = onUnlockSegment,
                     onDelete = onSetPendingSegmentDelete,
                 )
@@ -781,11 +800,10 @@ internal fun RecordingRoutePanel(
     onRefreshRecordingData: () -> Unit,
     onDualCameraTelemetry: (com.voyagecam.app.ui.preview.DualCameraTelemetryPresentation) -> Unit,
     dualCameraSessionStatusFlow: StateFlow<DualCameraSessionStatus> = DualCameraSessionCoordinator.sessionStatus,
-    previewContent: @Composable (frontInsetEnabled: Boolean, dualCameraSessionToken: Int) -> Unit = { frontInsetEnabled, dualCameraSessionToken ->
+    previewContent: @Composable (previewPresentation: DualCameraPreviewPresentation) -> Unit = { previewPresentation ->
         RearCameraPreview(
             enabled = true,
-            frontInsetEnabled = frontInsetEnabled,
-            dualCameraSessionToken = dualCameraSessionToken,
+            previewPresentation = previewPresentation,
         )
     },
 ) {
@@ -827,24 +845,35 @@ internal fun RecordingPanel(
     onEmergencyLock: () -> Unit,
     onDualCameraTelemetry: (com.voyagecam.app.ui.preview.DualCameraTelemetryPresentation) -> Unit,
     dualCameraSessionStatusFlow: StateFlow<DualCameraSessionStatus> = DualCameraSessionCoordinator.sessionStatus,
-    previewContent: @Composable (frontInsetEnabled: Boolean, dualCameraSessionToken: Int) -> Unit = { frontInsetEnabled, dualCameraSessionToken ->
+    previewContent: @Composable (previewPresentation: DualCameraPreviewPresentation) -> Unit = { previewPresentation ->
         RearCameraPreview(
             enabled = true,
-            frontInsetEnabled = frontInsetEnabled,
-            dualCameraSessionToken = dualCameraSessionToken,
+            previewPresentation = previewPresentation,
         )
     },
 ) {
     val context = LocalContext.current
+    var preferredDualPreviewMainCameraName by rememberSaveable {
+        mutableStateOf(CameraDirection.Rear.name)
+    }
+    val preferredDualPreviewMainCamera = runCatching {
+        CameraDirection.valueOf(preferredDualPreviewMainCameraName)
+    }.getOrDefault(CameraDirection.Rear)
     val dualPreviewPresentation = dualCameraPreviewPresentation(
         settings = settings,
         capability = capability,
         isRecording = isRecording,
+        preferredMainCameraDirection = preferredDualPreviewMainCamera,
     )
     val resolvedConfig = settings.resolveRecordingConfig(capability)
     val dualCameraSessionStatus by dualCameraSessionStatusFlow.collectAsState()
+    val dualPreviewFallback = shouldFallbackToRearPreview(
+        dualPreviewActive = dualPreviewPresentation.dualPreviewActive,
+        sessionToken = dualPreviewPresentation.sessionToken,
+        sessionStatus = dualCameraSessionStatus,
+    )
     val dualCameraTelemetry = context.dualCameraTelemetryPresentation(
-        frontInsetEnabled = dualPreviewPresentation.showFrontInset,
+        dualPreviewActive = dualPreviewPresentation.dualPreviewActive,
         sessionToken = dualPreviewPresentation.sessionToken,
         sessionStatus = dualCameraSessionStatus,
     )
@@ -852,10 +881,34 @@ internal fun RecordingPanel(
         dualCameraTelemetry?.let(onDualCameraTelemetry)
     }
     SectionCard {
-        previewContent(
-            dualPreviewPresentation.showFrontInset,
-            dualPreviewPresentation.sessionToken,
-        )
+        previewContent(dualPreviewPresentation)
+        if (dualPreviewPresentation.swapSupported && !dualPreviewFallback) {
+            Spacer(modifier = Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = {
+                    preferredDualPreviewMainCameraName = if (
+                        dualPreviewPresentation.mainCameraDirection == CameraDirection.Rear
+                    ) {
+                        CameraDirection.Front.name
+                    } else {
+                        CameraDirection.Rear.name
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("dual_preview_swap_button"),
+            ) {
+                Text(
+                    stringResource(
+                        if (dualPreviewPresentation.mainCameraDirection == CameraDirection.Rear) {
+                            R.string.preview_swap_to_front_main
+                        } else {
+                            R.string.preview_swap_to_rear_main
+                        },
+                    ),
+                )
+            }
+        }
         Spacer(modifier = Modifier.height(14.dp))
         Text(
             text = stringResource(

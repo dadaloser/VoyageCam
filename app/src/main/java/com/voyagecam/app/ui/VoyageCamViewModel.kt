@@ -31,6 +31,7 @@ import com.voyagecam.app.data.settings.coerceTo
 import com.voyagecam.app.data.settings.estimatedManagedBytesPerMinute
 import com.voyagecam.app.data.telemetry.RuntimeTelemetryStore
 import com.voyagecam.app.feature.evidence.EvidenceExportCancelledException
+import com.voyagecam.app.feature.evidence.RecordingClipExportMode
 import com.voyagecam.app.ui.events.EvidenceExportState
 import com.voyagecam.app.ui.history.SegmentCameraFilter
 import com.voyagecam.app.ui.history.SegmentLockFilter
@@ -61,6 +62,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
     private val runtimeTelemetryStore = RuntimeTelemetryStore(appContext)
     private val storageLimit = StorageCapacityLimit.from(appContext)
     private var evidenceExportCancelFlag: AtomicBoolean? = null
+    private var clipExportCancelFlag: AtomicBoolean? = null
 
     private val initialSettings = settingsStore.load().coerceTo(storageLimit)
     private val initialCapability = settingsStore.loadCapability() ?: DualCameraCapability(
@@ -512,7 +514,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
                     it.copy(
                         pendingEmergencyEventDelete = null,
                         emergencyEvents = events,
-                        evidenceExportState = it.evidenceExportState?.takeIf { export -> export.eventId != event.id },
+                        evidenceExportState = it.evidenceExportState?.takeIf { export -> export.exportId != event.id },
                         statusMessage = appContext.getString(R.string.vm_event_deleted),
                     )
                 }
@@ -605,7 +607,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun exportEmergencyEvent(event: EmergencyEvent) {
-        if (_uiState.value.evidenceExportState is EvidenceExportState.Running) {
+        if (hasRunningExport()) {
             setStatus(appContext.getString(R.string.vm_export_busy))
             return
         }
@@ -621,11 +623,11 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.update {
             it.copy(
                 evidenceExportState = EvidenceExportState.Running(
-                    eventId = event.id,
+                    exportId = event.id,
                     title = title,
                     currentItem = appContext.getString(R.string.vm_export_preparing),
                 ),
-                statusMessage = appContext.getString(R.string.vm_export_running),
+                statusMessage = appContext.getString(R.string.vm_export_running_evidence),
             )
         }
 
@@ -641,7 +643,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
                                 _uiState.update {
                                     it.copy(
                                         evidenceExportState = EvidenceExportState.Running(
-                                            eventId = event.id,
+                                            exportId = event.id,
                                             title = title,
                                             progressPercent = progress.percent,
                                             currentItem = progress.currentItem,
@@ -664,9 +666,10 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
                         _uiState.update {
                             it.copy(
                                 evidenceExportState = EvidenceExportState.Ready(
-                                    eventId = event.id,
+                                    exportId = event.id,
+                                    title = title,
                                     file = packageFile.file,
-                                    clipCount = packageFile.clipCount,
+                                    itemCount = packageFile.clipCount,
                                 ),
                                 statusMessage = appContext.getString(R.string.vm_export_ready, packageFile.file.name),
                             )
@@ -677,7 +680,8 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
                             _uiState.update {
                                 it.copy(
                                     evidenceExportState = EvidenceExportState.Cancelled(
-                                        eventId = event.id,
+                                        exportId = event.id,
+                                        title = title,
                                         message = appContext.getString(R.string.vm_export_cancelled),
                                     ),
                                     statusMessage = appContext.getString(R.string.vm_export_cancelled),
@@ -687,7 +691,8 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
                             _uiState.update {
                                 it.copy(
                                     evidenceExportState = EvidenceExportState.Failed(
-                                        eventId = event.id,
+                                        exportId = event.id,
+                                        title = title,
                                         message = error.message ?: appContext.getString(R.string.vm_export_failed_default),
                                     ),
                                     statusMessage = appContext.getString(
@@ -719,8 +724,157 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.update { it.copy(evidenceExportState = null) }
     }
 
+    fun exportSegmentGroup(groupKey: String, mode: RecordingClipExportMode) {
+        if (hasRunningExport()) {
+            setStatus(appContext.getString(R.string.vm_export_busy))
+            return
+        }
+
+        val groupSegments = currentGroupSegments(groupKey)
+        if (groupSegments.isEmpty()) {
+            setStatus(appContext.getString(R.string.history_export_group_missing))
+            return
+        }
+        val rear = groupSegments.firstOrNull { it.cameraDirection == CameraDirection.Rear }
+        val front = groupSegments.firstOrNull { it.cameraDirection == CameraDirection.Front }
+        val title = buildGroupExportTitle(groupSegments)
+        val cancelFlag = AtomicBoolean(false)
+        clipExportCancelFlag = cancelFlag
+
+        _uiState.update {
+            it.copy(
+                clipExportState = EvidenceExportState.Running(
+                    exportId = groupKey,
+                    title = title,
+                    currentItem = appContext.getString(R.string.vm_export_preparing),
+                ),
+                statusMessage = appContext.getString(R.string.vm_export_running_clip),
+            )
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                evidenceRepository.exportClipGroup(
+                    groupKey = groupKey,
+                    rearFile = rear?.let { File(it.absolutePath) },
+                    frontFile = front?.let { File(it.absolutePath) },
+                    mode = mode,
+                    onProgress = { progress ->
+                        viewModelScope.launch(Dispatchers.Main) {
+                            if (clipExportCancelFlag === cancelFlag) {
+                                _uiState.update {
+                                    it.copy(
+                                        clipExportState = EvidenceExportState.Running(
+                                            exportId = groupKey,
+                                            title = title,
+                                            progressPercent = progress.percent,
+                                            currentItem = progress.currentItem,
+                                        ),
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    isCancelled = { cancelFlag.get() },
+                )
+            }
+
+            withContext(Dispatchers.Main) {
+                if (clipExportCancelFlag === cancelFlag) {
+                    clipExportCancelFlag = null
+                }
+                result
+                    .onSuccess { exportFile ->
+                        _uiState.update {
+                            it.copy(
+                                clipExportState = EvidenceExportState.Ready(
+                                    exportId = groupKey,
+                                    title = title,
+                                    file = exportFile.file,
+                                    itemCount = exportFile.itemCount,
+                                ),
+                                statusMessage = appContext.getString(R.string.vm_export_ready, exportFile.file.name),
+                            )
+                        }
+                    }
+                    .onFailure { error ->
+                        if (error is EvidenceExportCancelledException) {
+                            _uiState.update {
+                                it.copy(
+                                    clipExportState = EvidenceExportState.Cancelled(
+                                        exportId = groupKey,
+                                        title = title,
+                                        message = appContext.getString(R.string.vm_export_cancelled),
+                                    ),
+                                    statusMessage = appContext.getString(R.string.vm_export_cancelled),
+                                )
+                            }
+                        } else {
+                            _uiState.update {
+                                it.copy(
+                                    clipExportState = EvidenceExportState.Failed(
+                                        exportId = groupKey,
+                                        title = title,
+                                        message = error.message ?: appContext.getString(R.string.vm_export_failed_default),
+                                    ),
+                                    statusMessage = appContext.getString(
+                                        R.string.vm_export_failed,
+                                        error.message ?: title,
+                                    ),
+                                )
+                            }
+                        }
+                    }
+            }
+        }
+    }
+
+    fun cancelClipExport() {
+        val running = _uiState.value.clipExportState as? EvidenceExportState.Running
+        clipExportCancelFlag?.set(true)
+        if (running != null) {
+            _uiState.update {
+                it.copy(
+                    clipExportState = running.copy(currentItem = appContext.getString(R.string.vm_export_cancelling)),
+                    statusMessage = appContext.getString(R.string.vm_export_cancelling_status),
+                )
+            }
+        }
+    }
+
+    fun dismissClipExport() {
+        _uiState.update { it.copy(clipExportState = null) }
+    }
+
     fun setExportStatus(message: String) {
         setStatus(message)
+    }
+
+    private fun currentGroupSegments(groupKey: String): List<RecordingSegment> {
+        return _uiState.value.allSegments
+            .filter { it.groupKey == groupKey }
+            .sortedBy { it.cameraDirection != CameraDirection.Rear }
+    }
+
+    private fun hasRunningExport(): Boolean {
+        return _uiState.value.evidenceExportState is EvidenceExportState.Running ||
+            _uiState.value.clipExportState is EvidenceExportState.Running
+    }
+
+    private fun buildGroupExportTitle(groupSegments: List<RecordingSegment>): String {
+        val rear = groupSegments.firstOrNull { it.cameraDirection == CameraDirection.Rear }
+        val front = groupSegments.firstOrNull { it.cameraDirection == CameraDirection.Front }
+        val anchor = rear ?: front ?: return appContext.getString(R.string.history_group_unknown)
+        val modeLabel = when {
+            rear != null && front != null -> appContext.getString(R.string.history_group_relation_dual)
+            rear != null -> appContext.getString(R.string.history_group_relation_rear_only)
+            else -> appContext.getString(R.string.history_group_relation_front_only)
+        }
+        return appContext.getString(
+            R.string.history_group_export_title,
+            anchor.lastModifiedMillis.asTime(),
+            modeLabel,
+        )
     }
 
     private fun emptyStorageOverview(
@@ -762,6 +916,7 @@ data class VoyageCamUiState(
     val dualCameraFailureArchive: List<PersistedDualCameraFailureArchive> = emptyList(),
     val playbackItem: PlaybackItem? = null,
     val evidenceExportState: EvidenceExportState? = null,
+    val clipExportState: EvidenceExportState? = null,
     val selectedDay: String? = null,
     val selectedCameraFilter: SegmentCameraFilter = SegmentCameraFilter.All,
     val selectedLockFilter: SegmentLockFilter = SegmentLockFilter.All,
