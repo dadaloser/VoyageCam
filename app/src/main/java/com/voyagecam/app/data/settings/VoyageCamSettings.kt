@@ -452,10 +452,14 @@ fun VoyageCamSettings.resolveRecordingConfig(capability: DualCameraCapability?):
 
 fun VoyageCamSettings.estimatedManagedBytesPerMinute(capability: DualCameraCapability?): Long {
     val resolved = resolveRecordingConfig(capability)
+    return estimatedManagedBytesPerMinute(resolved)
+}
+
+fun VoyageCamSettings.estimatedManagedBytesPerMinute(resolvedConfig: ResolvedRecordingConfig): Long {
     val videoStreamBytesPerMinute = recordingBitrate.bitsPerSecond.toLong() * 60L / 8L
-    val streamCount = if (resolved.dualCameraActive) 2L else 1L
+    val streamCount = if (resolvedConfig.dualCameraActive) 2L else 1L
     return videoStreamBytesPerMinute * streamCount +
-        if (resolved.ambientAudioActive) AUDIO_BYTES_PER_MINUTE else 0L
+        if (resolvedConfig.ambientAudioActive) AUDIO_BYTES_PER_MINUTE else 0L
 }
 
 fun VoyageCamSettings.estimatedManagedBytesPerMinute(dualCameraActive: Boolean): Long {

@@ -59,6 +59,31 @@ class RecordingNotificationController(private val context: Context) {
         notificationManager.notify(NOTIFICATION_ID, build(state))
     }
 
+    fun notifyStartupBlocked(message: String) {
+        notificationManager.notify(
+            STARTUP_BLOCKED_NOTIFICATION_ID,
+            NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_launcher)
+                .setContentTitle(context.getString(R.string.notification_start_blocked_title))
+                .setContentText(message)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                .setAutoCancel(true)
+                .setContentIntent(
+                    PendingIntent.getActivity(
+                        context,
+                        3,
+                        Intent(context, MainActivity::class.java),
+                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                    ),
+                )
+                .build(),
+        )
+    }
+
+    fun cancelStartupBlocked() {
+        notificationManager.cancel(STARTUP_BLOCKED_NOTIFICATION_ID)
+    }
+
     fun build(state: RecordingNotificationState): Notification {
         val title = if (state.startupInProgress) {
             context.getString(R.string.notification_content_title_startup)
@@ -169,6 +194,7 @@ class RecordingNotificationController(private val context: Context) {
     companion object {
         const val CHANNEL_ID = "voyage_cam_recording"
         const val NOTIFICATION_ID = 1001
+        const val STARTUP_BLOCKED_NOTIFICATION_ID = 1002
     }
 }
 

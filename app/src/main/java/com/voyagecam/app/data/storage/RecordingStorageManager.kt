@@ -1,6 +1,7 @@
 package com.voyagecam.app.data.storage
 
 import android.content.Context
+import android.os.StatFs
 import android.os.Environment
 import com.voyagecam.app.core.model.RecordingSegment
 import com.voyagecam.app.core.model.RecordingStorageOverview
@@ -182,8 +183,19 @@ class RecordingStorageManager(private val context: Context) {
         segmentIndexStore.upsertFile(file, dashcamRoot, locked)
     }
 
-    suspend fun rebuildSegmentIndex() {
-        segmentIndexStore.rebuild(normalRoot, lockedRoot, dashcamRoot)
+    fun availableRecordingBytes(): Long {
+        return runCatching {
+            StatFs(recordingRoot.absolutePath).availableBytes
+        }.getOrDefault(0L)
+    }
+
+    suspend fun rebuildSegmentIndex(): IndexRebuildResult {
+        val result = segmentIndexStore.rebuild(normalRoot, lockedRoot, dashcamRoot)
+        return IndexRebuildResult(
+            indexedSegments = result.indexedSegments,
+            quarantinedFiles = result.quarantinedFiles,
+            deletedFiles = result.deletedFiles,
+        )
     }
 
     private fun pruneEmptyParents(startDirectory: File?) {
@@ -214,6 +226,12 @@ class RecordingStorageManager(private val context: Context) {
     data class DeleteResult(
         val deleted: Boolean,
         val deletedBytes: Long,
+    )
+
+    data class IndexRebuildResult(
+        val indexedSegments: Int,
+        val quarantinedFiles: Int,
+        val deletedFiles: Int,
     )
 
     companion object {

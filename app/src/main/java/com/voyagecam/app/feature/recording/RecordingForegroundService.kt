@@ -27,6 +27,7 @@ import com.voyagecam.app.data.camera.DualCameraDiagnosticsStore
 import com.voyagecam.app.data.emergency.EmergencyEventStore
 import com.voyagecam.app.data.location.EmergencyLocationProvider
 import com.voyagecam.app.data.location.hasAnyLocationPermission
+import com.voyagecam.app.data.recording.RecordingStartupRecovery
 import com.voyagecam.app.data.settings.ResolvedRecordingConfig
 import com.voyagecam.app.data.settings.VoyageCamSettings
 import com.voyagecam.app.data.settings.VoyageCamSettingsStore
@@ -159,6 +160,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
 
         val settings = settingsStore.load()
         val resolvedConfig = settings.resolveRecordingConfig(settingsStore.loadCapability())
+        notificationController.cancelStartupBlocked()
         state.resetForStart(
             context = this,
             startedAtMillis = System.currentTimeMillis(),
@@ -210,8 +212,17 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         startupJob?.cancel()
         startupJob = serviceScope.launch {
             try {
+                RecordingStartupRecovery.ensureRecovered(this@RecordingForegroundService)
                 withContext(Dispatchers.IO) {
                     storageManager.cleanupNormalSegments(state.storageCapacityGb)
+                }
+                val startupSpaceCheck = RecordingStartupStoragePreflight.check(
+                    availableBytes = storageManager.availableRecordingBytes(),
+                    settings = settings,
+                    resolvedConfig = resolvedConfig,
+                )
+                if (!startupSpaceCheck.hasEnoughSpace) {
+                    throw IllegalStateException(startupSpaceCheck.failureMessage())
                 }
                 startRecordingSession(
                     settings = settings,
@@ -752,10 +763,13 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
     }
 
     private fun handleStartupFailure(error: Throwable) {
+        val failureDetail = error.message ?: getString(R.string.common_unknown_error)
+        state.startupInProgress = false
         state.status = getString(
             R.string.recording_service_start_failed,
-            error.message ?: getString(R.string.common_unknown_error),
+            failureDetail,
         )
+        notificationController.notifyStartupBlocked(failureDetail)
         VoyageCamRuntimeTelemetry.log(
             level = StructuredLogLevel.Error,
             category = VoyageCamRuntimeTelemetry.CATEGORY_RECORDING,
@@ -773,6 +787,14 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
 
     private fun notificationState(): RecordingNotificationState {
         return state.notificationState()
+    }
+
+    private fun RecordingStartupSpaceCheck.failureMessage(): String {
+        return getString(
+            R.string.recording_service_storage_insufficient,
+            requiredBytes.asFileSize(),
+            availableBytes.asFileSize(),
+        )
     }
 
     private fun lockSegmentsAsync(
@@ -890,5 +912,18 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
                 .setAction(ACTION_REFRESH_PERFORMANCE_GUARD)
             context.startService(intent)
         }
+    }
+}
+
+private fun Long.asFileSize(): String {
+    if (this <= 0L) return "0B"
+    val kb = 1024L
+    val mb = kb * 1024L
+    val gb = mb * 1024L
+    return when {
+        this >= gb -> String.format(Locale.getDefault(), "%.1fGB", this.toDouble() / gb.toDouble())
+        this >= mb -> String.format(Locale.getDefault(), "%.1fMB", this.toDouble() / mb.toDouble())
+        this >= kb -> String.format(Locale.getDefault(), "%.1fKB", this.toDouble() / kb.toDouble())
+        else -> "${this}B"
     }
 }

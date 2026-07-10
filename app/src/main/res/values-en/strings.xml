@@ -29,6 +29,7 @@
 
     <string name="notification_channel_name">VoyageCam Recording</string>
     <string name="notification_channel_description">Shows dashcam recording status and a quick stop action.</string>
+    <string name="notification_start_blocked_title">VoyageCam could not start recording</string>
     <string name="notification_audio_on">Ambient audio on</string>
     <string name="notification_audio_off">Silent</string>
     <string name="notification_segment_minutes">%1$d min segments</string>
@@ -490,6 +491,7 @@
     <string name="recording_service_collision_locking">Possible collision detected at %1$sg, executing emergency lock</string>
     <string name="recording_service_locking_event">Executing emergency lock</string>
     <string name="recording_service_event_failed">Failed to create emergency event: %1$s</string>
+    <string name="recording_service_storage_insufficient">Not enough free space: at least %1$s is required including safety headroom, but only %2$s is available. Clean up older clips or lower the recording profile and try again.</string>
     <string name="recording_service_start_failed">Failed to start recording: %1$s</string>
     <string name="recording_service_collision_unavailable">No usable accelerometer was provided by the device. Automatic collision lock is unavailable.</string>
     <string name="recording_service_gps_on">GPS location and route logging enabled</string>

@@ -29,6 +29,7 @@
 
     <string name="notification_channel_name">VoyageCam 录制状态</string>
     <string name="notification_channel_description">显示行车记录录制状态，并提供停止入口</string>
+    <string name="notification_start_blocked_title">VoyageCam 未开始录制</string>
     <string name="notification_audio_on">环境声开启</string>
     <string name="notification_audio_off">静音</string>
     <string name="notification_segment_minutes">%1$d分钟分段</string>
@@ -490,6 +491,7 @@
     <string name="recording_service_collision_locking">检测到疑似碰撞 %1$sg，正在执行紧急锁定</string>
     <string name="recording_service_locking_event">正在执行紧急锁定</string>
     <string name="recording_service_event_failed">紧急事件创建失败：%1$s</string>
+    <string name="recording_service_storage_insufficient">剩余空间不足：至少需要 %1$s（含安全余量），当前仅剩 %2$s。请清理旧片段或调低录制规格后重试。</string>
     <string name="recording_service_start_failed">启动录制失败：%1$s</string>
     <string name="recording_service_collision_unavailable">设备未提供可用加速度传感器，自动碰撞锁定不可用</string>
     <string name="recording_service_gps_on">GPS位置与轨迹记录已开启</string>

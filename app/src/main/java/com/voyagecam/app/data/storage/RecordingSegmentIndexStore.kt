@@ -1,6 +1,7 @@
 package com.voyagecam.app.data.storage
 
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -21,24 +22,27 @@ class RecordingSegmentIndexStore(context: Context) {
     private val dao = database.recordingSegmentIndexDao()
     private val unknownDateLabel = context.applicationContext.getString(R.string.common_unknown_date)
 
-    suspend fun ensureImported(normalRoot: File, lockedRoot: File, dashcamRoot: File) {
-        if (prefs.getBoolean(KEY_IMPORTED, false)) return
-
-        val segments = buildList {
-            addAll(scanSegments(normalRoot, dashcamRoot, locked = false))
-            addAll(scanSegments(lockedRoot, dashcamRoot, locked = true))
+    suspend fun ensureImported(normalRoot: File, lockedRoot: File, dashcamRoot: File): RebuildResult {
+        if (prefs.getBoolean(KEY_IMPORTED, false)) {
+            return RebuildResult(indexedSegments = dao.listAll().size, quarantinedFiles = 0, deletedFiles = 0)
         }
-        dao.replaceAll(segments)
-        prefs.edit().putBoolean(KEY_IMPORTED, true).apply()
+        return rebuild(normalRoot, lockedRoot, dashcamRoot)
     }
 
-    suspend fun rebuild(normalRoot: File, lockedRoot: File, dashcamRoot: File) {
+    suspend fun rebuild(normalRoot: File, lockedRoot: File, dashcamRoot: File): RebuildResult {
+        val normalScan = scanSegments(normalRoot, dashcamRoot, locked = false)
+        val lockedScan = scanSegments(lockedRoot, dashcamRoot, locked = true)
         val segments = buildList {
-            addAll(scanSegments(normalRoot, dashcamRoot, locked = false))
-            addAll(scanSegments(lockedRoot, dashcamRoot, locked = true))
+            addAll(normalScan.validSegments)
+            addAll(lockedScan.validSegments)
         }
         dao.replaceAll(segments)
         prefs.edit().putBoolean(KEY_IMPORTED, true).apply()
+        return RebuildResult(
+            indexedSegments = segments.size,
+            quarantinedFiles = normalScan.quarantinedFiles + lockedScan.quarantinedFiles,
+            deletedFiles = normalScan.deletedFiles + lockedScan.deletedFiles,
+        )
     }
 
     suspend fun listRecentSegments(
@@ -120,17 +124,48 @@ class RecordingSegmentIndexStore(context: Context) {
         return fresh.toRecordingSegment(dashcamRoot)
     }
 
-    private fun scanSegments(root: File, dashcamRoot: File, locked: Boolean): List<RecordingSegmentIndexEntity> {
-        if (!root.exists()) return emptyList()
-        return root.walkTopDown()
+    private fun scanSegments(root: File, dashcamRoot: File, locked: Boolean): ScanResult {
+        if (!root.exists()) return ScanResult()
+
+        val validSegments = mutableListOf<RecordingSegmentIndexEntity>()
+        var quarantinedFiles = 0
+        var deletedFiles = 0
+
+        root.walkTopDown()
             .filter { it.isFile && it.extension.equals("mp4", ignoreCase = true) }
-            .mapNotNull { file -> file.toEntityOrNull(dashcamRoot, locked, unknownDateLabel) }
-            .toList()
+            .forEach { file ->
+                if (file.validateRecordingSegment().isValid) {
+                    file.toEntityOrNull(dashcamRoot, locked, unknownDateLabel)?.let(validSegments::add)
+                } else {
+                    when (quarantineInvalidSegment(file, dashcamRoot)) {
+                        InvalidSegmentAction.Quarantined -> quarantinedFiles++
+                        InvalidSegmentAction.Deleted -> deletedFiles++
+                    }
+                }
+            }
+
+        return ScanResult(
+            validSegments = validSegments,
+            quarantinedFiles = quarantinedFiles,
+            deletedFiles = deletedFiles,
+        )
     }
 
     private companion object {
         const val KEY_IMPORTED = "imported"
     }
+
+    data class RebuildResult(
+        val indexedSegments: Int,
+        val quarantinedFiles: Int,
+        val deletedFiles: Int,
+    )
+
+    private data class ScanResult(
+        val validSegments: List<RecordingSegmentIndexEntity> = emptyList(),
+        val quarantinedFiles: Int = 0,
+        val deletedFiles: Int = 0,
+    )
 }
 
 data class RecordingSegmentStorageSnapshot(
@@ -284,3 +319,98 @@ private fun String.toSegmentGroupKey(): String {
     val normalized = replace(File.separatorChar, '/')
     return normalized.substringBeforeLast('/', missingDelimiterValue = normalized)
 }
+
+private data class SegmentValidationResult(
+    val isValid: Boolean,
+)
+
+private enum class InvalidSegmentAction {
+    Quarantined,
+    Deleted,
+}
+
+private fun File.validateRecordingSegment(): SegmentValidationResult {
+    if (!exists() || !isFile || !canRead() || length() <= 0L) {
+        return SegmentValidationResult(isValid = false)
+    }
+
+    val retriever = MediaMetadataRetriever()
+    return try {
+        retriever.setDataSource(absolutePath)
+        val durationMillis = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+        val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull()
+        val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull()
+        val hasVideo = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_VIDEO)
+        SegmentValidationResult(
+            isValid = durationMillis != null &&
+                durationMillis >= MIN_VALID_SEGMENT_DURATION_MS &&
+                width != null &&
+                width > 0 &&
+                height != null &&
+                height > 0 &&
+                (hasVideo == null || hasVideo.equals("yes", ignoreCase = true) || hasVideo == "1"),
+        )
+    } catch (_: Throwable) {
+        SegmentValidationResult(isValid = false)
+    } finally {
+        runCatching { retriever.release() }
+    }
+}
+
+private fun quarantineInvalidSegment(file: File, dashcamRoot: File): InvalidSegmentAction {
+    val relativePath = file.toDashcamPathOrNull(dashcamRoot) ?: file.name
+    val quarantineRoot = File(dashcamRoot, QUARANTINE_DIRECTORY)
+    val target = quarantineRoot.resolveUniqueChild(relativePath)
+    target.parentFile?.mkdirs()
+    val moved = file.renameTo(target) || runCatching {
+        file.copyTo(target, overwrite = false)
+        file.delete()
+        true
+    }.getOrDefault(false)
+    if (moved) {
+        pruneEmptyParents(file.parentFile, dashcamRoot)
+        return InvalidSegmentAction.Quarantined
+    }
+
+    val deleted = runCatching { file.delete() }.getOrDefault(false)
+    if (deleted) {
+        pruneEmptyParents(file.parentFile, dashcamRoot)
+    }
+    return InvalidSegmentAction.Deleted
+}
+
+private fun File.resolveUniqueChild(relativePath: String): File {
+    val normalized = relativePath.replace(File.separatorChar, '/')
+    val initial = File(this, normalized)
+    if (!initial.exists()) return initial
+
+    val extension = initial.extension.takeIf { it.isNotBlank() }?.let { ".$it" }.orEmpty()
+    val baseName = initial.name.removeSuffix(extension)
+    var index = 1
+    while (true) {
+        val candidate = File(initial.parentFile, "${baseName}_recovered_$index$extension")
+        if (!candidate.exists()) return candidate
+        index++
+    }
+}
+
+private fun pruneEmptyParents(startDirectory: File?, dashcamRoot: File) {
+    var directory = startDirectory
+    val protectedPaths = setOf(
+        File(dashcamRoot, "normal").absolutePath,
+        File(dashcamRoot, "locked").absolutePath,
+        File(dashcamRoot, QUARANTINE_DIRECTORY).absolutePath,
+        dashcamRoot.absolutePath,
+    )
+    while (directory != null && directory.absolutePath.startsWith(dashcamRoot.absolutePath)) {
+        val current = directory
+        directory = current.parentFile
+        val children = current.listFiles()
+        if (!children.isNullOrEmpty()) return
+        if (current.absolutePath in protectedPaths) return
+        current.delete()
+    }
+}
+
+private const val QUARANTINE_DIRECTORY = "quarantine"
+private const val MIN_VALID_SEGMENT_DURATION_MS = 1_000L
