@@ -250,6 +250,8 @@ fun VoyageCamRoute(
         onClearDualCameraDiagnostic = viewModel::clearDualCameraDiagnostic,
         onRefreshDualCameraSessionTelemetry = viewModel::refreshDualCameraSessionTelemetry,
         onClearDualCameraSessionTelemetry = viewModel::clearDualCameraSessionTelemetry,
+        onRefreshRuntimeTelemetry = viewModel::refreshRuntimeTelemetry,
+        onClearRuntimeTelemetry = viewModel::clearRuntimeTelemetry,
         onResetSettingsToDefaults = viewModel::resetSettingsToDefaults,
         onApplyStorageCapacityChange = viewModel::applyStorageCapacityChange,
         onClearPendingStorageCapacityChange = viewModel::clearPendingStorageCapacityChange,
@@ -299,6 +301,8 @@ internal fun VoyageCamRouteContent(
     onClearDualCameraDiagnostic: () -> Unit = {},
     onRefreshDualCameraSessionTelemetry: () -> Unit = {},
     onClearDualCameraSessionTelemetry: () -> Unit = {},
+    onRefreshRuntimeTelemetry: () -> Unit = {},
+    onClearRuntimeTelemetry: () -> Unit = {},
     onResetSettingsToDefaults: () -> Unit = {},
     onApplyStorageCapacityChange: (Int, Boolean) -> Unit = { _, _ -> },
     onClearPendingStorageCapacityChange: (String) -> Unit = {},
@@ -572,6 +576,9 @@ internal fun VoyageCamRouteContent(
                     autoStartDiagnostic = uiState.autoStartDiagnostic,
                     dualCameraDiagnostic = uiState.dualCameraDiagnostic,
                     dualCameraSessionTelemetry = uiState.dualCameraSessionTelemetry,
+                    latestCrashReport = uiState.latestCrashReport,
+                    recentRuntimeLogs = uiState.recentRuntimeLogs,
+                    dualCameraFailureArchive = uiState.dualCameraFailureArchive,
                     onRefreshAutoStartDiagnostic = onRefreshAutoStartDiagnostic,
                     onRefreshDualCameraDiagnostic = onRefreshDualCameraDiagnostic,
                     onClearDualCameraDiagnostic = {
@@ -582,6 +589,11 @@ internal fun VoyageCamRouteContent(
                     onClearDualCameraSessionTelemetry = {
                         onClearDualCameraSessionTelemetry()
                         onSetStatus(context.getString(R.string.route_dual_camera_session_cleared))
+                    },
+                    onRefreshRuntimeTelemetry = onRefreshRuntimeTelemetry,
+                    onClearRuntimeTelemetry = {
+                        onClearRuntimeTelemetry()
+                        onSetStatus(context.getString(R.string.route_runtime_telemetry_cleared))
                     },
                     bluetoothDevicePickerState = bluetoothDevicePickerState,
                 )

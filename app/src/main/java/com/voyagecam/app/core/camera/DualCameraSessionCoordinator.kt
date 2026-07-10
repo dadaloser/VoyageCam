@@ -23,8 +23,10 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import com.voyagecam.app.R
 import com.voyagecam.app.core.model.DualCameraDiagnostic
+import com.voyagecam.app.core.model.DualCameraFailureSource
 import com.voyagecam.app.core.model.DualCameraDiagnosticStage
 import com.voyagecam.app.data.settings.RecordingVideoProfile
+import com.voyagecam.app.data.telemetry.VoyageCamRuntimeTelemetry
 import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -320,6 +322,19 @@ object DualCameraSessionCoordinator : LifecycleOwner {
         onError: (DualCameraDiagnostic) -> Unit,
     ) {
         publishSessionStatus(lastDiagnostic = diagnostic)
+        val sessionStatus = _sessionStatus.value
+        VoyageCamRuntimeTelemetry.archiveDualCameraFailure(
+            source = DualCameraFailureSource.SessionCoordinator,
+            diagnostic = diagnostic,
+            summary = "Dual-camera session diagnostic",
+            attributes = mapOf(
+                "previewSessionToken" to sessionStatus.previewSessionToken.toString(),
+                "concurrentCameraActive" to sessionStatus.concurrentCameraActive.toString(),
+                "recordingActive" to sessionStatus.recordingActive.toString(),
+                "rearPreviewAttached" to sessionStatus.rearPreviewAttached.toString(),
+                "frontPreviewAttached" to sessionStatus.frontPreviewAttached.toString(),
+            ),
+        )
         onError(diagnostic)
     }
 }

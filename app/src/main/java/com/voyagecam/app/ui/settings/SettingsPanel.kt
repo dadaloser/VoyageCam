@@ -29,8 +29,11 @@ import com.voyagecam.app.core.model.AutoStartDiagnostic
 import com.voyagecam.app.core.model.AutoStartResult
 import com.voyagecam.app.core.model.CollisionSensitivity
 import com.voyagecam.app.core.model.DualCameraCapability
+import com.voyagecam.app.core.model.PersistedCrashReport
 import com.voyagecam.app.core.model.PersistedDualCameraDiagnostic
+import com.voyagecam.app.core.model.PersistedDualCameraFailureArchive
 import com.voyagecam.app.core.model.PersistedDualCameraSessionTelemetry
+import com.voyagecam.app.core.model.PersistedStructuredLogEntry
 import com.voyagecam.app.core.model.RecordingStorageOverview
 import com.voyagecam.app.core.model.TrustedBluetoothDevice
 import com.voyagecam.app.R
@@ -41,6 +44,7 @@ import com.voyagecam.app.data.settings.StorageCapacityLimit
 import com.voyagecam.app.data.settings.VoyageCamSettings
 import com.voyagecam.app.data.settings.VoyageCamSettingsStore
 import com.voyagecam.app.data.settings.recordingModeDescription
+import com.voyagecam.app.ui.dualCameraDiagnosticSummary
 import com.voyagecam.app.ui.labelRes
 import com.voyagecam.app.ui.theme.SectionCard
 import java.text.SimpleDateFormat
@@ -84,14 +88,19 @@ fun SettingsPanel(
     onTrustedBluetoothDeviceChanged: (String) -> Unit,
     onAutoStartOnTrustedBluetoothChanged: (Boolean) -> Unit,
     onRequestResetSettings: () -> Unit,
-    autoStartDiagnostic: AutoStartDiagnostic?,
-    dualCameraDiagnostic: PersistedDualCameraDiagnostic?,
-    dualCameraSessionTelemetry: PersistedDualCameraSessionTelemetry?,
-    onRefreshAutoStartDiagnostic: () -> Unit,
-    onRefreshDualCameraDiagnostic: () -> Unit,
-    onClearDualCameraDiagnostic: () -> Unit,
-    onRefreshDualCameraSessionTelemetry: () -> Unit,
-    onClearDualCameraSessionTelemetry: () -> Unit,
+    autoStartDiagnostic: AutoStartDiagnostic? = null,
+    dualCameraDiagnostic: PersistedDualCameraDiagnostic? = null,
+    dualCameraSessionTelemetry: PersistedDualCameraSessionTelemetry? = null,
+    latestCrashReport: PersistedCrashReport? = null,
+    recentRuntimeLogs: List<PersistedStructuredLogEntry> = emptyList(),
+    dualCameraFailureArchive: List<PersistedDualCameraFailureArchive> = emptyList(),
+    onRefreshAutoStartDiagnostic: () -> Unit = {},
+    onRefreshDualCameraDiagnostic: () -> Unit = {},
+    onClearDualCameraDiagnostic: () -> Unit = {},
+    onRefreshDualCameraSessionTelemetry: () -> Unit = {},
+    onClearDualCameraSessionTelemetry: () -> Unit = {},
+    onRefreshRuntimeTelemetry: () -> Unit = {},
+    onClearRuntimeTelemetry: () -> Unit = {},
     bluetoothDevicePickerState: BluetoothDevicePickerState,
 ) {
     val context = LocalContext.current
@@ -492,6 +501,15 @@ fun SettingsPanel(
             onClear = onClearDualCameraSessionTelemetry,
         )
 
+        Spacer(modifier = Modifier.height(16.dp))
+        RuntimeTelemetryPanel(
+            latestCrashReport = latestCrashReport,
+            recentRuntimeLogs = recentRuntimeLogs,
+            dualCameraFailureArchive = dualCameraFailureArchive,
+            onRefresh = onRefreshRuntimeTelemetry,
+            onClear = onClearRuntimeTelemetry,
+        )
+
         Spacer(modifier = Modifier.height(12.dp))
         OutlinedButton(
             onClick = onRequestResetSettings,
@@ -499,6 +517,189 @@ fun SettingsPanel(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(stringResource(R.string.settings_reset_defaults))
+        }
+    }
+}
+
+@Composable
+private fun RuntimeTelemetryPanel(
+    latestCrashReport: PersistedCrashReport?,
+    recentRuntimeLogs: List<PersistedStructuredLogEntry>,
+    dualCameraFailureArchive: List<PersistedDualCameraFailureArchive>,
+    onRefresh: () -> Unit,
+    onClear: () -> Unit,
+) {
+    val context = LocalContext.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = stringResource(R.string.settings_runtime_telemetry_title),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF163036),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = onRefresh) {
+                Text(stringResource(R.string.settings_refresh))
+            }
+            OutlinedButton(onClick = onClear) {
+                Text(stringResource(R.string.settings_runtime_telemetry_clear))
+            }
+        }
+    }
+    Spacer(modifier = Modifier.height(8.dp))
+
+    Text(
+        text = stringResource(R.string.settings_runtime_crash_title),
+        style = MaterialTheme.typography.bodyMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = Color(0xFF163036),
+    )
+    Spacer(modifier = Modifier.height(4.dp))
+    if (latestCrashReport == null) {
+        Text(
+            text = stringResource(R.string.settings_runtime_crash_empty),
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF64777B),
+        )
+    } else {
+        Text(
+            text = stringResource(
+                R.string.settings_runtime_crash_summary,
+                latestCrashReport.exceptionType,
+                latestCrashReport.recordedAtMillis.asTime(),
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF9B2C2C),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = stringResource(R.string.settings_runtime_crash_thread, latestCrashReport.threadName),
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF4D6267),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = stringResource(R.string.settings_runtime_crash_version, latestCrashReport.appVersion),
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF4D6267),
+        )
+        latestCrashReport.message?.takeIf { it.isNotBlank() }?.let { message ->
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = stringResource(R.string.settings_runtime_crash_message, message),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF4D6267),
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = stringResource(
+                R.string.settings_runtime_crash_stack,
+                latestCrashReport.stacktrace.lineSequence().take(4).joinToString(separator = "\n"),
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF64777B),
+        )
+    }
+
+    Spacer(modifier = Modifier.height(12.dp))
+    Text(
+        text = stringResource(R.string.settings_runtime_logs_title),
+        style = MaterialTheme.typography.bodyMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = Color(0xFF163036),
+    )
+    Spacer(modifier = Modifier.height(4.dp))
+    if (recentRuntimeLogs.isEmpty()) {
+        Text(
+            text = stringResource(R.string.settings_runtime_logs_empty),
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF64777B),
+        )
+    } else {
+        recentRuntimeLogs.forEach { logEntry ->
+            Text(
+                text = stringResource(
+                    R.string.settings_runtime_log_summary,
+                    stringResource(logEntry.level.labelRes()),
+                    "${logEntry.category}/${logEntry.event}",
+                    logEntry.recordedAtMillis.asTime(),
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                color = when (logEntry.level) {
+                    com.voyagecam.app.core.model.StructuredLogLevel.Warn -> Color(0xFF9B2C2C)
+                    com.voyagecam.app.core.model.StructuredLogLevel.Error,
+                    com.voyagecam.app.core.model.StructuredLogLevel.Fatal -> Color(0xFF9B2C2C)
+                    else -> Color(0xFF1F6F78)
+                },
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = logEntry.message,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF4D6267),
+            )
+            if (logEntry.attributes.isNotBlank()) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(R.string.settings_runtime_log_attributes, logEntry.attributes),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF64777B),
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+        }
+    }
+
+    Text(
+        text = stringResource(R.string.settings_runtime_dual_camera_archive_title),
+        style = MaterialTheme.typography.bodyMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = Color(0xFF163036),
+    )
+    Spacer(modifier = Modifier.height(4.dp))
+    if (dualCameraFailureArchive.isEmpty()) {
+        Text(
+            text = stringResource(R.string.settings_runtime_dual_camera_archive_empty),
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF64777B),
+        )
+    } else {
+        dualCameraFailureArchive.forEach { archive ->
+            val stageLabel = archive.stage?.let { context.getString(it.labelRes()) }
+                ?: context.getString(R.string.settings_runtime_dual_camera_archive_stage_unknown)
+            Text(
+                text = stringResource(
+                    R.string.settings_runtime_dual_camera_archive_summary,
+                    context.getString(archive.source.labelRes()),
+                    stageLabel,
+                    archive.recordedAtMillis.asTime(),
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF9B2C2C),
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = archive.detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF4D6267),
+            )
+            if (archive.attributes.isNotBlank()) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(R.string.settings_runtime_log_attributes, archive.attributes),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF64777B),
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
         }
     }
 }

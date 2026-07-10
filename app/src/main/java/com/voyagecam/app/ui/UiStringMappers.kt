@@ -10,8 +10,10 @@ import com.voyagecam.app.core.model.CameraDirection
 import com.voyagecam.app.core.model.CollisionSensitivity
 import com.voyagecam.app.core.model.DualCameraDiagnostic
 import com.voyagecam.app.core.model.DualCameraDiagnosticStage
+import com.voyagecam.app.core.model.DualCameraFailureSource
 import com.voyagecam.app.core.model.DualCameraSwitchState
 import com.voyagecam.app.core.model.EmergencyTrigger
+import com.voyagecam.app.core.model.StructuredLogLevel
 import com.voyagecam.app.ui.history.SegmentCameraFilter
 import com.voyagecam.app.ui.history.SegmentLockFilter
 import com.voyagecam.app.ui.preview.DualCameraTelemetryPresentation
@@ -63,6 +65,22 @@ fun DualCameraSwitchState.labelRes(): Int = when (this) {
     DualCameraSwitchState.AvailableOn -> R.string.label_dual_camera_state_available_on
     DualCameraSwitchState.Unavailable -> R.string.label_dual_camera_state_unavailable
     DualCameraSwitchState.CheckFailed -> R.string.label_dual_camera_state_check_failed
+}
+
+@StringRes
+fun DualCameraFailureSource.labelRes(): Int = when (this) {
+    DualCameraFailureSource.SessionCoordinator -> R.string.label_dual_camera_failure_source_session_coordinator
+    DualCameraFailureSource.RecordingService -> R.string.label_dual_camera_failure_source_recording_service
+    DualCameraFailureSource.PerformanceGuard -> R.string.label_dual_camera_failure_source_performance_guard
+}
+
+@StringRes
+fun StructuredLogLevel.labelRes(): Int = when (this) {
+    StructuredLogLevel.Debug -> R.string.label_log_level_debug
+    StructuredLogLevel.Info -> R.string.label_log_level_info
+    StructuredLogLevel.Warn -> R.string.label_log_level_warn
+    StructuredLogLevel.Error -> R.string.label_log_level_error
+    StructuredLogLevel.Fatal -> R.string.label_log_level_fatal
 }
 
 @StringRes

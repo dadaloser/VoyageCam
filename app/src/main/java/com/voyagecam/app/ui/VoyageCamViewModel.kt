@@ -8,11 +8,14 @@ import com.voyagecam.app.core.camera.CameraCapabilityDetector
 import com.voyagecam.app.core.model.AutoStartDiagnostic
 import com.voyagecam.app.core.model.CameraDirection
 import com.voyagecam.app.core.model.DualCameraCapability
+import com.voyagecam.app.core.model.PersistedCrashReport
+import com.voyagecam.app.core.model.PersistedDualCameraFailureArchive
 import com.voyagecam.app.core.model.DualCameraSwitchState
 import com.voyagecam.app.core.model.EmergencyEvent
 import com.voyagecam.app.core.model.PendingStorageCapacityChange
 import com.voyagecam.app.core.model.PersistedDualCameraDiagnostic
 import com.voyagecam.app.core.model.PersistedDualCameraSessionTelemetry
+import com.voyagecam.app.core.model.PersistedStructuredLogEntry
 import com.voyagecam.app.core.model.RecordingSegment
 import com.voyagecam.app.core.model.RecordingStorageOverview
 import com.voyagecam.app.core.model.toStorageBytes
@@ -26,6 +29,7 @@ import com.voyagecam.app.data.settings.VoyageCamSettings
 import com.voyagecam.app.data.settings.VoyageCamSettingsStore
 import com.voyagecam.app.data.settings.coerceTo
 import com.voyagecam.app.data.settings.estimatedManagedBytesPerMinute
+import com.voyagecam.app.data.telemetry.RuntimeTelemetryStore
 import com.voyagecam.app.feature.evidence.EvidenceExportCancelledException
 import com.voyagecam.app.ui.events.EvidenceExportState
 import com.voyagecam.app.ui.history.SegmentCameraFilter
@@ -54,6 +58,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
     private val autoStartDiagnosticsStore = AutoStartDiagnosticsStore(appContext)
     private val dualCameraDiagnosticsStore = DualCameraDiagnosticsStore(appContext)
     private val dualCameraSessionTelemetryStore = DualCameraSessionTelemetryStore(appContext)
+    private val runtimeTelemetryStore = RuntimeTelemetryStore(appContext)
     private val storageLimit = StorageCapacityLimit.from(appContext)
     private var evidenceExportCancelFlag: AtomicBoolean? = null
 
@@ -79,6 +84,7 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
         refreshAutoStartDiagnostic()
         refreshDualCameraDiagnostic()
         refreshDualCameraSessionTelemetry()
+        refreshRuntimeTelemetry()
         redetect()
     }
 
@@ -201,6 +207,40 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
             dualCameraSessionTelemetryStore.clear()
             withContext(Dispatchers.Main) {
                 _uiState.update { it.copy(dualCameraSessionTelemetry = null) }
+            }
+        }
+    }
+
+    fun refreshRuntimeTelemetry() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val latestCrashReport = runtimeTelemetryStore.latestCrashReport()
+            val recentRuntimeLogs = runtimeTelemetryStore.recentLogs()
+            val dualCameraFailureArchive = runtimeTelemetryStore.recentDualCameraFailures()
+            withContext(Dispatchers.Main) {
+                _uiState.update {
+                    it.copy(
+                        latestCrashReport = latestCrashReport,
+                        recentRuntimeLogs = recentRuntimeLogs,
+                        dualCameraFailureArchive = dualCameraFailureArchive,
+                    )
+                }
+            }
+        }
+    }
+
+    fun clearRuntimeTelemetry() {
+        viewModelScope.launch(Dispatchers.IO) {
+            runtimeTelemetryStore.clearCrashReports()
+            runtimeTelemetryStore.clearLogs()
+            runtimeTelemetryStore.clearDualCameraFailures()
+            withContext(Dispatchers.Main) {
+                _uiState.update {
+                    it.copy(
+                        latestCrashReport = null,
+                        recentRuntimeLogs = emptyList(),
+                        dualCameraFailureArchive = emptyList(),
+                    )
+                }
             }
         }
     }
@@ -722,6 +762,9 @@ data class VoyageCamUiState(
     val autoStartDiagnostic: AutoStartDiagnostic? = null,
     val dualCameraDiagnostic: PersistedDualCameraDiagnostic? = null,
     val dualCameraSessionTelemetry: PersistedDualCameraSessionTelemetry? = null,
+    val latestCrashReport: PersistedCrashReport? = null,
+    val recentRuntimeLogs: List<PersistedStructuredLogEntry> = emptyList(),
+    val dualCameraFailureArchive: List<PersistedDualCameraFailureArchive> = emptyList(),
     val playbackItem: PlaybackItem? = null,
     val evidenceExportState: EvidenceExportState? = null,
     val selectedDay: String? = null,

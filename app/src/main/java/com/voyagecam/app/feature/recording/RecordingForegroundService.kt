@@ -29,7 +29,10 @@ import com.voyagecam.app.data.location.hasAnyLocationPermission
 import com.voyagecam.app.data.settings.VoyageCamSettingsStore
 import com.voyagecam.app.data.settings.recordingVideoProfile
 import com.voyagecam.app.data.storage.RecordingStorageManager
+import com.voyagecam.app.data.telemetry.VoyageCamRuntimeTelemetry
 import com.voyagecam.app.feature.collision.CollisionDetector
+import com.voyagecam.app.core.model.DualCameraFailureSource
+import com.voyagecam.app.core.model.StructuredLogLevel
 import com.voyagecam.app.ui.dualCameraDiagnosticSummary
 import java.io.File
 import java.util.Locale
@@ -94,14 +97,32 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         emergencyEventStore = EmergencyEventStore(this)
         emergencyLocationProvider = EmergencyLocationProvider(this)
         notificationController.ensureChannel()
+        VoyageCamRuntimeTelemetry.log(
+            level = StructuredLogLevel.Info,
+            category = VoyageCamRuntimeTelemetry.CATEGORY_RECORDING,
+            event = "service_created",
+            message = "Recording foreground service created",
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            VoyageCamRuntimeTelemetry.log(
+                level = StructuredLogLevel.Info,
+                category = VoyageCamRuntimeTelemetry.CATEGORY_RECORDING,
+                event = "service_stop_requested",
+                message = "Stop action received",
+            )
             stopSelf()
             return START_NOT_STICKY
         }
         if (intent?.action == ACTION_LOCK_CURRENT) {
+            VoyageCamRuntimeTelemetry.log(
+                level = StructuredLogLevel.Info,
+                category = VoyageCamRuntimeTelemetry.CATEGORY_RECORDING,
+                event = "emergency_lock_requested",
+                message = "Emergency lock action received",
+            )
             requestEmergencyLock()
             return START_STICKY
         }
@@ -141,6 +162,20 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
             collisionSensitivity = settings.collisionSensitivity,
         )
         gpsTrackBuffer.clear()
+        VoyageCamRuntimeTelemetry.log(
+            level = StructuredLogLevel.Info,
+            category = VoyageCamRuntimeTelemetry.CATEGORY_RECORDING,
+            event = "recording_start_requested",
+            message = "Preparing recording session",
+            attributes = mapOf(
+                "dualCamera" to dualCamera.toString(),
+                "ambientAudio" to ambientAudio.toString(),
+                "resolution" to settings.recordingResolution.label,
+                "frameRate" to settings.recordingFrameRate.label,
+                "bitrate" to settings.recordingBitrate.label,
+                "segmentMinutes" to settings.segmentDurationMinutes.toString(),
+            ),
+        )
 
         serviceScope.launch(Dispatchers.IO) {
             storageManager.cleanupNormalSegments(state.storageCapacityGb)
@@ -193,6 +228,12 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         serviceScope.cancel()
         state.clearAfterStop()
         cameraThread.quitSafely()
+        VoyageCamRuntimeTelemetry.log(
+            level = StructuredLogLevel.Info,
+            category = VoyageCamRuntimeTelemetry.CATEGORY_RECORDING,
+            event = "service_destroyed",
+            message = "Recording foreground service destroyed",
+        )
         super.onDestroy()
     }
 
@@ -219,6 +260,19 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         } else {
             getString(R.string.recording_service_segment_rear_writing, segmentIndex)
         }
+        VoyageCamRuntimeTelemetry.log(
+            level = StructuredLogLevel.Info,
+            category = VoyageCamRuntimeTelemetry.CATEGORY_RECORDING,
+            event = "segment_started",
+            message = "Recording segment started",
+            attributes = mapOf(
+                "segmentIndex" to segmentIndex.toString(),
+                "dualCamera" to state.dualCamera.toString(),
+                "frontFilePresent" to (files.front != null).toString(),
+                "rearFile" to (files.rear?.name ?: ""),
+                "frontFile" to (files.front?.name ?: ""),
+            ),
+        )
         notifyRecordingState()
     }
 
@@ -282,6 +336,16 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
     }
 
     override fun onRecordingStopped(files: RecordingSegmentFileSet) {
+        VoyageCamRuntimeTelemetry.log(
+            level = StructuredLogLevel.Info,
+            category = VoyageCamRuntimeTelemetry.CATEGORY_RECORDING,
+            event = "recording_stopped",
+            message = "Recording session stopped",
+            attributes = mapOf(
+                "rearFile" to (files.rear?.name ?: ""),
+                "frontFile" to (files.front?.name ?: ""),
+            ),
+        )
         if (state.pendingLockNextSegment) {
             val eventId = state.pendingLockNextEventId
             state.pendingLockNextSegment = false
@@ -309,6 +373,16 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
 
     override fun onRecordingError(message: String) {
         state.status = message
+        VoyageCamRuntimeTelemetry.log(
+            level = StructuredLogLevel.Error,
+            category = VoyageCamRuntimeTelemetry.CATEGORY_RECORDING,
+            event = "recording_error",
+            message = message,
+            attributes = mapOf(
+                "dualCameraActive" to state.dualCamera.toString(),
+                "currentSegmentIndex" to state.currentSegmentIndex.toString(),
+            ),
+        )
         notifyRecordingState()
     }
 
@@ -318,6 +392,25 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         serviceScope.launch(Dispatchers.IO) {
             dualCameraDiagnosticsStore.record(diagnostic)
         }
+        VoyageCamRuntimeTelemetry.archiveDualCameraFailure(
+            source = DualCameraFailureSource.RecordingService,
+            diagnostic = diagnostic,
+            summary = "Dual-camera recording fell back to rear-only",
+            attributes = mapOf(
+                "segmentIndex" to state.currentSegmentIndex.toString(),
+                "currentFile" to (state.currentFileName ?: ""),
+            ),
+        )
+        VoyageCamRuntimeTelemetry.log(
+            level = StructuredLogLevel.Warn,
+            category = VoyageCamRuntimeTelemetry.CATEGORY_DUAL_CAMERA,
+            event = "dual_camera_fallback",
+            message = diagnostic.detail,
+            attributes = mapOf(
+                "stage" to diagnostic.stage.name,
+                "segmentIndex" to state.currentSegmentIndex.toString(),
+            ),
+        )
         state.status = getString(R.string.recording_service_dual_fallback, dualCameraDiagnosticSummary(diagnostic))
         notifyRecordingState()
     }
@@ -334,6 +427,15 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
             val acceleration = String.format(Locale.getDefault(), "%.1f", it.accelerationG)
             getString(R.string.recording_service_collision_creating, acceleration)
         } ?: getString(R.string.recording_service_creating_event)
+        VoyageCamRuntimeTelemetry.log(
+            level = StructuredLogLevel.Info,
+            category = VoyageCamRuntimeTelemetry.CATEGORY_RECORDING,
+            event = "emergency_event_creating",
+            message = state.status,
+            attributes = mapOf(
+                "trigger" to (if (collisionEvent == null) EmergencyTrigger.Manual.name else EmergencyTrigger.Collision.name),
+            ),
+        )
         notifyRecordingState()
 
         val triggeredAtMillis = collisionEvent?.triggeredAtMillis ?: System.currentTimeMillis()
@@ -363,6 +465,16 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
                         val acceleration = String.format(Locale.getDefault(), "%.1f", it.accelerationG)
                         getString(R.string.recording_service_collision_locking, acceleration)
                     } ?: getString(R.string.recording_service_locking_event)
+                    VoyageCamRuntimeTelemetry.log(
+                        level = StructuredLogLevel.Warn,
+                        category = VoyageCamRuntimeTelemetry.CATEGORY_RECORDING,
+                        event = "emergency_event_locking",
+                        message = state.status,
+                        attributes = mapOf(
+                            "eventId" to event.id,
+                            "trigger" to event.trigger.name,
+                        ),
+                    )
                     notifyRecordingState()
                     activeRecorder.lockCurrentSegment()
                 }
@@ -371,6 +483,13 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
                     state.status = getString(
                         R.string.recording_service_event_failed,
                         error.message ?: getString(R.string.common_unknown_error),
+                    )
+                    VoyageCamRuntimeTelemetry.log(
+                        level = StructuredLogLevel.Error,
+                        category = VoyageCamRuntimeTelemetry.CATEGORY_RECORDING,
+                        event = "emergency_event_failed",
+                        message = state.status,
+                        throwable = error,
                     )
                     notifyRecordingState()
                 }
@@ -392,6 +511,12 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         if (!started) {
             collisionDetector = null
             state.status = getString(R.string.recording_service_collision_unavailable)
+            VoyageCamRuntimeTelemetry.log(
+                level = StructuredLogLevel.Warn,
+                category = VoyageCamRuntimeTelemetry.CATEGORY_RECORDING,
+                event = "collision_detector_unavailable",
+                message = state.status,
+            )
             notifyRecordingState()
         }
     }
@@ -466,6 +591,13 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
             gpsTrackBuffer.clear()
             state.status = getString(R.string.recording_service_gps_off)
         }
+        VoyageCamRuntimeTelemetry.log(
+            level = StructuredLogLevel.Info,
+            category = VoyageCamRuntimeTelemetry.CATEGORY_RECORDING,
+            event = "gps_metadata_changed",
+            message = state.status,
+            attributes = mapOf("enabled" to enabled.toString()),
+        )
         if (state.startedAtMillis > 0L) {
             notifyRecordingState()
         }
@@ -514,6 +646,16 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         state.dualCamera = false
         state.dualCameraDiagnostic = getString(R.string.recording_service_guard_prefix, reason)
         state.status = getString(R.string.recording_service_guard_triggered, reason)
+        VoyageCamRuntimeTelemetry.archiveDualCameraFailure(
+            source = DualCameraFailureSource.PerformanceGuard,
+            stage = null,
+            summary = "Dual-camera downgraded by performance guard",
+            detail = reason,
+            attributes = mapOf(
+                "segmentIndex" to state.currentSegmentIndex.toString(),
+                "storageCapacityGb" to state.storageCapacityGb.toString(),
+            ),
+        )
         recorder?.downgradeToRearOnly(state.status)
         notifyRecordingState()
     }
