@@ -35,8 +35,10 @@
     <string name="notification_locked_count"> · %1$d locked</string>
     <string name="notification_fallback_prefix"> · Fallback: %1$s</string>
     <string name="notification_performance_prefix"> · Performance guard: %1$s</string>
+    <string name="notification_content_title_startup">VoyageCam is preparing to record</string>
     <string name="notification_content_title">VoyageCam is recording</string>
     <string name="notification_content_text">%1$s · %2$s · %3$s%4$s · %5$s%6$s</string>
+    <string name="notification_content_text_startup">%1$s · %2$s · %3$s</string>
     <string name="notification_big_text">%1$s · %2$s · %3$s · %4$s · %5$s%6$s%7$s%8$s%9$s%10$s · %11$dGB loop storage · running %12$s%13$s</string>
     <string name="notification_action_lock">Emergency lock</string>
     <string name="notification_action_stop">Stop recording</string>
@@ -469,6 +471,7 @@
     <string name="common_ms">%1$dms</string>
 
     <string name="recording_service_preparing">Preparing rear camera</string>
+    <string name="recording_service_startup_cleanup">Cleaning older clips before recording starts</string>
     <string name="recording_service_preparing_segment">Preparing rear camera with %1$d-minute segments</string>
     <string name="recording_service_dual_ok">Concurrent dual-camera recording is healthy</string>
     <string name="recording_service_segment_dual_writing">Writing segment %1$d from both rear and front cameras</string>
@@ -487,6 +490,7 @@
     <string name="recording_service_collision_locking">Possible collision detected at %1$sg, executing emergency lock</string>
     <string name="recording_service_locking_event">Executing emergency lock</string>
     <string name="recording_service_event_failed">Failed to create emergency event: %1$s</string>
+    <string name="recording_service_start_failed">Failed to start recording: %1$s</string>
     <string name="recording_service_collision_unavailable">No usable accelerometer was provided by the device. Automatic collision lock is unavailable.</string>
     <string name="recording_service_gps_on">GPS location and route logging enabled</string>
     <string name="recording_service_gps_off">GPS location and route logging disabled</string>

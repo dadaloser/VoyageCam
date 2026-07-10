@@ -35,8 +35,10 @@
     <string name="notification_locked_count"> · 已锁定%1$d段</string>
     <string name="notification_fallback_prefix"> · 降级原因：%1$s</string>
     <string name="notification_performance_prefix"> · 性能保护：%1$s</string>
+    <string name="notification_content_title_startup">VoyageCam 准备录制中</string>
     <string name="notification_content_title">VoyageCam 正在录制</string>
     <string name="notification_content_text">%1$s · %2$s · %3$s%4$s · %5$s%6$s</string>
+    <string name="notification_content_text_startup">%1$s · %2$s · %3$s</string>
     <string name="notification_big_text">%1$s · %2$s · %3$s · %4$s · %5$s%6$s%7$s%8$s%9$s%10$s · %11$dGB循环空间 · 已运行 %12$s%13$s</string>
     <string name="notification_action_lock">紧急锁定</string>
     <string name="notification_action_stop">停止录制</string>
@@ -469,6 +471,7 @@
     <string name="common_ms">%1$dms</string>
 
     <string name="recording_service_preparing">正在准备后置摄像头</string>
+    <string name="recording_service_startup_cleanup">正在清理旧片段，完成后开始录制</string>
     <string name="recording_service_preparing_segment">正在准备后置摄像头，每 %1$d 分钟自动分段</string>
     <string name="recording_service_dual_ok">双摄并发录制正常</string>
     <string name="recording_service_segment_dual_writing">第 %1$d 段前后双摄正在写入</string>
@@ -487,6 +490,7 @@
     <string name="recording_service_collision_locking">检测到疑似碰撞 %1$sg，正在执行紧急锁定</string>
     <string name="recording_service_locking_event">正在执行紧急锁定</string>
     <string name="recording_service_event_failed">紧急事件创建失败：%1$s</string>
+    <string name="recording_service_start_failed">启动录制失败：%1$s</string>
     <string name="recording_service_collision_unavailable">设备未提供可用加速度传感器，自动碰撞锁定不可用</string>
     <string name="recording_service_gps_on">GPS位置与轨迹记录已开启</string>
     <string name="recording_service_gps_off">GPS位置与轨迹记录已关闭</string>

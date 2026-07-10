@@ -17,6 +17,7 @@ import java.util.Locale
 
 data class RecordingNotificationState(
     val startedAtMillis: Long,
+    val startupInProgress: Boolean,
     val requestedMode: RecordingMode,
     val primaryCameraDirection: CameraDirection,
     val dualCamera: Boolean,
@@ -59,6 +60,11 @@ class RecordingNotificationController(private val context: Context) {
     }
 
     fun build(state: RecordingNotificationState): Notification {
+        val title = if (state.startupInProgress) {
+            context.getString(R.string.notification_content_title_startup)
+        } else {
+            context.getString(R.string.notification_content_title)
+        }
         val mode = state.modeLabel(context)
         val profile = "${state.recordingResolutionLabel}/${state.recordingFrameRateLabel}/${state.recordingBitrateLabel}"
         val audio = if (state.ambientAudio) {
@@ -89,6 +95,24 @@ class RecordingNotificationController(private val context: Context) {
         val performanceText = state.performanceGuardSummary
             ?.let { context.getString(R.string.notification_performance_prefix, it) }
             .orEmpty()
+        val contentText = if (state.startupInProgress) {
+            context.getString(
+                R.string.notification_content_text_startup,
+                state.status,
+                mode,
+                profile,
+            )
+        } else {
+            context.getString(
+                R.string.notification_content_text,
+                mode,
+                profile,
+                segment,
+                locked,
+                elapsedText,
+                fileText,
+            )
+        }
 
         val openIntent = PendingIntent.getActivity(
             context,
@@ -111,18 +135,8 @@ class RecordingNotificationController(private val context: Context) {
 
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher)
-            .setContentTitle(context.getString(R.string.notification_content_title))
-            .setContentText(
-                context.getString(
-                    R.string.notification_content_text,
-                    mode,
-                    profile,
-                    segment,
-                    locked,
-                    elapsedText,
-                    fileText,
-                ),
-            )
+            .setContentTitle(title)
+            .setContentText(contentText)
             .setStyle(
                 NotificationCompat.BigTextStyle()
                     .bigText(

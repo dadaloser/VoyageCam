@@ -121,3 +121,4 @@ Use this flow on a real device when checking whether the front-camera inset stay
 4. Extract `core`, `data`, `feature`, and `ui` into Gradle modules once the package boundaries stabilize.
 5. Add a richer map-backed route viewer when map dependencies are introduced.
 6. Evaluate a lower-level continuous recording path if measured segment gaps remain unacceptable on target devices.
+7. 双摄预览“主副画面切换”,同时小窗是浮动的,自动吸边

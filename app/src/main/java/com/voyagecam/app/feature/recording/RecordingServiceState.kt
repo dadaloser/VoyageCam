@@ -10,6 +10,7 @@ import com.voyagecam.app.data.settings.VoyageCamSettingsStore
 
 class RecordingServiceState {
     var startedAtMillis: Long = 0L
+    var startupInProgress: Boolean = false
     var requestedMode: RecordingMode = RecordingMode.RearOnly
     var primaryCameraDirection: CameraDirection = CameraDirection.Rear
     var dualCamera: Boolean = false
@@ -50,6 +51,7 @@ class RecordingServiceState {
         collisionSensitivity: CollisionSensitivity,
     ) {
         this.startedAtMillis = startedAtMillis
+        startupInProgress = true
         this.requestedMode = requestedMode
         this.primaryCameraDirection = primaryCameraDirection
         this.dualCamera = dualCamera
@@ -62,7 +64,7 @@ class RecordingServiceState {
         this.segmentDurationMinutes = segmentDurationMinutes
         this.collisionSensitivity = collisionSensitivity
         currentSegmentIndex = 0
-        status = context.getString(R.string.recording_service_preparing_segment, segmentDurationMinutes)
+        status = context.getString(R.string.recording_service_startup_cleanup)
         currentFileName = null
         previousSegmentFiles = RecordingSegmentFileSet(rear = null)
         currentSegmentFiles = RecordingSegmentFileSet(rear = null)
@@ -77,11 +79,13 @@ class RecordingServiceState {
 
     fun clearAfterStop() {
         startedAtMillis = 0L
+        startupInProgress = false
     }
 
     fun notificationState(): RecordingNotificationState {
         return RecordingNotificationState(
             startedAtMillis = startedAtMillis,
+            startupInProgress = startupInProgress,
             requestedMode = requestedMode,
             primaryCameraDirection = primaryCameraDirection,
             dualCamera = dualCamera,

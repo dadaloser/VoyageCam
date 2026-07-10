@@ -27,6 +27,8 @@ import com.voyagecam.app.data.camera.DualCameraDiagnosticsStore
 import com.voyagecam.app.data.emergency.EmergencyEventStore
 import com.voyagecam.app.data.location.EmergencyLocationProvider
 import com.voyagecam.app.data.location.hasAnyLocationPermission
+import com.voyagecam.app.data.settings.ResolvedRecordingConfig
+import com.voyagecam.app.data.settings.VoyageCamSettings
 import com.voyagecam.app.data.settings.VoyageCamSettingsStore
 import com.voyagecam.app.data.settings.recordingFallbackSummary
 import com.voyagecam.app.data.settings.resolveRecordingConfig
@@ -39,8 +41,10 @@ import com.voyagecam.app.core.model.StructuredLogLevel
 import com.voyagecam.app.ui.dualCameraDiagnosticSummary
 import java.io.File
 import java.util.Locale
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -57,6 +61,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
     private lateinit var storageManager: RecordingStorageManager
     private lateinit var emergencyEventStore: EmergencyEventStore
     private lateinit var emergencyLocationProvider: EmergencyLocationProvider
+    private var startupJob: Job? = null
     private var collisionDetector: CollisionDetector? = null
     private var recorder: RearCameraRecorder? = null
     private val state = RecordingServiceState()
@@ -142,7 +147,12 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
                 START_NOT_STICKY
             }
         }
-        if (state.startedAtMillis > 0L && recorder != null) {
+        if (RecordingStartupPolicy.shouldIgnoreStart(
+                startupInProgress = state.startupInProgress,
+                startedAtMillis = state.startedAtMillis,
+                hasRecorder = recorder != null,
+            )
+        ) {
             notifyRecordingState()
             return START_STICKY
         }
@@ -186,9 +196,6 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
             ),
         )
 
-        serviceScope.launch(Dispatchers.IO) {
-            storageManager.cleanupNormalSegments(state.storageCapacityGb)
-        }
         val notification = notificationController.build(notificationState())
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
@@ -200,31 +207,22 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
             startForeground(RecordingNotificationController.NOTIFICATION_ID, notification)
         }
 
-        recorder?.stop()
-        collisionDetector?.stop()
-        recorder = RearCameraRecorder(
-            context = this,
-            cameraHandler = cameraHandler,
-            storageManager = storageManager,
-            callbacks = this,
-        ).also { recorder ->
-            recorder.start(
-                ambientAudioRequested = state.ambientAudio,
-                segmentDurationMinutes = state.segmentDurationMinutes,
-                dualCameraRequested = state.dualCamera,
-                primaryCameraDirection = state.primaryCameraDirection,
-                frontMirrorEnabled = resolvedConfig.frontCameraMirrorActive,
-                orientationStrategy = resolvedConfig.orientationStrategy,
-                videoProfile = settings.recordingVideoProfile(),
-            )
+        startupJob?.cancel()
+        startupJob = serviceScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    storageManager.cleanupNormalSegments(state.storageCapacityGb)
+                }
+                startRecordingSession(
+                    settings = settings,
+                    resolvedConfig = resolvedConfig,
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                handleStartupFailure(error)
+            }
         }
-        startCollisionDetection()
-        startGpsTrackSampling()
-
-        mainHandler.removeCallbacks(updateNotificationTask)
-        mainHandler.post(updateNotificationTask)
-        mainHandler.removeCallbacks(performanceGuardTask)
-        mainHandler.postDelayed(performanceGuardTask, PERFORMANCE_GUARD_INTERVAL_MS)
         return START_STICKY
     }
 
@@ -233,6 +231,8 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         mainHandler.removeCallbacks(gpsTrackSampleTask)
         mainHandler.removeCallbacks(performanceGuardTask)
         emergencyLocationProvider.stopUpdates()
+        startupJob?.cancel()
+        startupJob = null
         collisionDetector?.stop()
         collisionDetector = null
         recorder?.stop()
@@ -252,6 +252,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onRecordingStarted(files: RecordingSegmentFileSet, segmentIndex: Int) {
+        state.startupInProgress = false
         state.currentSegmentIndex = segmentIndex
         state.currentSegmentFiles = files
         state.currentFileName = files.primary?.name
@@ -715,6 +716,59 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
 
     private fun notifyRecordingState() {
         notificationController.notify(notificationState())
+    }
+
+    private fun startRecordingSession(
+        settings: VoyageCamSettings,
+        resolvedConfig: ResolvedRecordingConfig,
+    ) {
+        state.status = getString(R.string.recording_service_preparing_segment, state.segmentDurationMinutes)
+        notifyRecordingState()
+        recorder?.stop()
+        collisionDetector?.stop()
+        recorder = RearCameraRecorder(
+            context = this,
+            cameraHandler = cameraHandler,
+            storageManager = storageManager,
+            callbacks = this,
+        ).also { recorder ->
+            recorder.start(
+                ambientAudioRequested = state.ambientAudio,
+                segmentDurationMinutes = state.segmentDurationMinutes,
+                dualCameraRequested = state.dualCamera,
+                primaryCameraDirection = state.primaryCameraDirection,
+                frontMirrorEnabled = resolvedConfig.frontCameraMirrorActive,
+                orientationStrategy = resolvedConfig.orientationStrategy,
+                videoProfile = settings.recordingVideoProfile(),
+            )
+        }
+        startCollisionDetection()
+        startGpsTrackSampling()
+
+        mainHandler.removeCallbacks(updateNotificationTask)
+        mainHandler.post(updateNotificationTask)
+        mainHandler.removeCallbacks(performanceGuardTask)
+        mainHandler.postDelayed(performanceGuardTask, PERFORMANCE_GUARD_INTERVAL_MS)
+    }
+
+    private fun handleStartupFailure(error: Throwable) {
+        state.status = getString(
+            R.string.recording_service_start_failed,
+            error.message ?: getString(R.string.common_unknown_error),
+        )
+        VoyageCamRuntimeTelemetry.log(
+            level = StructuredLogLevel.Error,
+            category = VoyageCamRuntimeTelemetry.CATEGORY_RECORDING,
+            event = "recording_start_failed",
+            message = state.status,
+            throwable = error,
+            attributes = mapOf(
+                "requestedMode" to state.requestedMode.name,
+                "primaryCameraDirection" to state.primaryCameraDirection.name,
+                "dualCamera" to state.dualCamera.toString(),
+            ),
+        )
+        stopSelf()
     }
 
     private fun notificationState(): RecordingNotificationState {
