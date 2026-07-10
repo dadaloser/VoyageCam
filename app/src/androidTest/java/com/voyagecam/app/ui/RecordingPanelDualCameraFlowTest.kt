@@ -19,6 +19,7 @@ import com.voyagecam.app.core.model.DeviceCapabilityGrade
 import com.voyagecam.app.core.model.DualCameraCapability
 import com.voyagecam.app.core.model.DualCameraSwitchState
 import com.voyagecam.app.data.camera.DualCameraSessionTelemetryStore
+import com.voyagecam.app.data.settings.RecordingMode
 import com.voyagecam.app.data.settings.VoyageCamSettings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
@@ -66,7 +67,7 @@ class RecordingPanelDualCameraFlowTest {
                 }
                 RecordingPanel(
                     settings = VoyageCamSettings(
-                        dualCameraEnabled = true,
+                        recordingMode = RecordingMode.Auto,
                         storageCapacityGb = 10,
                         segmentDurationMinutes = 3,
                     ),

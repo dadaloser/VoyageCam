@@ -3,12 +3,15 @@ package com.voyagecam.app.feature.recording
 import android.content.Context
 import com.voyagecam.app.R
 import com.voyagecam.app.core.camera.RecordingSegmentFileSet
+import com.voyagecam.app.core.model.CameraDirection
 import com.voyagecam.app.core.model.CollisionSensitivity
+import com.voyagecam.app.data.settings.RecordingMode
 import com.voyagecam.app.data.settings.VoyageCamSettingsStore
 
 class RecordingServiceState {
     var startedAtMillis: Long = 0L
-    var recordingModeAuto: Boolean = false
+    var requestedMode: RecordingMode = RecordingMode.RearOnly
+    var primaryCameraDirection: CameraDirection = CameraDirection.Rear
     var dualCamera: Boolean = false
     var ambientAudio: Boolean = false
     var recordingResolutionLabel: String = "1080p"
@@ -33,7 +36,8 @@ class RecordingServiceState {
     fun resetForStart(
         context: Context,
         startedAtMillis: Long,
-        recordingModeAuto: Boolean,
+        requestedMode: RecordingMode,
+        primaryCameraDirection: CameraDirection,
         dualCamera: Boolean,
         ambientAudio: Boolean,
         recordingResolutionLabel: String,
@@ -45,7 +49,8 @@ class RecordingServiceState {
         collisionSensitivity: CollisionSensitivity,
     ) {
         this.startedAtMillis = startedAtMillis
-        this.recordingModeAuto = recordingModeAuto
+        this.requestedMode = requestedMode
+        this.primaryCameraDirection = primaryCameraDirection
         this.dualCamera = dualCamera
         this.ambientAudio = ambientAudio
         this.recordingResolutionLabel = recordingResolutionLabel
@@ -75,7 +80,8 @@ class RecordingServiceState {
     fun notificationState(): RecordingNotificationState {
         return RecordingNotificationState(
             startedAtMillis = startedAtMillis,
-            recordingModeAuto = recordingModeAuto,
+            requestedMode = requestedMode,
+            primaryCameraDirection = primaryCameraDirection,
             dualCamera = dualCamera,
             ambientAudio = ambientAudio,
             recordingResolutionLabel = recordingResolutionLabel,

@@ -133,12 +133,9 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
         )
         viewModelScope.launch(Dispatchers.IO) {
             val currentSettings = _uiState.value.settings
-            val result = detector.detect(currentSettings.dualCameraEnabled)
+            val result = detector.detect(currentSettings.recordingMode == com.voyagecam.app.data.settings.RecordingMode.Auto)
             withContext(Dispatchers.Main) {
                 persistCapability(result)
-                if (!result.isAvailable && _uiState.value.settings.dualCameraEnabled) {
-                    persistSettings(_uiState.value.settings.copy(dualCameraEnabled = false))
-                }
             }
         }
     }
@@ -745,9 +742,7 @@ private fun estimatedBytesPerMinute(
     settings: VoyageCamSettings,
     capability: DualCameraCapability,
 ): Long {
-    return settings.estimatedManagedBytesPerMinute(
-        dualCameraActive = settings.dualCameraEnabled && capability.isAvailable,
-    )
+    return settings.estimatedManagedBytesPerMinute(capability)
 }
 
 data class VoyageCamUiState(

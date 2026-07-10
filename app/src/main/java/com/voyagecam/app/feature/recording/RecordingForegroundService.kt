@@ -18,6 +18,7 @@ import com.voyagecam.app.R
 import com.voyagecam.app.core.camera.RearCameraRecorder
 import com.voyagecam.app.core.camera.RecordingSegmentFileSet
 import com.voyagecam.app.core.camera.RecordingSegmentTransitionStats
+import com.voyagecam.app.core.model.CameraDirection
 import com.voyagecam.app.core.model.DualCameraDiagnostic
 import com.voyagecam.app.core.model.EmergencyLocationSnapshot
 import com.voyagecam.app.core.model.EmergencyTrigger
@@ -27,6 +28,7 @@ import com.voyagecam.app.data.emergency.EmergencyEventStore
 import com.voyagecam.app.data.location.EmergencyLocationProvider
 import com.voyagecam.app.data.location.hasAnyLocationPermission
 import com.voyagecam.app.data.settings.VoyageCamSettingsStore
+import com.voyagecam.app.data.settings.resolveRecordingConfig
 import com.voyagecam.app.data.settings.recordingVideoProfile
 import com.voyagecam.app.data.storage.RecordingStorageManager
 import com.voyagecam.app.data.telemetry.VoyageCamRuntimeTelemetry
@@ -144,15 +146,15 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
             return START_STICKY
         }
 
-        val dualCamera = intent?.getBooleanExtra(EXTRA_DUAL_CAMERA, false) == true
-        val ambientAudio = intent?.getBooleanExtra(EXTRA_AMBIENT_AUDIO, false) == true
         val settings = settingsStore.load()
+        val resolvedConfig = settings.resolveRecordingConfig(settingsStore.loadCapability())
         state.resetForStart(
             context = this,
             startedAtMillis = System.currentTimeMillis(),
-            recordingModeAuto = settings.dualCameraEnabled,
-            dualCamera = dualCamera,
-            ambientAudio = ambientAudio,
+            requestedMode = settings.recordingMode,
+            primaryCameraDirection = resolvedConfig.primaryCameraDirection,
+            dualCamera = resolvedConfig.dualCameraActive,
+            ambientAudio = resolvedConfig.ambientAudioActive,
             recordingResolutionLabel = settings.recordingResolution.label,
             recordingFrameRateLabel = settings.recordingFrameRate.label,
             recordingBitrateLabel = settings.recordingBitrate.label,
@@ -168,8 +170,13 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
             event = "recording_start_requested",
             message = "Preparing recording session",
             attributes = mapOf(
-                "dualCamera" to dualCamera.toString(),
-                "ambientAudio" to ambientAudio.toString(),
+                "requestedMode" to settings.recordingMode.name,
+                "effectivePrimaryCamera" to resolvedConfig.primaryCameraDirection.name,
+                "dualCamera" to resolvedConfig.dualCameraActive.toString(),
+                "ambientAudio" to resolvedConfig.ambientAudioActive.toString(),
+                "frontMirror" to resolvedConfig.frontCameraMirrorActive.toString(),
+                "orientationStrategy" to resolvedConfig.orientationStrategy.name,
+                "downgradeReason" to (resolvedConfig.downgradeReason?.name ?: ""),
                 "resolution" to settings.recordingResolution.label,
                 "frameRate" to settings.recordingFrameRate.label,
                 "bitrate" to settings.recordingBitrate.label,
@@ -203,6 +210,9 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
                 ambientAudioRequested = state.ambientAudio,
                 segmentDurationMinutes = state.segmentDurationMinutes,
                 dualCameraRequested = state.dualCamera,
+                primaryCameraDirection = state.primaryCameraDirection,
+                frontMirrorEnabled = resolvedConfig.frontCameraMirrorActive,
+                orientationStrategy = resolvedConfig.orientationStrategy,
                 videoProfile = settings.recordingVideoProfile(),
             )
         }
@@ -257,6 +267,8 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
             } else {
                 getString(R.string.recording_service_segment_rear_fallback, segmentIndex)
             }
+        } else if (state.primaryCameraDirection == CameraDirection.Front) {
+            getString(R.string.recording_service_segment_front_writing, segmentIndex)
         } else {
             getString(R.string.recording_service_segment_rear_writing, segmentIndex)
         }

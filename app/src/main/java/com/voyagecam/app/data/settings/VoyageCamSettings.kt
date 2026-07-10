@@ -3,10 +3,22 @@ package com.voyagecam.app.data.settings
 import android.content.Context
 import android.os.StatFs
 import com.voyagecam.app.R
+import com.voyagecam.app.core.model.CameraDirection
 import com.voyagecam.app.core.model.CollisionSensitivity
 import com.voyagecam.app.core.model.DeviceCapabilityGrade
 import com.voyagecam.app.core.model.DualCameraCapability
 import com.voyagecam.app.core.model.DualCameraSwitchState
+
+enum class RecordingMode {
+    RearOnly,
+    FrontOnly,
+    Auto,
+}
+
+enum class RecordingOrientationStrategy {
+    FollowSystem,
+    FixedLandscapeDriving,
+}
 
 enum class RecordingResolutionPreset(val label: String) {
     HD_720P("720p"),
@@ -36,14 +48,33 @@ data class RecordingVideoProfile(
     val bitrate: RecordingBitratePreset,
 )
 
+enum class RecordingConfigDowngradeReason {
+    FrontCameraUnavailable,
+    DualCameraUnavailable,
+    DualCameraProfileUnsupported,
+}
+
+data class ResolvedRecordingConfig(
+    val requestedMode: RecordingMode,
+    val primaryCameraDirection: CameraDirection,
+    val dualCameraActive: Boolean,
+    val frontCameraActive: Boolean,
+    val ambientAudioActive: Boolean,
+    val frontCameraMirrorActive: Boolean,
+    val orientationStrategy: RecordingOrientationStrategy,
+    val downgradeReason: RecordingConfigDowngradeReason? = null,
+)
+
 data class VoyageCamSettings(
-    val dualCameraEnabled: Boolean = false,
+    val recordingMode: RecordingMode = RecordingMode.RearOnly,
     val storageCapacityGb: Int = 10,
     val segmentDurationMinutes: Int = 3,
     val recordingResolution: RecordingResolutionPreset = RecordingResolutionPreset.FHD_1080P,
     val recordingFrameRate: RecordingFrameRatePreset = RecordingFrameRatePreset.FPS_30,
     val recordingBitrate: RecordingBitratePreset = RecordingBitratePreset.MBPS_12,
     val collisionSensitivity: CollisionSensitivity = CollisionSensitivity.Medium,
+    val frontCameraMirrorEnabled: Boolean = false,
+    val recordingOrientationStrategy: RecordingOrientationStrategy = RecordingOrientationStrategy.FollowSystem,
     val ambientAudioEnabled: Boolean = false,
     val gpsMetadataEnabled: Boolean = false,
     val exportWatermarkSubtitlesEnabled: Boolean = false,
@@ -54,7 +85,10 @@ data class VoyageCamSettings(
     val autoStartOnPowerConnected: Boolean = false,
     val autoStartOnTrustedBluetooth: Boolean = false,
     val trustedBluetoothDevice: String = "",
-)
+) {
+    val dualCameraEnabled: Boolean
+        get() = recordingMode == RecordingMode.Auto
+}
 
 class VoyageCamSettingsStore(
     private val context: Context,
@@ -63,7 +97,12 @@ class VoyageCamSettingsStore(
 
     fun load(): VoyageCamSettings {
         return VoyageCamSettings(
-            dualCameraEnabled = prefs.getBoolean(KEY_DUAL_CAMERA_ENABLED, false),
+            recordingMode = prefs.getString(
+                KEY_RECORDING_MODE,
+                null,
+            ).toRecordingMode(
+                legacyDualCameraEnabled = prefs.getBoolean(KEY_DUAL_CAMERA_ENABLED, false),
+            ),
             storageCapacityGb = prefs.getInt(KEY_STORAGE_CAPACITY_GB, DEFAULT_STORAGE_GB),
             segmentDurationMinutes = prefs.getInt(KEY_SEGMENT_DURATION_MINUTES, DEFAULT_SEGMENT_DURATION_MINUTES)
                 .coerceToAllowedSegmentDuration(),
@@ -83,6 +122,11 @@ class VoyageCamSettingsStore(
                 KEY_COLLISION_SENSITIVITY,
                 CollisionSensitivity.Medium.name,
             ).toCollisionSensitivity(),
+            frontCameraMirrorEnabled = prefs.getBoolean(KEY_FRONT_CAMERA_MIRROR_ENABLED, false),
+            recordingOrientationStrategy = prefs.getString(
+                KEY_RECORDING_ORIENTATION_STRATEGY,
+                RecordingOrientationStrategy.FollowSystem.name,
+            ).toRecordingOrientationStrategy(),
             ambientAudioEnabled = prefs.getBoolean(KEY_AMBIENT_AUDIO_ENABLED, false),
             gpsMetadataEnabled = prefs.getBoolean(KEY_GPS_METADATA_ENABLED, false),
             exportWatermarkSubtitlesEnabled = prefs.getBoolean(KEY_EXPORT_WATERMARK_SUBTITLES_ENABLED, false),
@@ -99,12 +143,15 @@ class VoyageCamSettingsStore(
     fun save(settings: VoyageCamSettings) {
         prefs.edit()
             .putBoolean(KEY_DUAL_CAMERA_ENABLED, settings.dualCameraEnabled)
+            .putString(KEY_RECORDING_MODE, settings.recordingMode.name)
             .putInt(KEY_STORAGE_CAPACITY_GB, settings.storageCapacityGb)
             .putInt(KEY_SEGMENT_DURATION_MINUTES, settings.segmentDurationMinutes.coerceToAllowedSegmentDuration())
             .putString(KEY_RECORDING_RESOLUTION, settings.recordingResolution.name)
             .putString(KEY_RECORDING_FRAME_RATE, settings.recordingFrameRate.name)
             .putString(KEY_RECORDING_BITRATE, settings.recordingBitrate.name)
             .putString(KEY_COLLISION_SENSITIVITY, settings.collisionSensitivity.name)
+            .putBoolean(KEY_FRONT_CAMERA_MIRROR_ENABLED, settings.frontCameraMirrorEnabled)
+            .putString(KEY_RECORDING_ORIENTATION_STRATEGY, settings.recordingOrientationStrategy.name)
             .putBoolean(KEY_AMBIENT_AUDIO_ENABLED, settings.ambientAudioEnabled)
             .putBoolean(KEY_GPS_METADATA_ENABLED, settings.gpsMetadataEnabled)
             .putBoolean(KEY_EXPORT_WATERMARK_SUBTITLES_ENABLED, settings.exportWatermarkSubtitlesEnabled)
@@ -164,12 +211,15 @@ class VoyageCamSettingsStore(
         private const val DEFAULT_STORAGE_GB = 10
         private const val DEFAULT_SEGMENT_DURATION_MINUTES = 3
         private const val KEY_DUAL_CAMERA_ENABLED = "dual_camera_enabled"
+        private const val KEY_RECORDING_MODE = "recording_mode"
         private const val KEY_STORAGE_CAPACITY_GB = "storage_capacity_gb"
         private const val KEY_SEGMENT_DURATION_MINUTES = "segment_duration_minutes"
         private const val KEY_RECORDING_RESOLUTION = "recording_resolution"
         private const val KEY_RECORDING_FRAME_RATE = "recording_frame_rate"
         private const val KEY_RECORDING_BITRATE = "recording_bitrate"
         private const val KEY_COLLISION_SENSITIVITY = "collision_sensitivity"
+        private const val KEY_FRONT_CAMERA_MIRROR_ENABLED = "front_camera_mirror_enabled"
+        private const val KEY_RECORDING_ORIENTATION_STRATEGY = "recording_orientation_strategy"
         private const val KEY_AMBIENT_AUDIO_ENABLED = "ambient_audio_enabled"
         private const val KEY_GPS_METADATA_ENABLED = "gps_metadata_enabled"
         private const val KEY_EXPORT_WATERMARK_SUBTITLES_ENABLED = "export_watermark_subtitles_enabled"
@@ -204,6 +254,12 @@ class VoyageCamSettingsStore(
             }.getOrDefault(CollisionSensitivity.Medium)
         }
 
+        private fun String?.toRecordingMode(legacyDualCameraEnabled: Boolean): RecordingMode {
+            return runCatching {
+                RecordingMode.valueOf(this ?: if (legacyDualCameraEnabled) RecordingMode.Auto.name else RecordingMode.RearOnly.name)
+            }.getOrDefault(if (legacyDualCameraEnabled) RecordingMode.Auto else RecordingMode.RearOnly)
+        }
+
         private fun String?.toRecordingResolutionPreset(): RecordingResolutionPreset {
             return runCatching {
                 RecordingResolutionPreset.valueOf(this ?: RecordingResolutionPreset.FHD_1080P.name)
@@ -220,6 +276,12 @@ class VoyageCamSettingsStore(
             return runCatching {
                 RecordingBitratePreset.valueOf(this ?: RecordingBitratePreset.MBPS_12.name)
             }.getOrDefault(RecordingBitratePreset.MBPS_12)
+        }
+
+        private fun String?.toRecordingOrientationStrategy(): RecordingOrientationStrategy {
+            return runCatching {
+                RecordingOrientationStrategy.valueOf(this ?: RecordingOrientationStrategy.FollowSystem.name)
+            }.getOrDefault(RecordingOrientationStrategy.FollowSystem)
         }
     }
 }
@@ -261,6 +323,101 @@ fun VoyageCamSettings.recordingVideoProfile(): RecordingVideoProfile {
     )
 }
 
+fun VoyageCamSettings.resolveRecordingConfig(capability: DualCameraCapability?): ResolvedRecordingConfig {
+    val hasFrontCamera = capability?.frontCameraId != null
+    val dualCameraAvailable = capability?.isAvailable == true
+    val dualCameraProfileSupported = recordingVideoProfile().supportsDualCamera()
+
+    return when (recordingMode) {
+        RecordingMode.RearOnly -> {
+            ResolvedRecordingConfig(
+                requestedMode = recordingMode,
+                primaryCameraDirection = CameraDirection.Rear,
+                dualCameraActive = false,
+                frontCameraActive = false,
+                ambientAudioActive = ambientAudioEnabled,
+                frontCameraMirrorActive = false,
+                orientationStrategy = recordingOrientationStrategy,
+            )
+        }
+
+        RecordingMode.FrontOnly -> {
+            if (hasFrontCamera) {
+                ResolvedRecordingConfig(
+                    requestedMode = recordingMode,
+                    primaryCameraDirection = CameraDirection.Front,
+                    dualCameraActive = false,
+                    frontCameraActive = true,
+                    ambientAudioActive = false,
+                    frontCameraMirrorActive = frontCameraMirrorEnabled,
+                    orientationStrategy = recordingOrientationStrategy,
+                )
+            } else {
+                ResolvedRecordingConfig(
+                    requestedMode = recordingMode,
+                    primaryCameraDirection = CameraDirection.Rear,
+                    dualCameraActive = false,
+                    frontCameraActive = false,
+                    ambientAudioActive = ambientAudioEnabled,
+                    frontCameraMirrorActive = false,
+                    orientationStrategy = recordingOrientationStrategy,
+                    downgradeReason = RecordingConfigDowngradeReason.FrontCameraUnavailable,
+                )
+            }
+        }
+
+        RecordingMode.Auto -> {
+            when {
+                dualCameraAvailable && dualCameraProfileSupported -> {
+                    ResolvedRecordingConfig(
+                        requestedMode = recordingMode,
+                        primaryCameraDirection = CameraDirection.Rear,
+                        dualCameraActive = true,
+                        frontCameraActive = true,
+                        ambientAudioActive = ambientAudioEnabled,
+                        frontCameraMirrorActive = frontCameraMirrorEnabled,
+                        orientationStrategy = recordingOrientationStrategy,
+                    )
+                }
+
+                dualCameraAvailable -> {
+                    ResolvedRecordingConfig(
+                        requestedMode = recordingMode,
+                        primaryCameraDirection = CameraDirection.Rear,
+                        dualCameraActive = false,
+                        frontCameraActive = false,
+                        ambientAudioActive = ambientAudioEnabled,
+                        frontCameraMirrorActive = false,
+                        orientationStrategy = recordingOrientationStrategy,
+                        downgradeReason = RecordingConfigDowngradeReason.DualCameraProfileUnsupported,
+                    )
+                }
+
+                else -> {
+                    ResolvedRecordingConfig(
+                        requestedMode = recordingMode,
+                        primaryCameraDirection = CameraDirection.Rear,
+                        dualCameraActive = false,
+                        frontCameraActive = false,
+                        ambientAudioActive = ambientAudioEnabled,
+                        frontCameraMirrorActive = false,
+                        orientationStrategy = recordingOrientationStrategy,
+                        downgradeReason = RecordingConfigDowngradeReason.DualCameraUnavailable,
+                    )
+                }
+            }
+        }
+    }
+}
+
+fun VoyageCamSettings.estimatedManagedBytesPerMinute(capability: DualCameraCapability?): Long {
+    val resolved = resolveRecordingConfig(capability)
+    val videoStreamBytesPerMinute = recordingBitrate.bitsPerSecond.toLong() * 60L / 8L
+    val streamCount = if (resolved.dualCameraActive) 2L else 1L
+    return videoStreamBytesPerMinute * streamCount +
+        if (resolved.ambientAudioActive) AUDIO_BYTES_PER_MINUTE else 0L
+}
+
 fun VoyageCamSettings.estimatedManagedBytesPerMinute(dualCameraActive: Boolean): Long {
     val videoStreamBytesPerMinute = recordingBitrate.bitsPerSecond.toLong() * 60L / 8L
     val streamCount = if (dualCameraActive) 2L else 1L
@@ -268,4 +425,11 @@ fun VoyageCamSettings.estimatedManagedBytesPerMinute(dualCameraActive: Boolean):
         if (ambientAudioEnabled) AUDIO_BYTES_PER_MINUTE else 0L
 }
 
+fun RecordingVideoProfile.supportsDualCamera(): Boolean {
+    return resolution != RecordingResolutionPreset.UHD_2160P &&
+        frameRate != RecordingFrameRatePreset.FPS_60 &&
+        bitrate.megabitsPerSecond <= DUAL_CAMERA_MAX_BITRATE_MBPS
+}
+
 private const val AUDIO_BYTES_PER_MINUTE = 1L * 1024L * 1024L
+private const val DUAL_CAMERA_MAX_BITRATE_MBPS = 12

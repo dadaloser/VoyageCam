@@ -5,6 +5,7 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoRecordEvent
 import com.voyagecam.app.core.model.DualCameraDiagnostic
+import com.voyagecam.app.data.settings.RecordingOrientationStrategy
 import com.voyagecam.app.data.settings.RecordingVideoProfile
 import java.io.File
 
@@ -14,6 +15,8 @@ object DualCameraRecordingPipeline {
         rearFile: File,
         frontFile: File,
         audioEnabled: Boolean,
+        frontMirrorEnabled: Boolean,
+        orientationStrategy: RecordingOrientationStrategy,
         videoProfile: RecordingVideoProfile,
         onReady: (DualCameraRecordingSession) -> Unit,
         onEvent: (DualCameraRecordEvent) -> Unit,
@@ -24,6 +27,8 @@ object DualCameraRecordingPipeline {
             rearFile = rearFile,
             frontFile = frontFile,
             audioEnabled = audioEnabled,
+            frontMirrorEnabled = frontMirrorEnabled,
+            orientationStrategy = orientationStrategy,
             videoProfile = videoProfile,
             onReady = onReady,
             onEvent = onEvent,

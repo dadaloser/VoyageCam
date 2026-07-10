@@ -39,11 +39,16 @@ import com.voyagecam.app.core.model.TrustedBluetoothDevice
 import com.voyagecam.app.R
 import com.voyagecam.app.data.settings.RecordingBitratePreset
 import com.voyagecam.app.data.settings.RecordingFrameRatePreset
+import com.voyagecam.app.data.settings.RecordingMode
+import com.voyagecam.app.data.settings.RecordingOrientationStrategy
 import com.voyagecam.app.data.settings.RecordingResolutionPreset
 import com.voyagecam.app.data.settings.StorageCapacityLimit
 import com.voyagecam.app.data.settings.VoyageCamSettings
 import com.voyagecam.app.data.settings.VoyageCamSettingsStore
 import com.voyagecam.app.data.settings.recordingModeDescription
+import com.voyagecam.app.data.settings.recordingVideoProfile
+import com.voyagecam.app.data.settings.resolveRecordingConfig
+import com.voyagecam.app.data.settings.supportsDualCamera
 import com.voyagecam.app.ui.dualCameraDiagnosticSummary
 import com.voyagecam.app.ui.labelRes
 import com.voyagecam.app.ui.theme.SectionCard
@@ -69,9 +74,11 @@ fun SettingsPanel(
     onRequestLocationPermission: () -> Unit,
     onRequestBluetoothPermission: () -> Unit,
     onRedetect: () -> Unit,
-    onRecordingModeAutoChanged: (Boolean) -> Unit,
+    onRecordingModeChanged: (RecordingMode) -> Unit,
     onStorageChanged: (Int) -> Unit,
     onCleanupStorage: () -> Unit,
+    onFrontCameraMirrorChanged: (Boolean) -> Unit,
+    onRecordingOrientationStrategyChanged: (RecordingOrientationStrategy) -> Unit,
     onRecordingResolutionChanged: (RecordingResolutionPreset) -> Unit,
     onRecordingFrameRateChanged: (RecordingFrameRatePreset) -> Unit,
     onRecordingBitrateChanged: (RecordingBitratePreset) -> Unit,
@@ -104,6 +111,12 @@ fun SettingsPanel(
     bluetoothDevicePickerState: BluetoothDevicePickerState,
 ) {
     val context = LocalContext.current
+    val resolvedConfig = settings.resolveRecordingConfig(capability)
+    val frontCameraAvailable = capability.frontCameraId != null
+    val showLockedHint = isRecording
+    val showDualProfileFallbackHint = settings.recordingMode == RecordingMode.Auto &&
+        capability.isAvailable &&
+        !settings.recordingVideoProfile().supportsDualCamera()
     val visibleStorageCapacityGb = pendingStorageCapacityGb ?: settings.storageCapacityGb
     val storageInputState = androidx.compose.runtime.remember(visibleStorageCapacityGb) {
         androidx.compose.runtime.mutableStateOf(visibleStorageCapacityGb.toString())
@@ -165,6 +178,14 @@ fun SettingsPanel(
             color = Color(0xFF163036),
         )
         Spacer(modifier = Modifier.height(14.dp))
+        if (showLockedHint) {
+            Text(
+                text = stringResource(R.string.settings_locked_apply_after_stop),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF9B2C2C),
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+        }
 
         Text(
             text = stringResource(R.string.settings_recording_mode_title),
@@ -177,13 +198,19 @@ fun SettingsPanel(
             options = listOf(
                 SelectionOption(
                     label = stringResource(R.string.recording_mode_rear_only),
-                    selected = !settings.dualCameraEnabled,
-                    onClick = { onRecordingModeAutoChanged(false) },
+                    selected = settings.recordingMode == RecordingMode.RearOnly,
+                    onClick = { onRecordingModeChanged(RecordingMode.RearOnly) },
+                ),
+                SelectionOption(
+                    label = stringResource(R.string.recording_mode_front_only),
+                    selected = settings.recordingMode == RecordingMode.FrontOnly,
+                    enabled = frontCameraAvailable,
+                    onClick = { onRecordingModeChanged(RecordingMode.FrontOnly) },
                 ),
                 SelectionOption(
                     label = stringResource(R.string.recording_mode_auto),
-                    selected = settings.dualCameraEnabled,
-                    onClick = { onRecordingModeAutoChanged(true) },
+                    selected = settings.recordingMode == RecordingMode.Auto,
+                    onClick = { onRecordingModeChanged(RecordingMode.Auto) },
                 ),
             ),
             enabled = !isRecording,
@@ -191,12 +218,68 @@ fun SettingsPanel(
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = when {
-                isRecording -> stringResource(R.string.settings_recording_mode_locked)
+                isRecording -> stringResource(R.string.settings_locked_apply_after_stop)
                 else -> context.recordingModeDescription(
-                    recordingModeAuto = settings.dualCameraEnabled,
+                    settings = settings,
                     dualCameraSupported = capability.isAvailable,
+                    hasFrontCamera = frontCameraAvailable,
                 )
             },
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF64777B),
+        )
+        if (showDualProfileFallbackHint) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = stringResource(R.string.settings_dual_profile_fallback_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF9B2C2C),
+            )
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
+        SettingSwitchRow(
+            title = stringResource(R.string.settings_front_mirror_title),
+            subtitle = when {
+                settings.recordingMode == RecordingMode.RearOnly ->
+                    stringResource(R.string.settings_front_mirror_summary_rear_only)
+                resolvedConfig.frontCameraActive ->
+                    stringResource(R.string.settings_front_mirror_summary_active)
+                else ->
+                    stringResource(R.string.settings_front_mirror_summary_pending)
+            },
+            checked = settings.frontCameraMirrorEnabled,
+            enabled = !isRecording && settings.recordingMode != RecordingMode.RearOnly && frontCameraAvailable,
+            onCheckedChange = onFrontCameraMirrorChanged,
+            switchModifier = Modifier.testTag("front_mirror_switch"),
+        )
+
+        Spacer(modifier = Modifier.height(18.dp))
+        Text(
+            text = stringResource(R.string.settings_orientation_strategy_title),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF163036),
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        SelectionButtonRow(
+            options = RecordingOrientationStrategy.entries.map { strategy ->
+                SelectionOption(
+                    label = stringResource(
+                        when (strategy) {
+                            RecordingOrientationStrategy.FollowSystem -> R.string.settings_orientation_follow_system
+                            RecordingOrientationStrategy.FixedLandscapeDriving -> R.string.settings_orientation_fixed_landscape
+                        },
+                    ),
+                    selected = settings.recordingOrientationStrategy == strategy,
+                    onClick = { onRecordingOrientationStrategyChanged(strategy) },
+                )
+            },
+            enabled = !isRecording,
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = stringResource(R.string.settings_orientation_strategy_summary),
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF64777B),
         )
@@ -356,7 +439,12 @@ fun SettingsPanel(
         Spacer(modifier = Modifier.height(12.dp))
         SettingSwitchRow(
             title = stringResource(R.string.settings_ambient_audio_title),
-            subtitle = stringResource(R.string.settings_ambient_audio_summary),
+            subtitle = when {
+                settings.recordingMode == RecordingMode.FrontOnly ->
+                    stringResource(R.string.settings_ambient_audio_summary_front_only)
+                else ->
+                    stringResource(R.string.settings_ambient_audio_summary)
+            },
             checked = settings.ambientAudioEnabled,
             enabled = !isRecording,
             onCheckedChange = onAmbientAudioChanged,
@@ -1197,6 +1285,7 @@ private fun SettingSwitchRow(
 private data class SelectionOption(
     val label: String,
     val selected: Boolean,
+    val enabled: Boolean = true,
     val onClick: () -> Unit,
 )
 
@@ -1213,7 +1302,7 @@ private fun SelectionButtonRow(
             if (option.selected) {
                 Button(
                     onClick = option.onClick,
-                    enabled = enabled,
+                    enabled = enabled && option.enabled,
                     modifier = Modifier.weight(1f),
                 ) {
                     Text(option.label)
@@ -1221,7 +1310,7 @@ private fun SelectionButtonRow(
             } else {
                 OutlinedButton(
                     onClick = option.onClick,
-                    enabled = enabled,
+                    enabled = enabled && option.enabled,
                     modifier = Modifier.weight(1f),
                 ) {
                     Text(option.label)

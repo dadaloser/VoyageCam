@@ -24,6 +24,7 @@ import com.voyagecam.app.core.model.DeviceCapabilityGrade
 import com.voyagecam.app.core.model.DualCameraCapability
 import com.voyagecam.app.core.model.DualCameraSwitchState
 import com.voyagecam.app.data.camera.DualCameraSessionTelemetryStore
+import com.voyagecam.app.data.settings.RecordingMode
 import com.voyagecam.app.data.settings.VoyageCamSettings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
@@ -45,7 +46,7 @@ class RecordingRoutePanelTest {
         composeRule.setContent {
             RecordingRoutePanel(
                 settings = VoyageCamSettings(
-                    dualCameraEnabled = true,
+                    recordingMode = RecordingMode.Auto,
                     storageCapacityGb = 10,
                     segmentDurationMinutes = 3,
                 ),
@@ -100,7 +101,7 @@ class RecordingRoutePanelTest {
         val controller = FakeRecordingServiceController()
         var permissionStartRequests = 0
         val readyStatus = context.getString(R.string.route_recording_state_ready)
-        val startingStatus = context.getString(R.string.route_starting_mode, context.getString(R.string.label_camera_rear))
+        val startingStatus = context.getString(R.string.route_starting_mode, context.getString(R.string.recording_mode_auto_dual_active))
         val dualRecordingStatus = "Dual recording active"
         val stoppedStatus = context.getString(R.string.vm_recording_stopped)
         val previewSummary = context.getString(
@@ -132,7 +133,7 @@ class RecordingRoutePanelTest {
 
                 RecordingRoutePanel(
                     settings = VoyageCamSettings(
-                        dualCameraEnabled = true,
+                        recordingMode = RecordingMode.Auto,
                         storageCapacityGb = 10,
                         segmentDurationMinutes = 3,
                     ),

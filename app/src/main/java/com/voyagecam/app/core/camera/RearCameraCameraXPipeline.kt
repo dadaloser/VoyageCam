@@ -6,7 +6,9 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
+import android.view.Surface
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.MirrorMode
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.FileOutputOptions
@@ -19,9 +21,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import com.voyagecam.app.R
-import com.voyagecam.app.data.settings.RecordingBitratePreset
-import com.voyagecam.app.data.settings.RecordingFrameRatePreset
-import com.voyagecam.app.data.settings.RecordingResolutionPreset
+import com.voyagecam.app.core.model.CameraDirection
+import com.voyagecam.app.data.settings.RecordingOrientationStrategy
 import com.voyagecam.app.data.settings.RecordingVideoProfile
 import java.io.File
 
@@ -33,24 +34,33 @@ object RearCameraCameraXPipeline : LifecycleOwner {
     private var videoCapture: VideoCapture<Recorder>? = null
     private var previewSurfaceProvider: Preview.SurfaceProvider? = null
     private var activeRecording = false
-    private var currentVideoProfile = RecordingVideoProfile(
-        resolution = RecordingResolutionPreset.FHD_1080P,
-        frameRate = RecordingFrameRatePreset.FPS_30,
-        bitrate = RecordingBitratePreset.MBPS_12,
-    )
+    private var currentVideoProfile: RecordingVideoProfile? = null
+    private var currentCameraDirection: CameraDirection? = null
+    private var currentFrontMirrorEnabled: Boolean = false
+    private var currentOrientationStrategy: RecordingOrientationStrategy? = null
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
 
     fun setPreviewSurfaceProvider(
         context: Context,
+        cameraDirection: CameraDirection,
+        frontMirrorEnabled: Boolean,
+        orientationStrategy: RecordingOrientationStrategy,
         provider: Preview.SurfaceProvider,
         onError: (String) -> Unit,
     ) {
         runOnMain {
             previewSurfaceProvider = provider
             ensureLifecycleStarted()
-            bindUseCases(context.applicationContext, currentVideoProfile, onError)
+            bindUseCases(
+                context = context.applicationContext,
+                cameraDirection = cameraDirection,
+                frontMirrorEnabled = frontMirrorEnabled,
+                orientationStrategy = orientationStrategy,
+                videoProfile = currentVideoProfile ?: DEFAULT_VIDEO_PROFILE,
+                onError = onError,
+            )
         }
     }
 
@@ -68,6 +78,9 @@ object RearCameraCameraXPipeline : LifecycleOwner {
     fun startRecording(
         context: Context,
         file: File,
+        cameraDirection: CameraDirection,
+        frontMirrorEnabled: Boolean,
+        orientationStrategy: RecordingOrientationStrategy,
         audioEnabled: Boolean,
         videoProfile: RecordingVideoProfile,
         onReady: (Recording) -> Unit,
@@ -85,6 +98,9 @@ object RearCameraCameraXPipeline : LifecycleOwner {
 
             val boundVideoCapture = bindUseCases(
                 context = context.applicationContext,
+                cameraDirection = cameraDirection,
+                frontMirrorEnabled = frontMirrorEnabled,
+                orientationStrategy = orientationStrategy,
                 videoProfile = videoProfile,
                 onError = onError,
             ) ?: return@runOnMain
@@ -117,6 +133,9 @@ object RearCameraCameraXPipeline : LifecycleOwner {
 
     private fun bindUseCases(
         context: Context,
+        cameraDirection: CameraDirection,
+        frontMirrorEnabled: Boolean,
+        orientationStrategy: RecordingOrientationStrategy,
         videoProfile: RecordingVideoProfile,
         onError: (String) -> Unit,
     ): VideoCapture<Recorder>? {
@@ -124,8 +143,18 @@ object RearCameraCameraXPipeline : LifecycleOwner {
             val provider = cameraProvider ?: ProcessCameraProvider.getInstance(context).get().also {
                 cameraProvider = it
             }
-            if (videoCapture == null || preview == null || currentVideoProfile != videoProfile) {
-                val nextPreview = Preview.Builder().build().apply {
+            if (
+                videoCapture == null ||
+                preview == null ||
+                currentVideoProfile != videoProfile ||
+                currentCameraDirection != cameraDirection ||
+                currentFrontMirrorEnabled != frontMirrorEnabled ||
+                currentOrientationStrategy != orientationStrategy
+            ) {
+                val targetRotation = orientationStrategy.targetRotation(context)
+                val nextPreview = Preview.Builder()
+                    .setTargetRotation(targetRotation)
+                    .build().apply {
                     previewSurfaceProvider?.let(::setSurfaceProvider)
                 }
                 val recorder = Recorder.Builder()
@@ -134,18 +163,29 @@ object RearCameraCameraXPipeline : LifecycleOwner {
                     .build()
                 val nextVideoCapture = VideoCapture.Builder(recorder)
                     .setTargetFrameRate(videoProfile.targetFrameRateRange())
+                    .setTargetRotation(targetRotation)
+                    .setMirrorMode(
+                        if (cameraDirection == CameraDirection.Front && frontMirrorEnabled) {
+                            MirrorMode.MIRROR_MODE_ON
+                        } else {
+                            MirrorMode.MIRROR_MODE_OFF
+                        },
+                    )
                     .build()
 
                 provider.unbindAll()
                 provider.bindToLifecycle(
                     this,
-                    CameraSelector.DEFAULT_BACK_CAMERA,
+                    cameraDirection.toCameraSelector(),
                     nextPreview,
                     nextVideoCapture,
                 )
                 preview = nextPreview
                 videoCapture = nextVideoCapture
                 currentVideoProfile = videoProfile
+                currentCameraDirection = cameraDirection
+                currentFrontMirrorEnabled = frontMirrorEnabled
+                currentOrientationStrategy = orientationStrategy
             } else {
                 previewSurfaceProvider?.let { surfaceProvider ->
                     preview?.setSurfaceProvider(surfaceProvider)
@@ -173,11 +213,10 @@ object RearCameraCameraXPipeline : LifecycleOwner {
         cameraProvider?.unbindAll()
         preview = null
         videoCapture = null
-        currentVideoProfile = RecordingVideoProfile(
-            resolution = RecordingResolutionPreset.FHD_1080P,
-            frameRate = RecordingFrameRatePreset.FPS_30,
-            bitrate = RecordingBitratePreset.MBPS_12,
-        )
+        currentVideoProfile = null
+        currentCameraDirection = null
+        currentFrontMirrorEnabled = false
+        currentOrientationStrategy = null
     }
 
     private fun runOnMain(action: () -> Unit) {
@@ -190,3 +229,23 @@ object RearCameraCameraXPipeline : LifecycleOwner {
 
     private const val IDLE_UNBIND_DELAY_MILLIS = 1_000L
 }
+
+private fun CameraDirection.toCameraSelector(): CameraSelector {
+    return when (this) {
+        CameraDirection.Rear -> CameraSelector.DEFAULT_BACK_CAMERA
+        CameraDirection.Front -> CameraSelector.DEFAULT_FRONT_CAMERA
+    }
+}
+
+private fun RecordingOrientationStrategy.targetRotation(context: Context): Int {
+    return when (this) {
+        RecordingOrientationStrategy.FollowSystem -> context.display?.rotation ?: Surface.ROTATION_0
+        RecordingOrientationStrategy.FixedLandscapeDriving -> Surface.ROTATION_90
+    }
+}
+
+private val DEFAULT_VIDEO_PROFILE = RecordingVideoProfile(
+    resolution = com.voyagecam.app.data.settings.RecordingResolutionPreset.FHD_1080P,
+    frameRate = com.voyagecam.app.data.settings.RecordingFrameRatePreset.FPS_30,
+    bitrate = com.voyagecam.app.data.settings.RecordingBitratePreset.MBPS_12,
+)

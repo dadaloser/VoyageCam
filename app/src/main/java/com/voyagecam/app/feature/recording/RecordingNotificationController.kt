@@ -10,12 +10,15 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.voyagecam.app.MainActivity
 import com.voyagecam.app.R
+import com.voyagecam.app.core.model.CameraDirection
+import com.voyagecam.app.data.settings.RecordingMode
 import com.voyagecam.app.data.settings.recordingModeLabel
 import java.util.Locale
 
 data class RecordingNotificationState(
     val startedAtMillis: Long,
-    val recordingModeAuto: Boolean,
+    val requestedMode: RecordingMode,
+    val primaryCameraDirection: CameraDirection,
     val dualCamera: Boolean,
     val ambientAudio: Boolean,
     val recordingResolutionLabel: String,
@@ -152,7 +155,8 @@ class RecordingNotificationController(private val context: Context) {
 
 internal fun RecordingNotificationState.modeLabel(context: Context): String {
     return context.recordingModeLabel(
-        recordingModeAuto = recordingModeAuto,
+        requestedMode = requestedMode,
         dualCameraActive = dualCamera,
+        primaryCameraDirection = primaryCameraDirection,
     )
 }

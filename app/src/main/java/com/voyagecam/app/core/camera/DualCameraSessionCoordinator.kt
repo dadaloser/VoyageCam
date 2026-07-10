@@ -6,8 +6,10 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
+import android.view.Surface
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ConcurrentCamera
+import androidx.camera.core.MirrorMode
 import androidx.camera.core.Preview
 import androidx.camera.core.UseCase
 import androidx.camera.core.UseCaseGroup
@@ -25,6 +27,7 @@ import com.voyagecam.app.R
 import com.voyagecam.app.core.model.DualCameraDiagnostic
 import com.voyagecam.app.core.model.DualCameraFailureSource
 import com.voyagecam.app.core.model.DualCameraDiagnosticStage
+import com.voyagecam.app.data.settings.RecordingOrientationStrategy
 import com.voyagecam.app.data.settings.RecordingVideoProfile
 import com.voyagecam.app.data.telemetry.VoyageCamRuntimeTelemetry
 import java.io.File
@@ -91,6 +94,8 @@ object DualCameraSessionCoordinator : LifecycleOwner {
         rearFile: File,
         frontFile: File,
         audioEnabled: Boolean,
+        frontMirrorEnabled: Boolean,
+        orientationStrategy: RecordingOrientationStrategy,
         videoProfile: RecordingVideoProfile,
         onReady: (DualCameraRecordingSession) -> Unit,
         onEvent: (DualCameraRecordEvent) -> Unit,
@@ -109,10 +114,24 @@ object DualCameraSessionCoordinator : LifecycleOwner {
             }
 
             runCatching {
-                val rearVideoCapture = videoCapture(videoProfile)
-                val frontVideoCapture = videoCapture(videoProfile)
+                val targetRotation = orientationStrategy.targetRotation(context)
+                val rearVideoCapture = videoCapture(
+                    videoProfile = videoProfile,
+                    targetRotation = targetRotation,
+                    mirrorMode = MirrorMode.MIRROR_MODE_OFF,
+                )
+                val frontVideoCapture = videoCapture(
+                    videoProfile = videoProfile,
+                    targetRotation = targetRotation,
+                    mirrorMode = if (frontMirrorEnabled) {
+                        MirrorMode.MIRROR_MODE_ON
+                    } else {
+                        MirrorMode.MIRROR_MODE_OFF
+                    },
+                )
                 bind(
                     context = context.applicationContext,
+                    targetRotation = targetRotation,
                     rearVideoCapture = rearVideoCapture,
                     frontVideoCapture = frontVideoCapture,
                     onError = onError,
@@ -182,6 +201,7 @@ object DualCameraSessionCoordinator : LifecycleOwner {
 
     private fun bind(
         context: Context,
+        targetRotation: Int = orientationTargetRotation(context),
         rearVideoCapture: VideoCapture<Recorder>?,
         frontVideoCapture: VideoCapture<Recorder>?,
         onError: (DualCameraDiagnostic) -> Unit,
@@ -207,10 +227,10 @@ object DualCameraSessionCoordinator : LifecycleOwner {
             }
             provider.unbindAll()
 
-            val rearPreview = Preview.Builder().build().apply {
+            val rearPreview = Preview.Builder().setTargetRotation(targetRotation).build().apply {
                 rearPreviewProvider?.let(::setSurfaceProvider)
             }
-            val frontPreview = Preview.Builder().build().apply {
+            val frontPreview = Preview.Builder().setTargetRotation(targetRotation).build().apply {
                 frontPreviewProvider?.let(::setSurfaceProvider)
             }
 
@@ -271,13 +291,19 @@ object DualCameraSessionCoordinator : LifecycleOwner {
         }
     }
 
-    private fun videoCapture(videoProfile: RecordingVideoProfile): VideoCapture<Recorder> {
+    private fun videoCapture(
+        videoProfile: RecordingVideoProfile,
+        targetRotation: Int,
+        mirrorMode: Int,
+    ): VideoCapture<Recorder> {
         val recorder = Recorder.Builder()
             .setQualitySelector(videoProfile.qualitySelector())
             .setTargetVideoEncodingBitRate(videoProfile.bitrate.bitsPerSecond)
             .build()
         return VideoCapture.Builder(recorder)
             .setTargetFrameRate(videoProfile.targetFrameRateRange())
+            .setTargetRotation(targetRotation)
+            .setMirrorMode(mirrorMode)
             .build()
     }
 
@@ -337,4 +363,15 @@ object DualCameraSessionCoordinator : LifecycleOwner {
         )
         onError(diagnostic)
     }
+}
+
+private fun RecordingOrientationStrategy.targetRotation(context: Context): Int {
+    return when (this) {
+        RecordingOrientationStrategy.FollowSystem -> orientationTargetRotation(context)
+        RecordingOrientationStrategy.FixedLandscapeDriving -> Surface.ROTATION_90
+    }
+}
+
+private fun orientationTargetRotation(context: Context): Int {
+    return context.display?.rotation ?: Surface.ROTATION_0
 }

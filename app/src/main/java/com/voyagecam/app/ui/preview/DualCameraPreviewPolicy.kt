@@ -3,6 +3,9 @@ package com.voyagecam.app.ui.preview
 import android.content.Context
 import com.voyagecam.app.core.camera.DualCameraSessionStatus
 import com.voyagecam.app.core.model.DualCameraCapability
+import com.voyagecam.app.data.settings.RecordingMode
+import com.voyagecam.app.data.settings.VoyageCamSettings
+import com.voyagecam.app.data.settings.resolveRecordingConfig
 import com.voyagecam.app.ui.dualCameraTelemetryPresentation as buildDualCameraTelemetryPresentation
 
 data class DualCameraPreviewPresentation(
@@ -17,11 +20,12 @@ data class DualCameraTelemetryPresentation(
 )
 
 fun dualCameraPreviewPresentation(
-    dualCameraEnabled: Boolean,
+    settings: VoyageCamSettings,
     capability: DualCameraCapability,
     isRecording: Boolean,
 ): DualCameraPreviewPresentation {
-    val showFrontInset = dualCameraEnabled && capability.isAvailable
+    val resolved = settings.resolveRecordingConfig(capability)
+    val showFrontInset = settings.recordingMode == RecordingMode.Auto && resolved.dualCameraActive
     return DualCameraPreviewPresentation(
         showFrontInset = showFrontInset,
         sessionToken = when {
@@ -33,12 +37,12 @@ fun dualCameraPreviewPresentation(
 }
 
 fun shouldShowFrontInsetPreview(
-    dualCameraEnabled: Boolean,
+    settings: VoyageCamSettings,
     capability: DualCameraCapability,
     isRecording: Boolean,
 ): Boolean {
     return dualCameraPreviewPresentation(
-        dualCameraEnabled = dualCameraEnabled,
+        settings = settings,
         capability = capability,
         isRecording = isRecording,
     ).showFrontInset

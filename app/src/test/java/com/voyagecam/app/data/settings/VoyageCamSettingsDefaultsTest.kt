@@ -15,5 +15,8 @@ class VoyageCamSettingsDefaultsTest {
         assertEquals(RecordingResolutionPreset.FHD_1080P, settings.recordingResolution)
         assertEquals(RecordingFrameRatePreset.FPS_30, settings.recordingFrameRate)
         assertEquals(RecordingBitratePreset.MBPS_12, settings.recordingBitrate)
+        assertEquals(RecordingMode.RearOnly, settings.recordingMode)
+        assertEquals(false, settings.frontCameraMirrorEnabled)
+        assertEquals(RecordingOrientationStrategy.FollowSystem, settings.recordingOrientationStrategy)
     }
 }

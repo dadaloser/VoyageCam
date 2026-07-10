@@ -1,5 +1,7 @@
 package com.voyagecam.app.ui
 
+import android.app.Activity
+import android.content.pm.ActivityInfo
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -43,7 +45,12 @@ import com.voyagecam.app.core.model.EmergencyEvent
 import com.voyagecam.app.core.model.PendingStorageCapacityChange
 import com.voyagecam.app.core.model.RecordingSegment
 import com.voyagecam.app.data.settings.VoyageCamSettings
+import com.voyagecam.app.data.settings.RecordingMode
+import com.voyagecam.app.data.settings.RecordingOrientationStrategy
 import com.voyagecam.app.data.settings.recordingModeLabel
+import com.voyagecam.app.data.settings.resolveRecordingConfig
+import com.voyagecam.app.data.settings.recordingVideoProfile
+import com.voyagecam.app.data.settings.supportsDualCamera
 import com.voyagecam.app.feature.recording.RecordingForegroundService
 import com.voyagecam.app.ui.events.EmergencyEventPanel
 import com.voyagecam.app.ui.history.SegmentHistoryPanel
@@ -167,15 +174,17 @@ fun VoyageCamRoute(
     )
 
     fun beginRecordingService() {
+        val resolvedConfig = settings.resolveRecordingConfig(capability)
         val startingMode = context.recordingModeLabel(
-            recordingModeAuto = settings.dualCameraEnabled,
-            dualCameraActive = settings.dualCameraEnabled && capability.isAvailable,
+            requestedMode = settings.recordingMode,
+            dualCameraActive = resolvedConfig.dualCameraActive,
+            primaryCameraDirection = resolvedConfig.primaryCameraDirection,
         )
         viewModel.setStatus(context.getString(R.string.route_starting_mode, startingMode))
         recordingServiceController.start(
             context = context,
-            dualCamera = settings.dualCameraEnabled && capability.isAvailable,
-            ambientAudio = settings.ambientAudioEnabled,
+            dualCamera = resolvedConfig.dualCameraActive,
+            ambientAudio = resolvedConfig.ambientAudioActive,
         )
         viewModel.setRecordingStarted()
     }
@@ -337,6 +346,15 @@ internal fun VoyageCamRouteContent(
     val availableDays = uiState.availableDays
     val filteredSegments = uiState.filteredSegments
     val context = LocalContext.current
+    val resolvedConfig = settings.resolveRecordingConfig(capability)
+
+    LaunchedEffect(settings.recordingOrientationStrategy) {
+        val activity = context as? Activity ?: return@LaunchedEffect
+        activity.requestedOrientation = when (settings.recordingOrientationStrategy) {
+            RecordingOrientationStrategy.FollowSystem -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            RecordingOrientationStrategy.FixedLandscapeDriving -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        }
+    }
 
     VoyageCamTheme {
         Scaffold(
@@ -370,6 +388,16 @@ internal fun VoyageCamRouteContent(
                     onStatus = onSetStatus,
                     onRefreshRecordingData = onRefreshRecordingData,
                     onDualCameraTelemetry = onRecordDualCameraTelemetry,
+                    previewContent = { frontInsetEnabled, dualCameraSessionToken ->
+                        RearCameraPreview(
+                            enabled = true,
+                            primaryCameraDirection = resolvedConfig.primaryCameraDirection,
+                            frontMirrorEnabled = resolvedConfig.frontCameraMirrorActive,
+                            orientationStrategy = resolvedConfig.orientationStrategy,
+                            frontInsetEnabled = frontInsetEnabled,
+                            dualCameraSessionToken = dualCameraSessionToken,
+                        )
+                    },
                 )
 
                 SettingsPanel(
@@ -389,27 +417,65 @@ internal fun VoyageCamRouteContent(
                     onRequestLocationPermission = permissionCoordinator.requestLocationPermission,
                     onRequestBluetoothPermission = permissionCoordinator.requestBluetoothPermission,
                     onRedetect = onRedetect,
-                    onRecordingModeAutoChanged = { enabled ->
+                    onRecordingModeChanged = { mode ->
                         if (isRecording) {
-                            onSetStatus(context.getString(R.string.route_recording_mode_change_locked))
+                            onSetStatus(context.getString(R.string.route_setting_change_locked, context.getString(R.string.settings_recording_mode_title)))
                             return@SettingsPanel
                         }
 
-                        onPersistSettings(settings.copy(dualCameraEnabled = enabled))
+                        if (mode == RecordingMode.FrontOnly && capability.frontCameraId == null) {
+                            onSetStatus(context.getString(R.string.route_recording_mode_front_unavailable))
+                            return@SettingsPanel
+                        }
+
+                        onPersistSettings(settings.copy(recordingMode = mode))
                         onSetStatus(
                             when {
-                                enabled && capability.isAvailable ->
+                                mode == RecordingMode.Auto && capability.isAvailable && settings.recordingVideoProfile().supportsDualCamera() ->
                                     context.getString(R.string.route_recording_mode_auto_supported)
-                                enabled ->
+                                mode == RecordingMode.Auto && capability.isAvailable ->
+                                    context.getString(R.string.route_recording_mode_auto_profile_fallback)
+                                mode == RecordingMode.Auto ->
                                     context.getString(R.string.route_recording_mode_auto_rear_only)
+                                mode == RecordingMode.FrontOnly ->
+                                    context.getString(R.string.route_recording_mode_front_only)
                                 else ->
                                     context.getString(R.string.route_recording_mode_rear_only)
                             },
                         )
                     },
+                    onFrontCameraMirrorChanged = { enabled ->
+                        if (isRecording) {
+                            onSetStatus(context.getString(R.string.route_setting_change_locked, context.getString(R.string.settings_front_mirror_title)))
+                        } else {
+                            onPersistSettings(settings.copy(frontCameraMirrorEnabled = enabled))
+                            onSetStatus(
+                                if (enabled) {
+                                    context.getString(R.string.route_front_mirror_enabled)
+                                } else {
+                                    context.getString(R.string.route_front_mirror_disabled)
+                                },
+                            )
+                        }
+                    },
+                    onRecordingOrientationStrategyChanged = { strategy ->
+                        if (isRecording) {
+                            onSetStatus(context.getString(R.string.route_setting_change_locked, context.getString(R.string.settings_orientation_strategy_title)))
+                        } else {
+                            onPersistSettings(settings.copy(recordingOrientationStrategy = strategy))
+                            onSetStatus(
+                                when (strategy) {
+                                    RecordingOrientationStrategy.FollowSystem ->
+                                        context.getString(R.string.route_orientation_follow_system)
+                                    RecordingOrientationStrategy.FixedLandscapeDriving ->
+                                        context.getString(R.string.route_orientation_fixed_landscape)
+                                },
+                            )
+                        }
+                    },
                     onRecordingResolutionChanged = { resolution ->
                         if (isRecording) {
-                            onSetStatus(context.getString(R.string.route_resolution_change_locked))
+                            onSetStatus(context.getString(R.string.route_setting_change_locked, context.getString(R.string.settings_resolution_title)))
                         } else {
                             onPersistSettings(settings.copy(recordingResolution = resolution))
                             onSetStatus(context.getString(R.string.route_resolution_changed, resolution.label))
@@ -417,7 +483,7 @@ internal fun VoyageCamRouteContent(
                     },
                     onRecordingFrameRateChanged = { frameRate ->
                         if (isRecording) {
-                            onSetStatus(context.getString(R.string.route_frame_rate_change_locked))
+                            onSetStatus(context.getString(R.string.route_setting_change_locked, context.getString(R.string.settings_frame_rate_title)))
                         } else {
                             onPersistSettings(settings.copy(recordingFrameRate = frameRate))
                             onSetStatus(context.getString(R.string.route_frame_rate_changed, frameRate.label))
@@ -425,7 +491,7 @@ internal fun VoyageCamRouteContent(
                     },
                     onRecordingBitrateChanged = { bitrate ->
                         if (isRecording) {
-                            onSetStatus(context.getString(R.string.route_bitrate_change_locked))
+                            onSetStatus(context.getString(R.string.route_setting_change_locked, context.getString(R.string.settings_bitrate_title)))
                         } else {
                             onPersistSettings(settings.copy(recordingBitrate = bitrate))
                             onSetStatus(context.getString(R.string.route_bitrate_changed, bitrate.label))
@@ -435,21 +501,21 @@ internal fun VoyageCamRouteContent(
                     onCleanupStorage = onCleanupStorageNow,
                     onSegmentDurationChanged = { minutes ->
                         if (isRecording) {
-                            onSetStatus(context.getString(R.string.route_segment_duration_change_locked))
+                            onSetStatus(context.getString(R.string.route_setting_change_locked, context.getString(R.string.settings_segment_duration_title)))
                         } else {
                             onPersistSettings(settings.copy(segmentDurationMinutes = minutes))
                         }
                     },
                     onCollisionSensitivityChanged = { sensitivity ->
                         if (isRecording) {
-                            onSetStatus(context.getString(R.string.route_collision_sensitivity_change_locked))
+                            onSetStatus(context.getString(R.string.route_setting_change_locked, context.getString(R.string.settings_collision_sensitivity_title)))
                         } else {
                             onPersistSettings(settings.copy(collisionSensitivity = sensitivity))
                         }
                     },
                     onAmbientAudioChanged = { enabled ->
                         if (isRecording) {
-                            onSetStatus(context.getString(R.string.route_ambient_audio_change_locked))
+                            onSetStatus(context.getString(R.string.route_setting_change_locked, context.getString(R.string.settings_ambient_audio_title)))
                             return@SettingsPanel
                         }
 
@@ -461,7 +527,13 @@ internal fun VoyageCamRouteContent(
 
                         if (permissionCoordinator.audioPermissionGranted) {
                             onPersistSettings(settings.copy(ambientAudioEnabled = true))
-                            onSetStatus(context.getString(R.string.route_ambient_audio_enabled))
+                            onSetStatus(
+                                if (settings.recordingMode == RecordingMode.FrontOnly) {
+                                    context.getString(R.string.route_ambient_audio_front_only_hint)
+                                } else {
+                                    context.getString(R.string.route_ambient_audio_enabled)
+                                },
+                            )
                         } else {
                             permissionCoordinator.requestAudioPermission()
                         }
@@ -765,10 +837,11 @@ internal fun RecordingPanel(
 ) {
     val context = LocalContext.current
     val dualPreviewPresentation = dualCameraPreviewPresentation(
-        dualCameraEnabled = settings.dualCameraEnabled,
+        settings = settings,
         capability = capability,
         isRecording = isRecording,
     )
+    val resolvedConfig = settings.resolveRecordingConfig(capability)
     val dualCameraSessionStatus by dualCameraSessionStatusFlow.collectAsState()
     val dualCameraTelemetry = context.dualCameraTelemetryPresentation(
         frontInsetEnabled = dualPreviewPresentation.showFrontInset,
@@ -801,8 +874,9 @@ internal fun RecordingPanel(
             text = buildString {
                 append(
                     context.recordingModeLabel(
-                        recordingModeAuto = settings.dualCameraEnabled,
-                        dualCameraActive = settings.dualCameraEnabled && capability.isAvailable,
+                        requestedMode = settings.recordingMode,
+                        dualCameraActive = resolvedConfig.dualCameraActive,
+                        primaryCameraDirection = resolvedConfig.primaryCameraDirection,
                     ),
                 )
                 append(" · ")

@@ -6,6 +6,8 @@ import com.voyagecam.app.core.model.DualCameraDiagnostic
 import com.voyagecam.app.core.model.DualCameraCapability
 import com.voyagecam.app.core.model.DualCameraDiagnosticStage
 import com.voyagecam.app.core.model.DualCameraSwitchState
+import com.voyagecam.app.data.settings.RecordingMode
+import com.voyagecam.app.data.settings.VoyageCamSettings
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -22,7 +24,7 @@ class DualCameraPreviewPolicyTest {
 
         assertTrue(
             shouldShowFrontInsetPreview(
-                dualCameraEnabled = true,
+                settings = VoyageCamSettings(recordingMode = RecordingMode.Auto),
                 capability = capability,
                 isRecording = true,
             ),
@@ -39,7 +41,7 @@ class DualCameraPreviewPolicyTest {
 
         assertFalse(
             shouldShowFrontInsetPreview(
-                dualCameraEnabled = false,
+                settings = VoyageCamSettings(recordingMode = RecordingMode.RearOnly),
                 capability = capability,
                 isRecording = false,
             ),
@@ -56,7 +58,7 @@ class DualCameraPreviewPolicyTest {
 
         assertFalse(
             shouldShowFrontInsetPreview(
-                dualCameraEnabled = true,
+                settings = VoyageCamSettings(recordingMode = RecordingMode.Auto),
                 capability = capability,
                 isRecording = true,
             ),
@@ -72,12 +74,12 @@ class DualCameraPreviewPolicyTest {
         )
 
         val previewPresentation = dualCameraPreviewPresentation(
-            dualCameraEnabled = true,
+            settings = VoyageCamSettings(recordingMode = RecordingMode.Auto),
             capability = capability,
             isRecording = false,
         )
         val recordingPresentation = dualCameraPreviewPresentation(
-            dualCameraEnabled = true,
+            settings = VoyageCamSettings(recordingMode = RecordingMode.Auto),
             capability = capability,
             isRecording = true,
         )

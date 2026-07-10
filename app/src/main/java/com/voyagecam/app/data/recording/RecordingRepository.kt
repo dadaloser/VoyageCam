@@ -9,6 +9,7 @@ import com.voyagecam.app.core.model.RecordingSegment
 import com.voyagecam.app.core.model.RecordingStorageOverview
 import com.voyagecam.app.data.emergency.EmergencyEventStore
 import com.voyagecam.app.data.settings.VoyageCamSettings
+import com.voyagecam.app.data.settings.resolveRecordingConfig
 import com.voyagecam.app.data.storage.RecordingStorageManager
 import java.io.File
 
@@ -24,7 +25,7 @@ class RecordingRepository(context: Context) {
     suspend fun storageOverview(settings: VoyageCamSettings, capability: DualCameraCapability): RecordingStorageOverview {
         return storageManager.storageOverview(
             settings = settings,
-            dualCameraActive = settings.dualCameraEnabled && capability.isAvailable,
+            dualCameraActive = settings.resolveRecordingConfig(capability).dualCameraActive,
         )
     }
 

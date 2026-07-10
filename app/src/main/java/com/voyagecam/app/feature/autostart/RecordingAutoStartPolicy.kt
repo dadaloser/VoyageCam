@@ -11,6 +11,7 @@ import com.voyagecam.app.R
 import com.voyagecam.app.core.model.AutoStartSource
 import com.voyagecam.app.data.settings.VoyageCamSettings
 import com.voyagecam.app.data.settings.VoyageCamSettingsStore
+import com.voyagecam.app.data.settings.resolveRecordingConfig
 import com.voyagecam.app.feature.recording.RecordingForegroundService
 
 class RecordingAutoStartPolicy(private val context: Context) {
@@ -25,14 +26,13 @@ class RecordingAutoStartPolicy(private val context: Context) {
         if (blockedReason != null) return blockedReason
 
         val capability = settingsStore.loadCapability()
-        val dualCamera = settings.dualCameraEnabled && capability?.isAvailable == true
-        val ambientAudio = settings.ambientAudioEnabled
+        val resolved = settings.resolveRecordingConfig(capability)
 
         if (requiresUserInitiatedStart()) {
             AutoStartPromptNotifier(context).showStartPrompt(
                 source = source,
-                dualCamera = dualCamera,
-                ambientAudio = ambientAudio,
+                dualCamera = resolved.dualCameraActive,
+                ambientAudio = resolved.ambientAudioActive,
                 detail = detail,
             )
             return context.getString(R.string.autostart_android14_prompt)
@@ -41,8 +41,8 @@ class RecordingAutoStartPolicy(private val context: Context) {
         return runCatching {
             RecordingForegroundService.start(
                 context = context,
-                dualCamera = dualCamera,
-                ambientAudio = ambientAudio,
+                dualCamera = resolved.dualCameraActive,
+                ambientAudio = resolved.ambientAudioActive,
             )
         }.exceptionOrNull()?.toAutoStartBlockedReason()
     }

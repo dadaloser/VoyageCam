@@ -1,12 +1,16 @@
 <resources>
     <string name="app_name">VoyageCam</string>
     <string name="recording_mode_rear_only">Rear only</string>
+    <string name="recording_mode_front_only">Front only</string>
     <string name="recording_mode_auto">Auto</string>
     <string name="recording_mode_auto_dual_active">Auto · Dual</string>
     <string name="recording_mode_auto_rear_active">Auto · Rear</string>
     <string name="recording_mode_auto_supported_description">Uses dual cameras when available; falls back to rear camera if unsupported or downgraded.</string>
+    <string name="recording_mode_auto_profile_fallback_description">The current resolution, frame rate, or bitrate exceeds the safe dual-camera profile; recording will fall back to rear-only mode.</string>
     <string name="recording_mode_auto_rear_only_description">This device currently supports rear-camera recording only.</string>
     <string name="recording_mode_rear_only_description">Always uses the rear camera for lower power use and better stability.</string>
+    <string name="recording_mode_front_only_description">Always uses the front camera for cabin-facing capture; front mirroring can be controlled separately.</string>
+    <string name="recording_mode_front_only_unavailable_description">No usable front camera is currently detected, so Front only is unavailable.</string>
 
     <string name="permission_camera_denied">Camera permission is required to start dashcam recording.</string>
     <string name="permission_notification_denied">Notification permission is required to reliably show background recording status.</string>
@@ -45,6 +49,16 @@
     <string name="settings_permission_request_on_demand">On demand</string>
     <string name="settings_recording_mode_title">Recording mode</string>
     <string name="settings_recording_mode_locked">Stop recording before changing the mode.</string>
+    <string name="settings_locked_apply_after_stop">Changes are locked during recording and apply after stop.</string>
+    <string name="settings_front_mirror_title">Front camera mirror</string>
+    <string name="settings_front_mirror_summary_active">When enabled, front-camera preview and front-camera video use mirrored output.</string>
+    <string name="settings_front_mirror_summary_pending">This setting applies whenever the front camera is active. If Auto falls back to rear only, mirroring is ignored.</string>
+    <string name="settings_front_mirror_summary_rear_only">Rear-only mode does not use the front camera, so front mirroring is unavailable.</string>
+    <string name="settings_orientation_strategy_title">Orientation strategy</string>
+    <string name="settings_orientation_follow_system">Follow system</string>
+    <string name="settings_orientation_fixed_landscape">Fixed landscape driving</string>
+    <string name="settings_orientation_strategy_summary">Follow system uses the current screen orientation. Fixed landscape driving prioritizes landscape layout and video orientation.</string>
+    <string name="settings_dual_profile_fallback_hint">In Auto mode, the safe dual-camera profile tops out at 1080p / 30fps / 12Mbps. Higher combinations automatically fall back to rear only.</string>
     <string name="settings_redetect_dual_camera">Redetect dual-camera capability</string>
     <string name="settings_resolution_title">Resolution</string>
     <string name="settings_resolution_summary">Target resolution; automatically falls back to a lower preset if the device or dual-camera setup cannot support it.</string>
@@ -59,6 +73,7 @@
     <string name="settings_cleanup_storage_now">Clean old normal clips now</string>
     <string name="settings_ambient_audio_title">Ambient driving audio</string>
     <string name="settings_ambient_audio_summary">Off by default; asks for microphone permission when enabled, and writes ambient audio to rear/single-camera clips only.</string>
+    <string name="settings_ambient_audio_summary_front_only">Front-only mode keeps video silent even if ambient audio is enabled. Use Rear only or Auto if you need audio.</string>
     <string name="settings_performance_title">Performance guard</string>
     <string name="settings_thermal_guard_title">Disable front camera on overheating</string>
     <string name="settings_thermal_guard_enabled_summary">Enabled by default; automatically falls back to rear-only recording when severe overheating is detected.</string>
@@ -132,10 +147,14 @@
 
     <string name="route_starting_mode">Starting %1$s…</string>
     <string name="route_share_emergency_failed">Unable to share emergency event: %1$s</string>
+    <string name="route_setting_change_locked">Stop recording before changing %1$s.</string>
     <string name="route_recording_mode_change_locked">Stop recording before changing the recording mode.</string>
     <string name="route_recording_mode_auto_supported">Switched to Auto: uses dual cameras when available, and falls back to rear camera if unsupported or downgraded.</string>
+    <string name="route_recording_mode_auto_profile_fallback">Switched to Auto: the current profile exceeds the safe dual-camera tier, so recording will fall back to rear only.</string>
     <string name="route_recording_mode_auto_rear_only">Switched to Auto: this device currently supports rear-camera recording only.</string>
     <string name="route_recording_mode_rear_only">Switched to Rear only: recording will always use the rear camera.</string>
+    <string name="route_recording_mode_front_only">Switched to Front only: recording will always use the front camera.</string>
+    <string name="route_recording_mode_front_unavailable">No usable front camera is available, so Front only cannot be selected.</string>
     <string name="route_resolution_change_locked">Stop recording before changing resolution.</string>
     <string name="route_resolution_changed">Recording resolution set to %1$s.</string>
     <string name="route_frame_rate_change_locked">Stop recording before changing frame rate.</string>
@@ -147,6 +166,11 @@
     <string name="route_ambient_audio_change_locked">Stop recording before changing ambient audio.</string>
     <string name="route_ambient_audio_disabled">Switched to silent recording; future clips will not contain an audio track.</string>
     <string name="route_ambient_audio_enabled">Ambient driving audio is enabled; audio is written to rear/single-camera clips only.</string>
+    <string name="route_ambient_audio_front_only_hint">Ambient audio is enabled, but Front only clips stay silent. Switch to Rear only or Auto if you need audio.</string>
+    <string name="route_front_mirror_enabled">Front camera mirroring is enabled for preview and front-camera video.</string>
+    <string name="route_front_mirror_disabled">Front camera mirroring is disabled.</string>
+    <string name="route_orientation_follow_system">Orientation strategy set to Follow system.</string>
+    <string name="route_orientation_fixed_landscape">Orientation strategy set to Fixed landscape driving.</string>
     <string name="route_thermal_guard_enabled">Thermal performance guard enabled; severe overheating will automatically disable the front camera and prioritize rear recording.</string>
     <string name="route_thermal_guard_disabled">Thermal performance guard disabled; overheating will not automatically disable the front camera.</string>
     <string name="route_low_battery_guard_enabled">Low-battery performance guard enabled; the front camera will automatically turn off when battery is low and the device is not charging.</string>
@@ -380,6 +404,7 @@
     <string name="recording_service_segment_dual_writing">Writing segment %1$d from both rear and front cameras</string>
     <string name="recording_service_segment_rear_fallback">Writing segment %1$d; this session has fallen back to rear-only recording</string>
     <string name="recording_service_segment_rear_writing">Writing rear-only segment %1$d</string>
+    <string name="recording_service_segment_front_writing">Writing front-only segment %1$d</string>
     <string name="recording_service_adjacent_locked">Adjacent segments locked</string>
     <string name="recording_service_segment_done">Segment completed</string>
     <string name="recording_service_cleanup_old_normal">, cleaned up %1$d older normal clips</string>

@@ -10,10 +10,9 @@ import androidx.camera.video.Recording
 import androidx.camera.video.VideoRecordEvent
 import androidx.core.content.ContextCompat
 import com.voyagecam.app.R
+import com.voyagecam.app.core.model.CameraDirection
 import com.voyagecam.app.core.model.DualCameraDiagnostic
-import com.voyagecam.app.data.settings.RecordingBitratePreset
-import com.voyagecam.app.data.settings.RecordingFrameRatePreset
-import com.voyagecam.app.data.settings.RecordingResolutionPreset
+import com.voyagecam.app.data.settings.RecordingOrientationStrategy
 import com.voyagecam.app.data.settings.RecordingVideoProfile
 import com.voyagecam.app.data.storage.RecordingStorageManager
 import com.voyagecam.app.ui.dualCameraDiagnosticSummary
@@ -52,11 +51,10 @@ class RearCameraRecorder(
     private var audioEnabled = false
     private var segmentDurationMillis = DEFAULT_SEGMENT_DURATION_MINUTES * 60_000L
     private var segmentIndex = 0
-    private var recordingVideoProfile = RecordingVideoProfile(
-        resolution = RecordingResolutionPreset.FHD_1080P,
-        frameRate = RecordingFrameRatePreset.FPS_30,
-        bitrate = RecordingBitratePreset.MBPS_12,
-    )
+    private var recordingVideoProfile = DEFAULT_VIDEO_PROFILE
+    private var primaryCameraDirection = CameraDirection.Rear
+    private var frontMirrorEnabled = false
+    private var orientationStrategy = RecordingOrientationStrategy.FollowSystem
     private var pendingStopReason: StopReason? = null
     private var rotationStopRequestedAtElapsed: Long? = null
     private var rotationSegmentIndex: Int? = null
@@ -70,6 +68,9 @@ class RearCameraRecorder(
         ambientAudioRequested: Boolean,
         segmentDurationMinutes: Int,
         dualCameraRequested: Boolean = false,
+        primaryCameraDirection: CameraDirection = CameraDirection.Rear,
+        frontMirrorEnabled: Boolean = false,
+        orientationStrategy: RecordingOrientationStrategy = RecordingOrientationStrategy.FollowSystem,
         videoProfile: RecordingVideoProfile,
     ) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) !=
@@ -86,6 +87,9 @@ class RearCameraRecorder(
             .coerceIn(MIN_SEGMENT_DURATION_MINUTES, MAX_SEGMENT_DURATION_MINUTES) * 60_000L
         shouldContinueRecording = true
         dualRecordingMode = dualCameraRequested
+        this.primaryCameraDirection = primaryCameraDirection
+        this.frontMirrorEnabled = frontMirrorEnabled
+        this.orientationStrategy = orientationStrategy
         recordingVideoProfile = videoProfile
         segmentIndex = 0
         pendingStopReason = null
@@ -174,7 +178,14 @@ class RearCameraRecorder(
         if (!shouldContinueRecording) return
 
         val startedAtMillis = System.currentTimeMillis()
-        val file = storageManager.createNormalSegmentFile(startedAtMillis, CAMERA_DIRECTION_REAR)
+        val file = storageManager.createNormalSegmentFile(
+            startedAtMillis,
+            if (dualRecordingMode || primaryCameraDirection == CameraDirection.Rear) {
+                CAMERA_DIRECTION_REAR
+            } else {
+                CAMERA_DIRECTION_FRONT
+            },
+        )
         val frontFile = if (dualRecordingMode) {
             storageManager.createNormalSegmentFile(startedAtMillis, CAMERA_DIRECTION_FRONT)
         } else {
@@ -188,14 +199,17 @@ class RearCameraRecorder(
         if (frontFile != null) {
             startNextDualSegment(file, frontFile)
         } else {
-            startNextRearOnlySegment(file)
+            startNextSingleSegment(file, primaryCameraDirection)
         }
     }
 
-    private fun startNextRearOnlySegment(file: File) {
+    private fun startNextSingleSegment(file: File, cameraDirection: CameraDirection) {
         RearCameraCameraXPipeline.startRecording(
             context = context,
             file = file,
+            cameraDirection = cameraDirection,
+            frontMirrorEnabled = frontMirrorEnabled,
+            orientationStrategy = orientationStrategy,
             audioEnabled = audioEnabled,
             videoProfile = recordingVideoProfile,
             onReady = { recording ->
@@ -225,6 +239,8 @@ class RearCameraRecorder(
             rearFile = rearFile,
             frontFile = frontFile,
             audioEnabled = audioEnabled,
+            frontMirrorEnabled = frontMirrorEnabled,
+            orientationStrategy = orientationStrategy,
             videoProfile = recordingVideoProfile,
             onReady = { recording ->
                 cameraHandler.post {
@@ -248,7 +264,7 @@ class RearCameraRecorder(
                             context.dualCameraDiagnosticSummary(diagnostic),
                         ),
                     )
-                    startNextRearOnlySegment(rearFile)
+                    startNextSingleSegment(rearFile, CameraDirection.Rear)
                 }
             },
         )
@@ -400,3 +416,9 @@ class RearCameraRecorder(
         private const val CAMERA_DIRECTION_FRONT = "front"
     }
 }
+
+private val DEFAULT_VIDEO_PROFILE = RecordingVideoProfile(
+    resolution = com.voyagecam.app.data.settings.RecordingResolutionPreset.FHD_1080P,
+    frameRate = com.voyagecam.app.data.settings.RecordingFrameRatePreset.FPS_30,
+    bitrate = com.voyagecam.app.data.settings.RecordingBitratePreset.MBPS_12,
+)

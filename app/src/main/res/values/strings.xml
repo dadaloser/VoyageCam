@@ -1,12 +1,16 @@
 <resources>
     <string name="app_name">VoyageCam</string>
     <string name="recording_mode_rear_only">仅后摄</string>
+    <string name="recording_mode_front_only">仅前摄</string>
     <string name="recording_mode_auto">自动模式</string>
     <string name="recording_mode_auto_dual_active">自动模式 · 双摄</string>
     <string name="recording_mode_auto_rear_active">自动模式 · 后摄</string>
     <string name="recording_mode_auto_supported_description">支持时使用双摄；不支持或降级时自动切回后摄。</string>
+    <string name="recording_mode_auto_profile_fallback_description">当前分辨率、帧率或码率超出双摄安全档位；开始录制时会自动降为仅后摄。</string>
     <string name="recording_mode_auto_rear_only_description">当前设备仅支持后摄录制。</string>
     <string name="recording_mode_rear_only_description">始终使用后摄，功耗更低也更稳定。</string>
+    <string name="recording_mode_front_only_description">始终使用前摄，适合车内取景；前摄镜像可单独控制。</string>
+    <string name="recording_mode_front_only_unavailable_description">当前设备未检测到可用前摄，已禁用仅前摄模式。</string>
 
     <string name="permission_camera_denied">相机权限未授权，无法开始行车记录。</string>
     <string name="permission_notification_denied">通知权限未授权，后台录制状态无法可靠展示。</string>
@@ -45,6 +49,16 @@
     <string name="settings_permission_request_on_demand">按需授权</string>
     <string name="settings_recording_mode_title">录制模式</string>
     <string name="settings_recording_mode_locked">录制中不可切换模式，停止后修改</string>
+    <string name="settings_locked_apply_after_stop">录制中不可修改，停止后生效。</string>
+    <string name="settings_front_mirror_title">前摄镜像</string>
+    <string name="settings_front_mirror_summary_active">开启后，前摄预览和前摄视频按镜像方向输出。</string>
+    <string name="settings_front_mirror_summary_pending">当前模式会在使用前摄时套用镜像设置；若自动模式回落到仅后摄，则不会生效。</string>
+    <string name="settings_front_mirror_summary_rear_only">仅后摄模式下不使用前摄，前摄镜像不可用。</string>
+    <string name="settings_orientation_strategy_title">方向策略</string>
+    <string name="settings_orientation_follow_system">跟随系统</string>
+    <string name="settings_orientation_fixed_landscape">固定横屏驾驶模式</string>
+    <string name="settings_orientation_strategy_summary">跟随系统会使用当前屏幕方向；固定横屏驾驶模式会优先按横屏布局和视频方向处理。</string>
+    <string name="settings_dual_profile_fallback_hint">自动模式下，双摄安全档位最高为 1080p / 30fps / 12Mbps。超出时会自动降为仅后摄。</string>
     <string name="settings_redetect_dual_camera">重新检测双摄能力</string>
     <string name="settings_resolution_title">分辨率</string>
     <string name="settings_resolution_summary">目标分辨率；设备或双摄组合不支持时会自动降级到更低规格。</string>
@@ -59,6 +73,7 @@
     <string name="settings_cleanup_storage_now">立即按容量清理普通片段</string>
     <string name="settings_ambient_audio_title">行车环境声录制</string>
     <string name="settings_ambient_audio_summary">默认关闭；开启后请求麦克风权限，环境声仅写入后摄/单摄视频</string>
+    <string name="settings_ambient_audio_summary_front_only">仅前摄模式下，环境声不会写入视频；如需录音，请改用仅后摄或自动模式。</string>
     <string name="settings_performance_title">性能保护</string>
     <string name="settings_thermal_guard_title">过热时自动关闭前摄</string>
     <string name="settings_thermal_guard_enabled_summary">默认开启；检测到设备严重过热时会自动降级为后摄单录</string>
@@ -132,10 +147,14 @@
 
     <string name="route_starting_mode">正在启动%1$s...</string>
     <string name="route_share_emergency_failed">无法分享紧急事件：%1$s</string>
+    <string name="route_setting_change_locked">录制中不可修改%1$s；停止后生效。</string>
     <string name="route_recording_mode_change_locked">录制中不可切换录制模式；停止后修改会在下一次录制生效。</string>
     <string name="route_recording_mode_auto_supported">已切换为自动模式：支持时使用双摄；不支持或降级时自动切回后摄。</string>
+    <string name="route_recording_mode_auto_profile_fallback">已切换为自动模式：当前参数超出双摄安全档位，开始录制时会自动降为仅后摄。</string>
     <string name="route_recording_mode_auto_rear_only">已切换为自动模式：当前设备仅支持后摄录制。</string>
     <string name="route_recording_mode_rear_only">已切换为仅后摄：始终使用后摄录制。</string>
+    <string name="route_recording_mode_front_only">已切换为仅前摄：始终使用前摄录制。</string>
+    <string name="route_recording_mode_front_unavailable">当前设备没有可用前摄，无法切换到仅前摄。</string>
     <string name="route_resolution_change_locked">录制中不可修改分辨率；停止后修改会在下一次录制生效。</string>
     <string name="route_resolution_changed">已将录制分辨率设置为 %1$s。</string>
     <string name="route_frame_rate_change_locked">录制中不可修改帧率；停止后修改会在下一次录制生效。</string>
@@ -147,6 +166,11 @@
     <string name="route_ambient_audio_change_locked">录制中不可切换环境声；停止后修改会在下一次录制生效。</string>
     <string name="route_ambient_audio_disabled">已切换为静音录制；后续录制不写入音频轨道。</string>
     <string name="route_ambient_audio_enabled">行车环境声已开启；音频仅写入后摄/单摄视频。</string>
+    <string name="route_ambient_audio_front_only_hint">行车环境声已开启；但仅前摄模式下视频仍保持静音，如需录音请切换到仅后摄或自动模式。</string>
+    <string name="route_front_mirror_enabled">已开启前摄镜像；前摄预览和前摄视频会按镜像方向输出。</string>
+    <string name="route_front_mirror_disabled">已关闭前摄镜像；前摄按原始方向输出。</string>
+    <string name="route_orientation_follow_system">方向策略已切换为跟随系统。</string>
+    <string name="route_orientation_fixed_landscape">方向策略已切换为固定横屏驾驶模式。</string>
     <string name="route_thermal_guard_enabled">已开启过热性能保护；设备严重过热时会自动关闭前摄，优先保持后摄录制。</string>
     <string name="route_thermal_guard_disabled">已关闭过热性能保护；设备过热时不会自动关闭前摄。</string>
     <string name="route_low_battery_guard_enabled">已开启低电量性能保护；未充电且电量过低时会自动关闭前摄。</string>
@@ -380,6 +404,7 @@
     <string name="recording_service_segment_dual_writing">第 %1$d 段前后双摄正在写入</string>
     <string name="recording_service_segment_rear_fallback">第 %1$d 段正在写入；本次已降级为后摄单录</string>
     <string name="recording_service_segment_rear_writing">第 %1$d 段后摄单录正在写入</string>
+    <string name="recording_service_segment_front_writing">第 %1$d 段前摄单录正在写入</string>
     <string name="recording_service_adjacent_locked">相邻片段已锁定</string>
     <string name="recording_service_segment_done">片段已完成</string>
     <string name="recording_service_cleanup_old_normal">，已清理 %1$d 个旧普通片段</string>

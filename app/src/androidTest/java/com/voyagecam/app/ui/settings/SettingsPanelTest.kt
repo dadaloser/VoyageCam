@@ -23,6 +23,8 @@ import com.voyagecam.app.core.model.PersistedDualCameraSessionTelemetry
 import com.voyagecam.app.core.model.RecordingStorageOverview
 import com.voyagecam.app.data.settings.RecordingBitratePreset
 import com.voyagecam.app.data.settings.RecordingFrameRatePreset
+import com.voyagecam.app.data.settings.RecordingMode
+import com.voyagecam.app.data.settings.RecordingOrientationStrategy
 import com.voyagecam.app.data.settings.RecordingResolutionPreset
 import com.voyagecam.app.data.settings.StorageCapacityLimit
 import com.voyagecam.app.data.settings.VoyageCamSettings
@@ -45,6 +47,8 @@ class SettingsPanelTest {
         var recordingResolution = RecordingResolutionPreset.FHD_1080P
         var recordingFrameRate = RecordingFrameRatePreset.FPS_30
         var recordingBitrate = RecordingBitratePreset.MBPS_12
+        var frontMirrorEnabled = false
+        var orientationStrategy = RecordingOrientationStrategy.FollowSystem
         val telemetrySummary = context.getString(
             R.string.preview_telemetry_summary,
             2,
@@ -72,13 +76,15 @@ class SettingsPanelTest {
         composeRule.setContent {
             SettingsPanel(
                 settings = VoyageCamSettings(
-                    dualCameraEnabled = true,
+                    recordingMode = RecordingMode.Auto,
                     storageCapacityGb = 10,
                     segmentDurationMinutes = 3,
                     recordingResolution = recordingResolution,
                     recordingFrameRate = recordingFrameRate,
                     recordingBitrate = recordingBitrate,
                     collisionSensitivity = CollisionSensitivity.Medium,
+                    frontCameraMirrorEnabled = frontMirrorEnabled,
+                    recordingOrientationStrategy = orientationStrategy,
                     thermalGuardEnabled = thermalGuardEnabled,
                     lowBatteryGuardEnabled = lowBatteryGuardEnabled,
                     slowSegmentGuardEnabled = slowSegmentGuardEnabled,
@@ -86,6 +92,8 @@ class SettingsPanelTest {
                 capability = DualCameraCapability(
                     state = DualCameraSwitchState.AvailableOn,
                     grade = DeviceCapabilityGrade.A,
+                    rearCameraId = "rear",
+                    frontCameraId = "front",
                     reason = "supported",
                 ),
                 isRecording = false,
@@ -109,9 +117,11 @@ class SettingsPanelTest {
                 onRequestLocationPermission = {},
                 onRequestBluetoothPermission = {},
                 onRedetect = {},
-                onRecordingModeAutoChanged = {},
+                onRecordingModeChanged = {},
                 onStorageChanged = {},
                 onCleanupStorage = {},
+                onFrontCameraMirrorChanged = { frontMirrorEnabled = it },
+                onRecordingOrientationStrategyChanged = { orientationStrategy = it },
                 onRecordingResolutionChanged = { recordingResolution = it },
                 onRecordingFrameRateChanged = { recordingFrameRate = it },
                 onRecordingBitrateChanged = { recordingBitrate = it },

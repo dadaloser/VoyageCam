@@ -18,6 +18,7 @@ import com.voyagecam.app.core.model.DualCameraCapability
 import com.voyagecam.app.core.model.DualCameraSwitchState
 import com.voyagecam.app.core.model.RecordingStorageOverview
 import com.voyagecam.app.data.settings.StorageCapacityLimit
+import com.voyagecam.app.data.settings.RecordingMode
 import com.voyagecam.app.data.settings.VoyageCamSettings
 import com.voyagecam.app.ui.settings.BluetoothDevicePickerState
 import org.junit.Assert.assertEquals
@@ -39,7 +40,7 @@ class VoyageCamRouteContentTest {
                 mutableStateOf(
                     VoyageCamUiState(
                         settings = VoyageCamSettings(
-                            dualCameraEnabled = true,
+                            recordingMode = RecordingMode.Auto,
                             storageCapacityGb = 10,
                             segmentDurationMinutes = 3,
                             collisionSensitivity = CollisionSensitivity.Medium,

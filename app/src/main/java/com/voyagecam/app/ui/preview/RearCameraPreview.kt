@@ -34,13 +34,18 @@ import com.voyagecam.app.R
 import com.voyagecam.app.core.camera.DualCameraPreviewController
 import com.voyagecam.app.core.camera.DualCameraSessionCoordinator
 import com.voyagecam.app.core.camera.RearCameraPreviewController
+import com.voyagecam.app.core.model.CameraDirection
 import com.voyagecam.app.core.model.DualCameraDiagnostic
+import com.voyagecam.app.data.settings.RecordingOrientationStrategy
 import com.voyagecam.app.ui.dualCameraDiagnosticSummary
 import androidx.compose.runtime.collectAsState
 
 @Composable
 fun RearCameraPreview(
     enabled: Boolean,
+    primaryCameraDirection: CameraDirection = CameraDirection.Rear,
+    frontMirrorEnabled: Boolean = false,
+    orientationStrategy: RecordingOrientationStrategy = RecordingOrientationStrategy.FollowSystem,
     frontInsetEnabled: Boolean = false,
     dualCameraSessionToken: Int = 0,
     modifier: Modifier = Modifier,
@@ -57,6 +62,7 @@ fun RearCameraPreview(
         DualCameraPreview(
             modifier = modifier,
             sessionToken = dualCameraSessionToken,
+            frontMirrorEnabled = frontMirrorEnabled,
         )
         return
     }
@@ -94,12 +100,40 @@ fun RearCameraPreview(
                         PreviewView(viewContext).also { previewView ->
                             previewView.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
                             previewView.scaleType = PreviewView.ScaleType.FILL_CENTER
-                            controller.start(previewView) { message ->
+                            previewView.scaleX = if (
+                                primaryCameraDirection == CameraDirection.Front && frontMirrorEnabled
+                            ) {
+                                -1f
+                            } else {
+                                1f
+                            }
+                            controller.start(
+                                previewView = previewView,
+                                cameraDirection = primaryCameraDirection,
+                                frontMirrorEnabled = frontMirrorEnabled,
+                                orientationStrategy = orientationStrategy,
+                            ) { message ->
                                 errorMessage = message
                             }
                         }
                     },
-                    update = {},
+                    update = { previewView ->
+                        previewView.scaleX = if (
+                            primaryCameraDirection == CameraDirection.Front && frontMirrorEnabled
+                        ) {
+                            -1f
+                        } else {
+                            1f
+                        }
+                        controller.start(
+                            previewView = previewView,
+                            cameraDirection = primaryCameraDirection,
+                            frontMirrorEnabled = frontMirrorEnabled,
+                            orientationStrategy = orientationStrategy,
+                        ) { message ->
+                            errorMessage = message
+                        }
+                    },
                     modifier = Modifier.fillMaxSize(),
                 )
                 errorMessage?.let { message ->
@@ -120,6 +154,7 @@ fun RearCameraPreview(
 private fun DualCameraPreview(
     modifier: Modifier = Modifier,
     sessionToken: Int,
+    frontMirrorEnabled: Boolean,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = context as? LifecycleOwner
@@ -179,10 +214,13 @@ private fun DualCameraPreview(
                     PreviewView(viewContext).also { previewView ->
                         previewView.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
                         previewView.scaleType = PreviewView.ScaleType.FILL_CENTER
+                        previewView.scaleX = if (frontMirrorEnabled) -1f else 1f
                         frontPreviewView = previewView
                     }
                 },
-                update = {},
+                update = { previewView ->
+                    previewView.scaleX = if (frontMirrorEnabled) -1f else 1f
+                },
                 modifier = Modifier.fillMaxSize(),
             )
         }
