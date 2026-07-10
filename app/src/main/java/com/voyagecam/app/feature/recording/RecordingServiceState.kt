@@ -30,6 +30,7 @@ class RecordingServiceState {
     var pendingLockNextEventId: String? = null
     var lockedSegmentCount: Int = 0
     var segmentTransitionSummary: String? = null
+    var fallbackSummary: String? = null
     var dualCameraDiagnostic: String? = null
     var performanceGuardSummary: String? = null
 
@@ -69,6 +70,7 @@ class RecordingServiceState {
         pendingLockNextEventId = null
         lockedSegmentCount = 0
         segmentTransitionSummary = null
+        fallbackSummary = null
         dualCameraDiagnostic = null
         performanceGuardSummary = null
     }
@@ -93,6 +95,7 @@ class RecordingServiceState {
             status = status,
             currentFileName = currentFileName,
             segmentTransitionSummary = segmentTransitionSummary,
+            fallbackSummary = fallbackSummary,
             dualCameraDiagnostic = dualCameraDiagnostic,
             performanceGuardSummary = performanceGuardSummary,
         )

@@ -47,6 +47,7 @@ class SettingsPanelTest {
         var recordingResolution = RecordingResolutionPreset.FHD_1080P
         var recordingFrameRate = RecordingFrameRatePreset.FPS_30
         var recordingBitrate = RecordingBitratePreset.MBPS_12
+        var recordingMode = RecordingMode.Auto
         var frontMirrorEnabled = false
         var orientationStrategy = RecordingOrientationStrategy.FollowSystem
         val telemetrySummary = context.getString(
@@ -76,7 +77,7 @@ class SettingsPanelTest {
         composeRule.setContent {
             SettingsPanel(
                 settings = VoyageCamSettings(
-                    recordingMode = RecordingMode.Auto,
+                    recordingMode = recordingMode,
                     storageCapacityGb = 10,
                     segmentDurationMinutes = 3,
                     recordingResolution = recordingResolution,
@@ -117,7 +118,7 @@ class SettingsPanelTest {
                 onRequestLocationPermission = {},
                 onRequestBluetoothPermission = {},
                 onRedetect = {},
-                onRecordingModeChanged = {},
+                onRecordingModeChanged = { recordingMode = it },
                 onStorageChanged = {},
                 onCleanupStorage = {},
                 onFrontCameraMirrorChanged = { frontMirrorEnabled = it },
@@ -181,6 +182,9 @@ class SettingsPanelTest {
         composeRule.onNodeWithText("30fps").assertIsDisplayed()
         composeRule.onNodeWithText("12Mbps").assertIsDisplayed()
 
+        composeRule.onNodeWithText(context.getString(R.string.recording_mode_front_only)).performClick()
+        composeRule.onNodeWithTag("front_mirror_switch").performClick()
+        composeRule.onNodeWithText(context.getString(R.string.settings_orientation_fixed_landscape)).performClick()
         composeRule.onAllNodesWithText(clearLabel)[0].performClick()
         composeRule.onAllNodesWithText(clearLabel)[1].performClick()
         composeRule.onNodeWithText("720p").performClick()
@@ -192,11 +196,86 @@ class SettingsPanelTest {
 
         assertEquals(1, clearDiagnosticCount)
         assertEquals(1, clearTelemetryCount)
+        assertEquals(RecordingMode.FrontOnly, recordingMode)
         assertEquals(RecordingResolutionPreset.HD_720P, recordingResolution)
         assertEquals(RecordingFrameRatePreset.FPS_60, recordingFrameRate)
         assertEquals(RecordingBitratePreset.MBPS_24, recordingBitrate)
+        assertEquals(true, frontMirrorEnabled)
+        assertEquals(RecordingOrientationStrategy.FixedLandscapeDriving, orientationStrategy)
         assertEquals(false, thermalGuardEnabled)
         assertEquals(false, lowBatteryGuardEnabled)
         assertEquals(false, slowSegmentGuardEnabled)
+    }
+
+    @Test
+    fun showsAutoFallbackHintWhenDualCameraProfileExceedsSafeTier() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val fallbackHint = context.getString(R.string.settings_dual_profile_fallback_hint)
+
+        composeRule.setContent {
+            SettingsPanel(
+                settings = VoyageCamSettings(
+                    recordingMode = RecordingMode.Auto,
+                    recordingResolution = RecordingResolutionPreset.UHD_2160P,
+                    recordingFrameRate = RecordingFrameRatePreset.FPS_60,
+                    recordingBitrate = RecordingBitratePreset.MBPS_24,
+                ),
+                capability = DualCameraCapability(
+                    state = DualCameraSwitchState.AvailableOn,
+                    grade = DeviceCapabilityGrade.A,
+                    rearCameraId = "rear",
+                    frontCameraId = "front",
+                    reason = "supported",
+                ),
+                isRecording = false,
+                storageLimit = StorageCapacityLimit(maxGb = 32),
+                cameraPermissionGranted = true,
+                notificationPermissionGranted = true,
+                audioPermissionGranted = true,
+                locationPermissionGranted = true,
+                bluetoothPermissionGranted = true,
+                storageOverview = RecordingStorageOverview(
+                    normalBytes = 0L,
+                    lockedBytes = 0L,
+                    normalClipCount = 0,
+                    lockedClipCount = 0,
+                    maxStorageBytes = 10L * 1024 * 1024 * 1024,
+                    estimatedBytesPerMinute = 1024L,
+                ),
+                pendingStorageCapacityGb = null,
+                onRequestCameraPermission = {},
+                onRequestNotificationPermission = {},
+                onRequestLocationPermission = {},
+                onRequestBluetoothPermission = {},
+                onRedetect = {},
+                onRecordingModeChanged = {},
+                onStorageChanged = {},
+                onCleanupStorage = {},
+                onFrontCameraMirrorChanged = {},
+                onRecordingOrientationStrategyChanged = {},
+                onRecordingResolutionChanged = {},
+                onRecordingFrameRateChanged = {},
+                onRecordingBitrateChanged = {},
+                onSegmentDurationChanged = {},
+                onCollisionSensitivityChanged = {},
+                onAmbientAudioChanged = {},
+                onThermalGuardChanged = {},
+                onLowBatteryGuardChanged = {},
+                onSlowSegmentGuardChanged = {},
+                onGpsMetadataChanged = {},
+                onExportWatermarkSubtitlesChanged = {},
+                onExportBurnedWatermarkVideoChanged = {},
+                onAutoStartOnPowerChanged = {},
+                onTrustedBluetoothDeviceChanged = {},
+                onAutoStartOnTrustedBluetoothChanged = {},
+                onRequestResetSettings = {},
+                bluetoothDevicePickerState = BluetoothDevicePickerState(
+                    loadPairedDevices = { emptyList() },
+                    trustedDeviceInput = "",
+                ),
+            )
+        }
+
+        composeRule.onNodeWithText(fallbackHint).assertIsDisplayed()
     }
 }

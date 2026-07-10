@@ -72,6 +72,21 @@ fun Context.recordingModeDescription(
     )
 }
 
+fun Context.recordingFallbackSummary(
+    downgradeReason: RecordingConfigDowngradeReason,
+): String {
+    return getString(
+        when (downgradeReason) {
+            RecordingConfigDowngradeReason.FrontCameraUnavailable ->
+                R.string.recording_fallback_front_unavailable
+            RecordingConfigDowngradeReason.DualCameraUnavailable ->
+                R.string.recording_fallback_dual_unavailable
+            RecordingConfigDowngradeReason.DualCameraProfileUnsupported ->
+                R.string.recording_fallback_dual_profile_unsupported
+        },
+    )
+}
+
 private data class DualCameraCapabilityShim(
     val dualCameraSupported: Boolean,
     val hasFrontCamera: Boolean,

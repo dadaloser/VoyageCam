@@ -4,13 +4,18 @@
     <string name="recording_mode_front_only">Front only</string>
     <string name="recording_mode_auto">Auto</string>
     <string name="recording_mode_auto_dual_active">Auto · Dual</string>
-    <string name="recording_mode_auto_rear_active">Auto · Rear</string>
+    <string name="recording_mode_auto_rear_active">Auto · Rear fallback</string>
     <string name="recording_mode_auto_supported_description">Uses dual cameras when available; falls back to rear camera if unsupported or downgraded.</string>
     <string name="recording_mode_auto_profile_fallback_description">The current resolution, frame rate, or bitrate exceeds the safe dual-camera profile; recording will fall back to rear-only mode.</string>
     <string name="recording_mode_auto_rear_only_description">This device currently supports rear-camera recording only.</string>
     <string name="recording_mode_rear_only_description">Always uses the rear camera for lower power use and better stability.</string>
     <string name="recording_mode_front_only_description">Always uses the front camera for cabin-facing capture; front mirroring can be controlled separately.</string>
     <string name="recording_mode_front_only_unavailable_description">No usable front camera is currently detected, so Front only is unavailable.</string>
+    <string name="recording_fallback_front_unavailable">No usable front camera</string>
+    <string name="recording_fallback_dual_unavailable">Dual-camera concurrency unsupported</string>
+    <string name="recording_fallback_dual_profile_unsupported">Profile exceeds the safe dual-camera tier</string>
+    <string name="recording_fallback_dual_session_failed">Dual-camera startup failed</string>
+    <string name="recording_fallback_performance_guard">Performance guard triggered</string>
 
     <string name="permission_camera_denied">Camera permission is required to start dashcam recording.</string>
     <string name="permission_notification_denied">Notification permission is required to reliably show background recording status.</string>
@@ -28,10 +33,11 @@
     <string name="notification_audio_off">Silent</string>
     <string name="notification_segment_minutes">%1$d min segments</string>
     <string name="notification_locked_count"> · %1$d locked</string>
+    <string name="notification_fallback_prefix"> · Fallback: %1$s</string>
     <string name="notification_performance_prefix"> · Performance guard: %1$s</string>
     <string name="notification_content_title">VoyageCam is recording</string>
     <string name="notification_content_text">%1$s · %2$s · %3$s%4$s · %5$s%6$s</string>
-    <string name="notification_big_text">%1$s · %2$s · %3$s · %4$s · %5$s%6$s%7$s%8$s%9$s · %10$dGB loop storage · running %11$s%12$s</string>
+    <string name="notification_big_text">%1$s · %2$s · %3$s · %4$s · %5$s%6$s%7$s%8$s%9$s%10$s · %11$dGB loop storage · running %12$s%13$s</string>
     <string name="notification_action_lock">Emergency lock</string>
     <string name="notification_action_stop">Stop recording</string>
 

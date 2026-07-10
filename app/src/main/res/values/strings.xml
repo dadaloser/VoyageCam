@@ -4,13 +4,18 @@
     <string name="recording_mode_front_only">仅前摄</string>
     <string name="recording_mode_auto">自动模式</string>
     <string name="recording_mode_auto_dual_active">自动模式 · 双摄</string>
-    <string name="recording_mode_auto_rear_active">自动模式 · 后摄</string>
+    <string name="recording_mode_auto_rear_active">自动模式 · 后摄降级</string>
     <string name="recording_mode_auto_supported_description">支持时使用双摄；不支持或降级时自动切回后摄。</string>
     <string name="recording_mode_auto_profile_fallback_description">当前分辨率、帧率或码率超出双摄安全档位；开始录制时会自动降为仅后摄。</string>
     <string name="recording_mode_auto_rear_only_description">当前设备仅支持后摄录制。</string>
     <string name="recording_mode_rear_only_description">始终使用后摄，功耗更低也更稳定。</string>
     <string name="recording_mode_front_only_description">始终使用前摄，适合车内取景；前摄镜像可单独控制。</string>
     <string name="recording_mode_front_only_unavailable_description">当前设备未检测到可用前摄，已禁用仅前摄模式。</string>
+    <string name="recording_fallback_front_unavailable">设备没有可用前摄</string>
+    <string name="recording_fallback_dual_unavailable">设备不支持双摄并发</string>
+    <string name="recording_fallback_dual_profile_unsupported">当前参数超出双摄安全档位</string>
+    <string name="recording_fallback_dual_session_failed">双摄启动失败</string>
+    <string name="recording_fallback_performance_guard">性能保护触发</string>
 
     <string name="permission_camera_denied">相机权限未授权，无法开始行车记录。</string>
     <string name="permission_notification_denied">通知权限未授权，后台录制状态无法可靠展示。</string>
@@ -28,10 +33,11 @@
     <string name="notification_audio_off">静音</string>
     <string name="notification_segment_minutes">%1$d分钟分段</string>
     <string name="notification_locked_count"> · 已锁定%1$d段</string>
+    <string name="notification_fallback_prefix"> · 降级原因：%1$s</string>
     <string name="notification_performance_prefix"> · 性能保护：%1$s</string>
     <string name="notification_content_title">VoyageCam 正在录制</string>
     <string name="notification_content_text">%1$s · %2$s · %3$s%4$s · %5$s%6$s</string>
-    <string name="notification_big_text">%1$s · %2$s · %3$s · %4$s · %5$s%6$s%7$s%8$s%9$s · %10$dGB循环空间 · 已运行 %11$s%12$s</string>
+    <string name="notification_big_text">%1$s · %2$s · %3$s · %4$s · %5$s%6$s%7$s%8$s%9$s%10$s · %11$dGB循环空间 · 已运行 %12$s%13$s</string>
     <string name="notification_action_lock">紧急锁定</string>
     <string name="notification_action_stop">停止录制</string>
 

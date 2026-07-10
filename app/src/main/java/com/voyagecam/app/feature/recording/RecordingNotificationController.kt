@@ -30,6 +30,7 @@ data class RecordingNotificationState(
     val status: String,
     val currentFileName: String?,
     val segmentTransitionSummary: String?,
+    val fallbackSummary: String?,
     val dualCameraDiagnostic: String?,
     val performanceGuardSummary: String?,
 )
@@ -81,6 +82,9 @@ class RecordingNotificationController(private val context: Context) {
         )
         val fileText = state.currentFileName?.let { " · $it" }.orEmpty()
         val transitionText = state.segmentTransitionSummary?.let { " · $it" }.orEmpty()
+        val fallbackText = state.fallbackSummary
+            ?.let { context.getString(R.string.notification_fallback_prefix, it) }
+            .orEmpty()
         val diagnosticText = state.dualCameraDiagnostic?.let { " · $it" }.orEmpty()
         val performanceText = state.performanceGuardSummary
             ?.let { context.getString(R.string.notification_performance_prefix, it) }
@@ -131,6 +135,7 @@ class RecordingNotificationController(private val context: Context) {
                             segment,
                             locked,
                             transitionText,
+                            fallbackText,
                             diagnosticText,
                             performanceText,
                             state.storageCapacityGb,

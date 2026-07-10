@@ -28,6 +28,7 @@ import com.voyagecam.app.data.emergency.EmergencyEventStore
 import com.voyagecam.app.data.location.EmergencyLocationProvider
 import com.voyagecam.app.data.location.hasAnyLocationPermission
 import com.voyagecam.app.data.settings.VoyageCamSettingsStore
+import com.voyagecam.app.data.settings.recordingFallbackSummary
 import com.voyagecam.app.data.settings.resolveRecordingConfig
 import com.voyagecam.app.data.settings.recordingVideoProfile
 import com.voyagecam.app.data.storage.RecordingStorageManager
@@ -163,6 +164,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
             segmentDurationMinutes = settings.segmentDurationMinutes,
             collisionSensitivity = settings.collisionSensitivity,
         )
+        state.fallbackSummary = resolvedConfig.downgradeReason?.let(::recordingFallbackSummary)
         gpsTrackBuffer.clear()
         VoyageCamRuntimeTelemetry.log(
             level = StructuredLogLevel.Info,
@@ -256,6 +258,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         if (!state.dualCamera) {
             state.dualCameraDiagnostic = null
         } else if (files.front != null) {
+            state.fallbackSummary = null
             state.dualCameraDiagnostic = getString(R.string.recording_service_dual_ok)
             serviceScope.launch(Dispatchers.IO) {
                 dualCameraDiagnosticsStore.clear()
@@ -400,6 +403,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
 
     override fun onDualCameraFallback(diagnostic: DualCameraDiagnostic) {
         state.dualCamera = false
+        state.fallbackSummary = getString(R.string.recording_fallback_dual_session_failed)
         state.dualCameraDiagnostic = dualCameraDiagnosticSummary(diagnostic)
         serviceScope.launch(Dispatchers.IO) {
             dualCameraDiagnosticsStore.record(diagnostic)
@@ -656,6 +660,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
     private fun downgradeDualCameraForPerformance(reason: String) {
         if (!state.dualCamera) return
         state.dualCamera = false
+        state.fallbackSummary = getString(R.string.recording_fallback_performance_guard)
         state.dualCameraDiagnostic = getString(R.string.recording_service_guard_prefix, reason)
         state.status = getString(R.string.recording_service_guard_triggered, reason)
         VoyageCamRuntimeTelemetry.archiveDualCameraFailure(
