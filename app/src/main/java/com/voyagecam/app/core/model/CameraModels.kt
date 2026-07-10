@@ -12,6 +12,10 @@ data class DualCameraCapability(
     val frontSummary: String = "",
     val systemSummary: String = "Android ${Build.VERSION.RELEASE} / API ${Build.VERSION.SDK_INT}",
     val checkedAtMillis: Long = System.currentTimeMillis(),
+    val failureReason: DualCameraFailureReason? = null,
+    val previewProbe: DualCameraProbeResult = DualCameraProbeResult(),
+    val recordingProbe: DualCameraProbeResult = DualCameraProbeResult(),
+    val encodingProbe: DualCameraProbeResult = DualCameraProbeResult(),
 ) {
     val isAvailable: Boolean
         get() = state == DualCameraSwitchState.AvailableOff || state == DualCameraSwitchState.AvailableOn
@@ -30,4 +34,27 @@ enum class DeviceCapabilityGrade {
     B,
     C,
     D,
+}
+
+enum class DualCameraFailureReason {
+    PermissionMissing,
+    SystemVersionTooLow,
+    HalUnsupported,
+    ConcurrentRecordingFailed,
+    FrontCameraStartupFailed,
+    EncodingCapabilityInsufficient,
+    Unknown,
+}
+
+data class DualCameraProbeResult(
+    val status: DualCameraProbeStatus = DualCameraProbeStatus.NotChecked,
+    val detail: String = "",
+)
+
+enum class DualCameraProbeStatus {
+    Supported,
+    SupportedWithDowngrade,
+    Unsupported,
+    Failed,
+    NotChecked,
 }

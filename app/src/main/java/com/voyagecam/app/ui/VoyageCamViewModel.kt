@@ -29,6 +29,7 @@ import com.voyagecam.app.data.settings.VoyageCamSettings
 import com.voyagecam.app.data.settings.VoyageCamSettingsStore
 import com.voyagecam.app.data.settings.coerceTo
 import com.voyagecam.app.data.settings.estimatedManagedBytesPerMinute
+import com.voyagecam.app.data.settings.recordingVideoProfile
 import com.voyagecam.app.data.telemetry.RuntimeTelemetryStore
 import com.voyagecam.app.feature.evidence.EvidenceExportCancelledException
 import com.voyagecam.app.feature.evidence.RecordingClipExportMode
@@ -135,7 +136,10 @@ class VoyageCamViewModel(application: Application) : AndroidViewModel(applicatio
         )
         viewModelScope.launch(Dispatchers.IO) {
             val currentSettings = _uiState.value.settings
-            val result = detector.detect(currentSettings.recordingMode == com.voyagecam.app.data.settings.RecordingMode.Auto)
+            val result = detector.detect(
+                currentlyEnabled = currentSettings.recordingMode == com.voyagecam.app.data.settings.RecordingMode.Auto,
+                currentProfile = currentSettings.recordingVideoProfile(),
+            )
             withContext(Dispatchers.Main) {
                 persistCapability(result)
             }

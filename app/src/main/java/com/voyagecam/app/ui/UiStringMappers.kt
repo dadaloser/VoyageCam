@@ -8,9 +8,12 @@ import com.voyagecam.app.core.model.AutoStartResult
 import com.voyagecam.app.core.model.AutoStartSource
 import com.voyagecam.app.core.model.CameraDirection
 import com.voyagecam.app.core.model.CollisionSensitivity
+import com.voyagecam.app.core.model.DeviceCapabilityGrade
 import com.voyagecam.app.core.model.DualCameraDiagnostic
 import com.voyagecam.app.core.model.DualCameraDiagnosticStage
+import com.voyagecam.app.core.model.DualCameraFailureReason
 import com.voyagecam.app.core.model.DualCameraFailureSource
+import com.voyagecam.app.core.model.DualCameraProbeStatus
 import com.voyagecam.app.core.model.DualCameraSwitchState
 import com.voyagecam.app.core.model.EmergencyTrigger
 import com.voyagecam.app.core.model.StructuredLogLevel
@@ -65,6 +68,34 @@ fun DualCameraSwitchState.labelRes(): Int = when (this) {
     DualCameraSwitchState.AvailableOn -> R.string.label_dual_camera_state_available_on
     DualCameraSwitchState.Unavailable -> R.string.label_dual_camera_state_unavailable
     DualCameraSwitchState.CheckFailed -> R.string.label_dual_camera_state_check_failed
+}
+
+@StringRes
+fun DeviceCapabilityGrade.labelRes(): Int = when (this) {
+    DeviceCapabilityGrade.A -> R.string.label_capability_grade_a
+    DeviceCapabilityGrade.B -> R.string.label_capability_grade_b
+    DeviceCapabilityGrade.C -> R.string.label_capability_grade_c
+    DeviceCapabilityGrade.D -> R.string.label_capability_grade_d
+}
+
+@StringRes
+fun DualCameraFailureReason.labelRes(): Int = when (this) {
+    DualCameraFailureReason.PermissionMissing -> R.string.label_capability_failure_permission
+    DualCameraFailureReason.SystemVersionTooLow -> R.string.label_capability_failure_system_version
+    DualCameraFailureReason.HalUnsupported -> R.string.label_capability_failure_hal
+    DualCameraFailureReason.ConcurrentRecordingFailed -> R.string.label_capability_failure_concurrent_recording
+    DualCameraFailureReason.FrontCameraStartupFailed -> R.string.label_capability_failure_front_start
+    DualCameraFailureReason.EncodingCapabilityInsufficient -> R.string.label_capability_failure_encoding
+    DualCameraFailureReason.Unknown -> R.string.label_capability_failure_unknown
+}
+
+@StringRes
+fun DualCameraProbeStatus.labelRes(): Int = when (this) {
+    DualCameraProbeStatus.Supported -> R.string.label_capability_probe_supported
+    DualCameraProbeStatus.SupportedWithDowngrade -> R.string.label_capability_probe_supported_downgrade
+    DualCameraProbeStatus.Unsupported -> R.string.label_capability_probe_unsupported
+    DualCameraProbeStatus.Failed -> R.string.label_capability_probe_failed
+    DualCameraProbeStatus.NotChecked -> R.string.label_capability_probe_not_checked
 }
 
 @StringRes

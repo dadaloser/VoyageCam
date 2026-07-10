@@ -7,6 +7,9 @@ import com.voyagecam.app.core.model.CameraDirection
 import com.voyagecam.app.core.model.CollisionSensitivity
 import com.voyagecam.app.core.model.DeviceCapabilityGrade
 import com.voyagecam.app.core.model.DualCameraCapability
+import com.voyagecam.app.core.model.DualCameraFailureReason
+import com.voyagecam.app.core.model.DualCameraProbeResult
+import com.voyagecam.app.core.model.DualCameraProbeStatus
 import com.voyagecam.app.core.model.DualCameraSwitchState
 
 enum class RecordingMode {
@@ -186,6 +189,29 @@ class VoyageCamSettingsStore(
             systemSummary = prefs.getString(KEY_CAPABILITY_SYSTEM_SUMMARY, null)
                 ?: context.getString(R.string.settings_capability_unknown_system),
             checkedAtMillis = prefs.getLong(KEY_CAPABILITY_CHECKED_AT, System.currentTimeMillis()),
+            failureReason = prefs.getString(KEY_CAPABILITY_FAILURE_REASON, null)
+                ?.let { stored -> runCatching { DualCameraFailureReason.valueOf(stored) }.getOrNull() },
+            previewProbe = DualCameraProbeResult(
+                status = prefs.getString(KEY_CAPABILITY_PREVIEW_STATUS, null)
+                    ?.let { stored -> runCatching { DualCameraProbeStatus.valueOf(stored) }.getOrNull() }
+                    ?: DualCameraProbeStatus.NotChecked,
+                detail = prefs.getString(KEY_CAPABILITY_PREVIEW_DETAIL, null)
+                    ?: context.getString(R.string.settings_capability_not_checked),
+            ),
+            recordingProbe = DualCameraProbeResult(
+                status = prefs.getString(KEY_CAPABILITY_RECORDING_STATUS, null)
+                    ?.let { stored -> runCatching { DualCameraProbeStatus.valueOf(stored) }.getOrNull() }
+                    ?: DualCameraProbeStatus.NotChecked,
+                detail = prefs.getString(KEY_CAPABILITY_RECORDING_DETAIL, null)
+                    ?: context.getString(R.string.settings_capability_not_checked),
+            ),
+            encodingProbe = DualCameraProbeResult(
+                status = prefs.getString(KEY_CAPABILITY_ENCODING_STATUS, null)
+                    ?.let { stored -> runCatching { DualCameraProbeStatus.valueOf(stored) }.getOrNull() }
+                    ?: DualCameraProbeStatus.NotChecked,
+                detail = prefs.getString(KEY_CAPABILITY_ENCODING_DETAIL, null)
+                    ?: context.getString(R.string.settings_capability_not_checked),
+            ),
         )
     }
 
@@ -200,6 +226,13 @@ class VoyageCamSettingsStore(
             .putString(KEY_CAPABILITY_FRONT_SUMMARY, capability.frontSummary)
             .putString(KEY_CAPABILITY_SYSTEM_SUMMARY, capability.systemSummary)
             .putLong(KEY_CAPABILITY_CHECKED_AT, capability.checkedAtMillis)
+            .putString(KEY_CAPABILITY_FAILURE_REASON, capability.failureReason?.name)
+            .putString(KEY_CAPABILITY_PREVIEW_STATUS, capability.previewProbe.status.name)
+            .putString(KEY_CAPABILITY_PREVIEW_DETAIL, capability.previewProbe.detail)
+            .putString(KEY_CAPABILITY_RECORDING_STATUS, capability.recordingProbe.status.name)
+            .putString(KEY_CAPABILITY_RECORDING_DETAIL, capability.recordingProbe.detail)
+            .putString(KEY_CAPABILITY_ENCODING_STATUS, capability.encodingProbe.status.name)
+            .putString(KEY_CAPABILITY_ENCODING_DETAIL, capability.encodingProbe.detail)
             .apply()
     }
 
@@ -239,6 +272,13 @@ class VoyageCamSettingsStore(
         private const val KEY_CAPABILITY_FRONT_SUMMARY = "capability_front_summary"
         private const val KEY_CAPABILITY_SYSTEM_SUMMARY = "capability_system_summary"
         private const val KEY_CAPABILITY_CHECKED_AT = "capability_checked_at"
+        private const val KEY_CAPABILITY_FAILURE_REASON = "capability_failure_reason"
+        private const val KEY_CAPABILITY_PREVIEW_STATUS = "capability_preview_status"
+        private const val KEY_CAPABILITY_PREVIEW_DETAIL = "capability_preview_detail"
+        private const val KEY_CAPABILITY_RECORDING_STATUS = "capability_recording_status"
+        private const val KEY_CAPABILITY_RECORDING_DETAIL = "capability_recording_detail"
+        private const val KEY_CAPABILITY_ENCODING_STATUS = "capability_encoding_status"
+        private const val KEY_CAPABILITY_ENCODING_DETAIL = "capability_encoding_detail"
 
         fun Int.coerceToAllowedSegmentDuration(): Int {
             return if (this in ALLOWED_SEGMENT_DURATIONS_MINUTES) {

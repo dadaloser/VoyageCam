@@ -1055,11 +1055,12 @@ private fun DualCameraSessionTelemetryPanel(
 
 @Composable
 private fun CapabilityDetail(capability: DualCameraCapability) {
+    val context = LocalContext.current
     Text(
         text = stringResource(
             R.string.settings_capability_grade,
             capability.grade.name,
-            stringResource(capability.state.asLabelRes()),
+            stringResource(capability.grade.labelRes()),
         ),
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.SemiBold,
@@ -1067,9 +1068,68 @@ private fun CapabilityDetail(capability: DualCameraCapability) {
     )
     Spacer(modifier = Modifier.height(4.dp))
     Text(
-        text = capability.reason,
+        text = stringResource(
+            R.string.settings_capability_state,
+            stringResource(capability.state.asLabelRes()),
+        ),
         style = MaterialTheme.typography.bodySmall,
         color = Color(0xFF64777B),
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    capability.failureReason?.let { failureReason ->
+        Text(
+            text = stringResource(
+                R.string.settings_capability_failure_reason,
+                stringResource(failureReason.labelRes()),
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF9B2C2C),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+    }
+    Text(
+        text = stringResource(R.string.settings_capability_reason, capability.reason),
+        style = MaterialTheme.typography.bodySmall,
+        color = Color(0xFF64777B),
+    )
+    Spacer(modifier = Modifier.height(4.dp))
+    Text(
+        text = stringResource(
+            R.string.settings_capability_recommended_mode,
+            capability.recommendedModeSummary(context),
+        ),
+        style = MaterialTheme.typography.bodySmall,
+        color = Color(0xFF2F6F62),
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    Text(
+        text = stringResource(
+            R.string.settings_capability_preview_probe,
+            stringResource(capability.previewProbe.status.labelRes()),
+            capability.previewProbe.detail,
+        ),
+        style = MaterialTheme.typography.bodySmall,
+        color = Color(0xFF4D6267),
+    )
+    Spacer(modifier = Modifier.height(4.dp))
+    Text(
+        text = stringResource(
+            R.string.settings_capability_recording_probe,
+            stringResource(capability.recordingProbe.status.labelRes()),
+            capability.recordingProbe.detail,
+        ),
+        style = MaterialTheme.typography.bodySmall,
+        color = Color(0xFF4D6267),
+    )
+    Spacer(modifier = Modifier.height(4.dp))
+    Text(
+        text = stringResource(
+            R.string.settings_capability_encoding_probe,
+            stringResource(capability.encodingProbe.status.labelRes()),
+            capability.encodingProbe.detail,
+        ),
+        style = MaterialTheme.typography.bodySmall,
+        color = Color(0xFF4D6267),
     )
     Spacer(modifier = Modifier.height(8.dp))
     Text(
@@ -1101,6 +1161,29 @@ private fun CapabilityDetail(capability: DualCameraCapability) {
         style = MaterialTheme.typography.bodySmall,
         color = Color(0xFF64777B),
     )
+}
+
+private fun DualCameraCapability.recommendedModeSummary(context: android.content.Context): String {
+    return when {
+        failureReason == com.voyagecam.app.core.model.DualCameraFailureReason.PermissionMissing ->
+            context.getString(R.string.settings_capability_recommend_permission)
+
+        grade == com.voyagecam.app.core.model.DeviceCapabilityGrade.A &&
+            encodingProbe.status == com.voyagecam.app.core.model.DualCameraProbeStatus.SupportedWithDowngrade ->
+            context.getString(R.string.settings_capability_recommend_auto_downgrade)
+
+        grade == com.voyagecam.app.core.model.DeviceCapabilityGrade.A ->
+            context.getString(R.string.settings_capability_recommend_auto)
+
+        grade == com.voyagecam.app.core.model.DeviceCapabilityGrade.B ->
+            context.getString(R.string.settings_capability_recommend_preview_only)
+
+        grade == com.voyagecam.app.core.model.DeviceCapabilityGrade.C ->
+            context.getString(R.string.settings_capability_recommend_rear_only)
+
+        else ->
+            context.getString(R.string.settings_capability_recommend_retry)
+    }
 }
 
 @Composable
