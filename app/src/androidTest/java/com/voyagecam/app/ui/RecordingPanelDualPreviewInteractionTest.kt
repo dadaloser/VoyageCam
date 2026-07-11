@@ -4,6 +4,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -20,6 +21,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.voyagecam.app.R
@@ -30,12 +32,16 @@ import com.voyagecam.app.core.model.DualCameraCapability
 import com.voyagecam.app.core.model.DualCameraDiagnostic
 import com.voyagecam.app.core.model.DualCameraDiagnosticStage
 import com.voyagecam.app.core.model.DualCameraSwitchState
+import com.voyagecam.app.data.settings.RecordingOrientationStrategy
 import com.voyagecam.app.data.settings.RecordingMode
 import com.voyagecam.app.data.settings.VoyageCamSettings
 import com.voyagecam.app.ui.preview.DualCameraPreviewPresentation
+import com.voyagecam.app.ui.preview.DualCameraPreviewLayout
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Rule
 import org.junit.Test
+import kotlin.math.abs
+import org.junit.Assert.assertTrue
 
 class RecordingPanelDualPreviewInteractionTest {
     @get:Rule
@@ -154,6 +160,59 @@ class RecordingPanelDualPreviewInteractionTest {
                 "bind failed",
             ),
         ).assertIsDisplayed()
+    }
+
+    @Test
+    fun draggableInsetPreviewSnapsToNearestEdge() {
+        var mainCameraDirection by mutableStateOf(CameraDirection.Rear)
+        composeRule.setContent {
+            DualCameraPreviewLayout(
+                mainCameraDirection = mainCameraDirection,
+                frontMirrorEnabled = true,
+                orientationStrategy = RecordingOrientationStrategy.FixedLandscapeDriving,
+                modifier = Modifier
+                    .width(240.dp)
+                    .testTag("dual_camera_preview"),
+                rearPreview = { surfaceModifier ->
+                    Box(modifier = surfaceModifier)
+                },
+                frontPreview = { surfaceModifier ->
+                    Box(modifier = surfaceModifier)
+                },
+            )
+        }
+
+        val initialBounds = composeRule.onNodeWithTag("front_inset_preview")
+            .fetchSemanticsNode().boundsInRoot
+
+        composeRule.onNodeWithTag("front_inset_preview").performTouchInput {
+            down(center)
+            moveBy(Offset(-220f, 90f))
+            up()
+        }
+
+        composeRule.waitForIdle()
+
+        val previewBounds = composeRule.onNodeWithTag("dual_camera_preview")
+            .fetchSemanticsNode().boundsInRoot
+        val snappedBounds = composeRule.onNodeWithTag("front_inset_preview")
+            .fetchSemanticsNode().boundsInRoot
+        val expectedPadding = with(composeRule.density) { 12.dp.toPx() }
+
+        assertTrue(snappedBounds.left < initialBounds.left)
+        assertTrue(snappedBounds.top > initialBounds.top)
+        assertTrue(abs(snappedBounds.left - (previewBounds.left + expectedPadding)) < 4f)
+
+        composeRule.runOnUiThread {
+            mainCameraDirection = CameraDirection.Front
+        }
+
+        composeRule.waitForIdle()
+
+        val swappedInsetBounds = composeRule.onNodeWithTag("rear_inset_preview")
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(abs(swappedInsetBounds.left - snappedBounds.left) < 4f)
+        assertTrue(abs(swappedInsetBounds.top - snappedBounds.top) < 4f)
     }
 }
 

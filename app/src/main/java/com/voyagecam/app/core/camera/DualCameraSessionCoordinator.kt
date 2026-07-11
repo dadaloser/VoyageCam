@@ -102,11 +102,12 @@ object DualCameraSessionCoordinator : LifecycleOwner {
         onError: (DualCameraDiagnostic) -> Unit,
     ) {
         runOnMain {
-            if (!hasCameraPermission(context)) {
+            val cameraContext = context.displayAssociatedContext()
+            if (!hasCameraPermission(cameraContext)) {
                 reportDiagnostic(
                     diagnostic = DualCameraDiagnostic(
                         stage = DualCameraDiagnosticStage.ConcurrentRecording,
-                        detail = context.getString(R.string.camera_error_dual_permission_recording),
+                        detail = cameraContext.getString(R.string.camera_error_dual_permission_recording),
                     ),
                     onError = onError,
                 )
@@ -114,7 +115,7 @@ object DualCameraSessionCoordinator : LifecycleOwner {
             }
 
             runCatching {
-                val targetRotation = orientationStrategy.targetRotation(context)
+                val targetRotation = orientationStrategy.targetRotation(cameraContext)
                 val rearVideoCapture = videoCapture(
                     videoProfile = videoProfile,
                     targetRotation = targetRotation,
@@ -130,7 +131,7 @@ object DualCameraSessionCoordinator : LifecycleOwner {
                     },
                 )
                 bind(
-                    context = context.applicationContext,
+                    context = cameraContext,
                     targetRotation = targetRotation,
                     rearVideoCapture = rearVideoCapture,
                     frontVideoCapture = frontVideoCapture,
@@ -138,9 +139,9 @@ object DualCameraSessionCoordinator : LifecycleOwner {
                 )
 
                 val nextRearRecording = rearVideoCapture.output
-                    .prepareRecording(context.applicationContext, FileOutputOptions.Builder(rearFile).build())
+                    .prepareRecording(cameraContext, FileOutputOptions.Builder(rearFile).build())
                     .let { pending ->
-                        if (audioEnabled && ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                        if (audioEnabled && ContextCompat.checkSelfPermission(cameraContext, Manifest.permission.RECORD_AUDIO) ==
                             PackageManager.PERMISSION_GRANTED
                         ) {
                             pending.withAudioEnabled()
@@ -148,12 +149,12 @@ object DualCameraSessionCoordinator : LifecycleOwner {
                             pending
                         }
                     }
-                    .start(ContextCompat.getMainExecutor(context)) { event ->
+                    .start(ContextCompat.getMainExecutor(cameraContext)) { event ->
                         onEvent(DualCameraRecordEvent(camera = CameraSelector.LENS_FACING_BACK, event = event))
                     }
                 val nextFrontRecording = frontVideoCapture.output
-                    .prepareRecording(context.applicationContext, FileOutputOptions.Builder(frontFile).build())
-                    .start(ContextCompat.getMainExecutor(context)) { event ->
+                    .prepareRecording(cameraContext, FileOutputOptions.Builder(frontFile).build())
+                    .start(ContextCompat.getMainExecutor(cameraContext)) { event ->
                         onEvent(DualCameraRecordEvent(camera = CameraSelector.LENS_FACING_FRONT, event = event))
                     }
 
@@ -168,7 +169,7 @@ object DualCameraSessionCoordinator : LifecycleOwner {
                             rearRecording = null
                             frontRecording = null
                             publishSessionStatus()
-                            rebindPreviewIfNeeded(context.applicationContext, onError)
+                            rebindPreviewIfNeeded(cameraContext, onError)
                         },
                     ),
                 )
@@ -179,7 +180,7 @@ object DualCameraSessionCoordinator : LifecycleOwner {
                 reportDiagnostic(
                     diagnostic = DualCameraDiagnostic(
                         stage = DualCameraDiagnosticStage.ConcurrentRecording,
-                        detail = error.message ?: context.getString(R.string.camera_error_dual_init_failed),
+                        detail = error.message ?: cameraContext.getString(R.string.camera_error_dual_init_failed),
                     ),
                     onError = onError,
                 )
@@ -373,5 +374,5 @@ private fun RecordingOrientationStrategy.targetRotation(context: Context): Int {
 }
 
 private fun orientationTargetRotation(context: Context): Int {
-    return context.display?.rotation ?: Surface.ROTATION_0
+    return context.safeDisplayRotation()
 }

@@ -88,16 +88,17 @@ object RearCameraCameraXPipeline : LifecycleOwner {
         onError: (String) -> Unit,
     ) {
         runOnMain {
+            val cameraContext = context.displayAssociatedContext()
             ensureLifecycleStarted()
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) !=
+            if (ContextCompat.checkSelfPermission(cameraContext, Manifest.permission.CAMERA) !=
                 PackageManager.PERMISSION_GRANTED
             ) {
-                onError(context.getString(R.string.camera_error_permission_recording))
+                onError(cameraContext.getString(R.string.camera_error_permission_recording))
                 return@runOnMain
             }
 
             val boundVideoCapture = bindUseCases(
-                context = context.applicationContext,
+                context = cameraContext,
                 cameraDirection = cameraDirection,
                 frontMirrorEnabled = frontMirrorEnabled,
                 orientationStrategy = orientationStrategy,
@@ -106,11 +107,11 @@ object RearCameraCameraXPipeline : LifecycleOwner {
             ) ?: return@runOnMain
             val outputOptions = FileOutputOptions.Builder(file).build()
             val pendingRecording = boundVideoCapture.output
-                .prepareRecording(context.applicationContext, outputOptions)
+                .prepareRecording(cameraContext, outputOptions)
                 .let { recording ->
                     if (
                         audioEnabled &&
-                        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                        ContextCompat.checkSelfPermission(cameraContext, Manifest.permission.RECORD_AUDIO) ==
                         PackageManager.PERMISSION_GRANTED
                     ) {
                         recording.withAudioEnabled()
@@ -119,7 +120,7 @@ object RearCameraCameraXPipeline : LifecycleOwner {
                     }
                 }
 
-            val recording = pendingRecording.start(ContextCompat.getMainExecutor(context)) { event ->
+            val recording = pendingRecording.start(ContextCompat.getMainExecutor(cameraContext)) { event ->
                 onEvent(event)
                 if (event is VideoRecordEvent.Finalize) {
                     activeRecording = false
@@ -239,7 +240,7 @@ private fun CameraDirection.toCameraSelector(): CameraSelector {
 
 private fun RecordingOrientationStrategy.targetRotation(context: Context): Int {
     return when (this) {
-        RecordingOrientationStrategy.FollowSystem -> context.display?.rotation ?: Surface.ROTATION_0
+        RecordingOrientationStrategy.FollowSystem -> context.safeDisplayRotation()
         RecordingOrientationStrategy.FixedLandscapeDriving -> Surface.ROTATION_90
     }
 }
