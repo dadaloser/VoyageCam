@@ -34,6 +34,7 @@ class RecordingServiceState {
     var fallbackSummary: String? = null
     var dualCameraDiagnostic: String? = null
     var performanceGuardSummary: String? = null
+    var stopRequested: Boolean = false
 
     fun resetForStart(
         context: Context,
@@ -75,11 +76,13 @@ class RecordingServiceState {
         fallbackSummary = null
         dualCameraDiagnostic = null
         performanceGuardSummary = null
+        stopRequested = false
     }
 
     fun clearAfterStop() {
         startedAtMillis = 0L
         startupInProgress = false
+        stopRequested = false
     }
 
     fun notificationState(): RecordingNotificationState {

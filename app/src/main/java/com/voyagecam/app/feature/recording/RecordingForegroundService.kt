@@ -122,7 +122,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
                 event = "service_stop_requested",
                 message = "Stop action received",
             )
-            stopSelf()
+            requestStopRecording()
             return START_NOT_STICKY
         }
         if (intent?.action == ACTION_LOCK_CURRENT) {
@@ -396,6 +396,7 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
         state.currentFileName = finalFiles.primary?.name ?: state.currentFileName
         state.status = getString(R.string.recording_service_stopped)
         notifyRecordingState()
+        finishStopAfterFinalize()
     }
 
     override fun onRecordingError(message: String) {
@@ -727,6 +728,36 @@ class RecordingForegroundService : Service(), RearCameraRecorder.Callbacks {
 
     private fun notifyRecordingState() {
         notificationController.notify(notificationState())
+    }
+
+    private fun requestStopRecording() {
+        state.stopRequested = true
+        state.status = getString(R.string.recording_service_stopped)
+        notifyRecordingState()
+        startupJob?.cancel()
+        startupJob = null
+        if (state.startupInProgress && recorder == null) {
+            finishStopAfterFinalize()
+            return
+        }
+        val activeRecorder = recorder
+        if (activeRecorder == null) {
+            finishStopAfterFinalize()
+            return
+        }
+        activeRecorder.stop()
+    }
+
+    private fun finishStopAfterFinalize() {
+        mainHandler.removeCallbacks(updateNotificationTask)
+        mainHandler.removeCallbacks(gpsTrackSampleTask)
+        mainHandler.removeCallbacks(performanceGuardTask)
+        collisionDetector?.stop()
+        collisionDetector = null
+        emergencyLocationProvider.stopUpdates()
+        gpsTrackBuffer.clear()
+        recorder = null
+        stopSelf()
     }
 
     private fun startRecordingSession(

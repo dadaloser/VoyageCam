@@ -54,7 +54,7 @@ object RearCameraCameraXPipeline : LifecycleOwner {
             previewSurfaceProvider = provider
             ensureLifecycleStarted()
             bindUseCases(
-                context = context.applicationContext,
+                context = context,
                 cameraDirection = cameraDirection,
                 frontMirrorEnabled = frontMirrorEnabled,
                 orientationStrategy = orientationStrategy,
@@ -240,7 +240,7 @@ private fun CameraDirection.toCameraSelector(): CameraSelector {
 
 private fun RecordingOrientationStrategy.targetRotation(context: Context): Int {
     return when (this) {
-        RecordingOrientationStrategy.FollowSystem -> context.safeDisplayRotation()
+        RecordingOrientationStrategy.FollowSystem -> context.displayAssociatedContext().safeDisplayRotation()
         RecordingOrientationStrategy.FixedLandscapeDriving -> Surface.ROTATION_90
     }
 }

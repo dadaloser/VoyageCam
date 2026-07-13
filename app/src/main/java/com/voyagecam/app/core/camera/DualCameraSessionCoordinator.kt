@@ -65,7 +65,7 @@ object DualCameraSessionCoordinator : LifecycleOwner {
                 lastDiagnostic = null,
             )
             bind(
-                context = context.applicationContext,
+                context = context,
                 rearVideoCapture = null,
                 frontVideoCapture = null,
                 onError = onError,
@@ -374,5 +374,5 @@ private fun RecordingOrientationStrategy.targetRotation(context: Context): Int {
 }
 
 private fun orientationTargetRotation(context: Context): Int {
-    return context.safeDisplayRotation()
+    return context.displayAssociatedContext().safeDisplayRotation()
 }
